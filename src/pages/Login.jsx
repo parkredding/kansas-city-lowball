@@ -13,11 +13,16 @@ function Login() {
     }
   }, [currentUser, navigate]);
 
-  function handleGoogleSignIn() {
+  async function handleGoogleSignIn() {
     setLoading(true);
-    signInWithGoogle();
-    // User will be redirected to Google, then back to the app
-    // The redirect result is handled in AuthContext
+    try {
+      await signInWithGoogle();
+      // User will be redirected to Google, then back to the app
+      // The redirect result is handled in AuthContext
+    } catch (error) {
+      console.error('Sign-in error:', error);
+      setLoading(false);
+    }
   }
 
   return (
