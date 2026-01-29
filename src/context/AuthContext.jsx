@@ -6,7 +6,7 @@ import {
   signOut,
   onAuthStateChanged,
 } from 'firebase/auth';
-import { auth } from '../firebase';
+import { auth, authReady } from '../firebase';
 
 const AuthContext = createContext();
 
@@ -33,8 +33,10 @@ export function AuthProvider({ children }) {
   }
 
   useEffect(() => {
-    // Handle redirect result when returning from Google sign-in
-    getRedirectResult(auth)
+    // Wait for persistence to be set before checking redirect result
+    // This is critical for the OAuth redirect flow to work properly
+    authReady
+      .then(() => getRedirectResult(auth))
       .then((result) => {
         if (result?.user) {
           setCurrentUser(result.user);
