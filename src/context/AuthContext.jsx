@@ -23,6 +23,12 @@ export function AuthProvider({ children }) {
   const [authError, setAuthError] = useState(null);
 
   async function signInWithGoogle() {
+    if (!auth) {
+      const error = new Error('Firebase auth not initialized');
+      setAuthError(error.message);
+      throw error;
+    }
+
     const provider = new GoogleAuthProvider();
     try {
       const result = await signInWithPopup(auth, provider);
@@ -40,6 +46,14 @@ export function AuthProvider({ children }) {
   }
 
   useEffect(() => {
+    // Handle case where Firebase failed to initialize
+    if (!auth) {
+      console.error('Firebase auth not initialized');
+      setAuthError('Firebase authentication failed to initialize');
+      setLoading(false);
+      return;
+    }
+
     // Set up auth state listener immediately
     // Firebase uses local persistence by default in browsers
     const unsubscribe = onAuthStateChanged(auth, (user) => {
