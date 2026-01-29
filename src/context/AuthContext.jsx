@@ -43,6 +43,7 @@ export function AuthProvider({ children }) {
       .catch((error) => {
         console.error('Redirect sign-in error:', error);
         setAuthError(error.message);
+        setLoading(false);
       });
 
     const unsubscribe = onAuthStateChanged(auth, (user) => {
