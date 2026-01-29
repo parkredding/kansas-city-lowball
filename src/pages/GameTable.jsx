@@ -1,4 +1,7 @@
-import { usePokerGame, PHASES, PHASE_DISPLAY_NAMES } from '../game/usePokerGame';
+import { useState } from 'react';
+import { useGame } from '../context/GameContext';
+import { useAuth } from '../context/AuthContext';
+import { PHASE_DISPLAY_NAMES } from '../game/usePokerGame';
 
 const SUIT_SYMBOLS = {
   h: { symbol: '\u2665', color: 'text-red-500' },
@@ -7,7 +10,17 @@ const SUIT_SYMBOLS = {
   s: { symbol: '\u2660', color: 'text-gray-900' },
 };
 
-function Card({ card, isSelected, onClick, isSelectable }) {
+function Card({ card, isSelected, onClick, isSelectable, faceDown = false }) {
+  if (faceDown) {
+    return (
+      <div className="bg-blue-800 rounded-lg shadow-lg w-16 h-24 flex flex-col items-center justify-center border-2 border-blue-900">
+        <div className="w-12 h-18 bg-blue-700 rounded border border-blue-600 flex items-center justify-center">
+          <span className="text-blue-500 text-2xl">?</span>
+        </div>
+      </div>
+    );
+  }
+
   const suit = SUIT_SYMBOLS[card.suit];
 
   return (
@@ -37,6 +50,14 @@ function Card({ card, isSelected, onClick, isSelectable }) {
   );
 }
 
+function CardBack() {
+  return (
+    <div className="bg-blue-800 rounded-lg shadow-lg w-12 h-16 flex flex-col items-center justify-center border-2 border-blue-900">
+      <div className="w-8 h-10 bg-blue-700 rounded border border-blue-600"></div>
+    </div>
+  );
+}
+
 function formatHandName(categoryName) {
   if (!categoryName) return '';
   return categoryName
@@ -48,11 +69,10 @@ function formatHandName(categoryName) {
 function PhaseIndicator({ phase }) {
   const displayName = PHASE_DISPLAY_NAMES[phase] || phase;
 
-  // Determine phase type for styling
-  const isBetting = phase.startsWith('BETTING_');
-  const isDraw = phase.startsWith('DRAW_');
-  const isShowdown = phase === PHASES.SHOWDOWN;
-  const isIdle = phase === PHASES.IDLE;
+  const isBetting = phase?.startsWith('BETTING_');
+  const isDraw = phase?.startsWith('DRAW_');
+  const isShowdown = phase === 'SHOWDOWN';
+  const isIdle = phase === 'IDLE';
 
   let bgColor = 'bg-gray-600';
   if (isBetting) bgColor = 'bg-blue-600';
@@ -80,110 +100,372 @@ function ChipDisplay({ label, amount, variant = 'default' }) {
   );
 }
 
-function GameTable() {
-  const {
-    playerHand,
-    handResult,
-    phase,
-    selectedCardIndices,
-    pot,
-    playerChips,
-    isBettingPhase,
-    isDrawPhase,
-    startNewGame,
-    submitDraw,
-    submitBet,
-    startNextHand,
-    toggleCardSelection,
-  } = usePokerGame();
+function PlayerSlot({ player, isCurrentUser, isActive, showCards, handResult }) {
+  const statusColors = {
+    active: 'border-green-500',
+    folded: 'border-gray-500',
+    'all-in': 'border-yellow-500',
+  };
 
-  const isIdle = phase === PHASES.IDLE;
-  const isShowdown = phase === PHASES.SHOWDOWN;
+  return (
+    <div
+      className={`
+        bg-gray-800 rounded-xl p-4 border-2
+        ${isActive ? 'ring-2 ring-yellow-400' : ''}
+        ${statusColors[player.status] || 'border-gray-600'}
+      `}
+    >
+      <div className="flex items-center gap-2 mb-2">
+        {player.photoURL ? (
+          <img
+            src={player.photoURL}
+            alt={player.displayName}
+            className="w-8 h-8 rounded-full"
+          />
+        ) : (
+          <div className="w-8 h-8 rounded-full bg-gray-600 flex items-center justify-center">
+            <span className="text-white text-sm">
+              {player.displayName?.charAt(0)?.toUpperCase() || '?'}
+            </span>
+          </div>
+        )}
+        <div className="flex-1">
+          <p className={`text-sm font-medium ${isCurrentUser ? 'text-yellow-400' : 'text-white'}`}>
+            {player.displayName}
+            {isCurrentUser && ' (You)'}
+          </p>
+          <p className="text-xs text-gray-400">${player.chips}</p>
+        </div>
+        {isActive && (
+          <span className="text-xs bg-yellow-500 text-black px-2 py-1 rounded">
+            Turn
+          </span>
+        )}
+      </div>
+
+      {/* Player's cards */}
+      {player.hand && player.hand.length > 0 && (
+        <div className="flex gap-1 justify-center">
+          {player.hand.map((card, index) => (
+            showCards ? (
+              <div key={index} className="transform scale-75 -mx-1">
+                <Card card={card} isSelectable={false} />
+              </div>
+            ) : (
+              <CardBack key={index} />
+            )
+          ))}
+        </div>
+      )}
+
+      {/* Hand result at showdown */}
+      {handResult && showCards && (
+        <div className="mt-2 text-center">
+          <p className="text-xs text-yellow-400">
+            {formatHandName(handResult.categoryName)}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LobbyView() {
+  const { createTable, joinTable, loading, error, setError } = useGame();
+  const { logout } = useAuth();
+  const [tableIdInput, setTableIdInput] = useState('');
+
+  const handleCreateTable = async () => {
+    await createTable();
+  };
+
+  const handleJoinTable = async () => {
+    if (!tableIdInput.trim()) {
+      setError('Please enter a table ID');
+      return;
+    }
+    await joinTable(tableIdInput.trim());
+  };
 
   return (
     <div className="min-h-screen bg-green-800 flex flex-col items-center justify-center gap-6 p-4">
-      {/* Phase Indicator */}
-      <PhaseIndicator phase={phase} />
+      <h1 className="text-4xl font-bold text-white">Kansas City Lowball</h1>
+      <p className="text-gray-300">2-7 Triple Draw Poker</p>
 
-      {/* Title */}
-      <h1 className="text-3xl font-bold text-white">Kansas City Lowball</h1>
+      <div className="bg-gray-800 rounded-xl p-8 shadow-2xl max-w-md w-full">
+        <h2 className="text-xl font-semibold text-white mb-6 text-center">
+          Join or Create a Table
+        </h2>
+
+        {error && (
+          <div className="bg-red-500/20 border border-red-500 text-red-200 px-4 py-2 rounded mb-4 text-sm">
+            {error}
+          </div>
+        )}
+
+        {/* Create Table */}
+        <div className="mb-6">
+          <button
+            onClick={handleCreateTable}
+            disabled={loading}
+            className="w-full bg-yellow-600 hover:bg-yellow-500 disabled:bg-yellow-800 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition-colors"
+          >
+            {loading ? 'Creating...' : 'Create New Table'}
+          </button>
+        </div>
+
+        <div className="relative mb-6">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-gray-600"></div>
+          </div>
+          <div className="relative flex justify-center text-sm">
+            <span className="px-2 bg-gray-800 text-gray-400">or</span>
+          </div>
+        </div>
+
+        {/* Join Table */}
+        <div className="space-y-3">
+          <input
+            type="text"
+            value={tableIdInput}
+            onChange={(e) => setTableIdInput(e.target.value.toUpperCase())}
+            placeholder="Enter Table ID"
+            maxLength={6}
+            className="w-full bg-gray-700 border border-gray-600 text-white px-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500 text-center text-xl tracking-widest uppercase"
+          />
+          <button
+            onClick={handleJoinTable}
+            disabled={loading || !tableIdInput.trim()}
+            className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition-colors"
+          >
+            {loading ? 'Joining...' : 'Join Table'}
+          </button>
+        </div>
+      </div>
+
+      <button
+        onClick={logout}
+        className="text-gray-400 hover:text-white text-sm underline"
+      >
+        Sign Out
+      </button>
+    </div>
+  );
+}
+
+function GameView() {
+  const { currentUser } = useAuth();
+  const {
+    currentTableId,
+    tableData,
+    loading,
+    error,
+    isBettingPhase,
+    isDrawPhase,
+    isShowdown,
+    isIdle,
+    leaveTable,
+    dealCards,
+    submitBet,
+    submitDraw,
+    startNextHand,
+    getCurrentPlayer,
+    isMyTurn,
+    getActivePlayer,
+    evaluateHand,
+  } = useGame();
+
+  const [selectedCardIndices, setSelectedCardIndices] = useState(new Set());
+
+  const currentPlayer = getCurrentPlayer();
+  const activePlayer = getActivePlayer();
+  const myTurn = isMyTurn();
+
+  // Get opponents (other players)
+  const opponents = tableData?.players?.filter((p) => p.uid !== currentUser?.uid) || [];
+
+  const toggleCardSelection = (index) => {
+    if (!isDrawPhase || !myTurn) return;
+
+    setSelectedCardIndices((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(index)) {
+        newSet.delete(index);
+      } else {
+        newSet.add(index);
+      }
+      return newSet;
+    });
+  };
+
+  const handleSubmitDraw = async () => {
+    const indices = Array.from(selectedCardIndices);
+    await submitDraw(indices);
+    setSelectedCardIndices(new Set());
+  };
+
+  const handleDeal = async () => {
+    await dealCards();
+  };
+
+  // Evaluate hands at showdown
+  const playerHandResult = isShowdown && currentPlayer?.hand
+    ? evaluateHand(currentPlayer.hand)
+    : null;
+
+  return (
+    <div className="min-h-screen bg-green-800 flex flex-col items-center gap-4 p-4">
+      {/* Header */}
+      <div className="w-full max-w-4xl flex items-center justify-between">
+        <button
+          onClick={leaveTable}
+          className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm"
+        >
+          Leave Table
+        </button>
+
+        <div className="bg-gray-800 px-4 py-2 rounded-lg">
+          <span className="text-gray-400 text-sm">Table: </span>
+          <span className="text-white font-mono font-bold">{currentTableId}</span>
+        </div>
+
+        <PhaseIndicator phase={tableData?.phase} />
+      </div>
+
+      {/* Error display */}
+      {error && (
+        <div className="bg-red-500/20 border border-red-500 text-red-200 px-4 py-2 rounded text-sm max-w-md">
+          {error}
+        </div>
+      )}
 
       {/* Chip Displays */}
       <div className="flex gap-4">
-        <ChipDisplay label="Your Chips" amount={playerChips} />
-        <ChipDisplay label="Pot" amount={pot} variant="pot" />
+        <ChipDisplay label="Your Chips" amount={currentPlayer?.chips || 0} />
+        <ChipDisplay label="Pot" amount={tableData?.pot || 0} variant="pot" />
       </div>
 
-      {/* Game Table */}
+      {/* Opponents */}
+      <div className="w-full max-w-4xl">
+        <div className="flex flex-wrap justify-center gap-4">
+          {opponents.map((player) => (
+            <PlayerSlot
+              key={player.uid}
+              player={player}
+              isCurrentUser={false}
+              isActive={player.uid === activePlayer?.uid}
+              showCards={isShowdown}
+              handResult={isShowdown ? evaluateHand(player.hand) : null}
+            />
+          ))}
+          {opponents.length === 0 && isIdle && (
+            <div className="bg-gray-800/50 border-2 border-dashed border-gray-600 rounded-xl p-8 text-center">
+              <p className="text-gray-400">Waiting for players to join...</p>
+              <p className="text-gray-500 text-sm mt-2">
+                Share table code: <span className="font-mono font-bold text-white">{currentTableId}</span>
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Game Table - Current Player's Hand */}
       <div className="bg-green-700 rounded-3xl px-12 py-8 border-8 border-yellow-700 shadow-2xl">
-        {playerHand.length > 0 ? (
+        {currentPlayer?.hand && currentPlayer.hand.length > 0 ? (
           <div className="flex flex-col items-center gap-6">
             {/* Cards */}
             <div className="flex gap-3">
-              {playerHand.map((card, index) => (
+              {currentPlayer.hand.map((card, index) => (
                 <Card
                   key={`${index}-${card.rank}-${card.suit}`}
                   card={card}
                   isSelected={selectedCardIndices.has(index)}
-                  isSelectable={isDrawPhase}
+                  isSelectable={isDrawPhase && myTurn}
                   onClick={() => toggleCardSelection(index)}
                 />
               ))}
             </div>
 
             {/* Draw phase hint */}
-            {isDrawPhase && (
+            {isDrawPhase && myTurn && (
               <p className="text-gray-300 text-sm">
                 Click cards to select them for discard ({selectedCardIndices.size} selected)
               </p>
             )}
 
+            {/* Turn indicator */}
+            {!isIdle && !isShowdown && (
+              <p className={`text-sm ${myTurn ? 'text-yellow-400 font-bold' : 'text-gray-400'}`}>
+                {myTurn ? "It's your turn!" : `Waiting for ${activePlayer?.displayName || 'opponent'}...`}
+              </p>
+            )}
+
             {/* Hand Result (shown at showdown) */}
-            {handResult && isShowdown && (
+            {playerHandResult && isShowdown && (
               <div className="text-center">
                 <p className="text-2xl font-bold text-yellow-400">
-                  {formatHandName(handResult.categoryName)}
+                  {formatHandName(playerHandResult.categoryName)}
                 </p>
                 <p className="text-sm text-gray-300 mt-1">
-                  {handResult.display}
+                  {playerHandResult.display}
                 </p>
               </div>
             )}
           </div>
         ) : (
-          <p className="text-white text-xl font-semibold px-8 py-4">
-            Click Deal to start
-          </p>
+          <div className="text-center">
+            <p className="text-white text-xl font-semibold px-8 py-4">
+              {isIdle
+                ? tableData?.players?.length >= 2
+                  ? 'Ready to deal!'
+                  : 'Waiting for more players...'
+                : 'Waiting for cards...'
+              }
+            </p>
+            <p className="text-gray-400 text-sm">
+              {tableData?.players?.length || 0} player(s) at table
+            </p>
+          </div>
         )}
+      </div>
+
+      {/* Current Player Info */}
+      <div className="text-center">
+        <p className="text-gray-300 text-sm">
+          Playing as <span className="text-yellow-400 font-medium">{currentPlayer?.displayName}</span>
+        </p>
       </div>
 
       {/* Action Buttons */}
       <div className="flex gap-4">
-        {/* IDLE: Show Deal button */}
-        {isIdle && (
+        {/* IDLE: Show Deal button (only if enough players and creator or any player can start) */}
+        {isIdle && tableData?.players?.length >= 2 && (
           <button
-            onClick={startNewGame}
-            className="bg-yellow-600 hover:bg-yellow-500 text-white font-bold py-3 px-8 rounded-lg shadow-lg transition-colors text-lg"
+            onClick={handleDeal}
+            disabled={loading}
+            className="bg-yellow-600 hover:bg-yellow-500 disabled:bg-yellow-800 text-white font-bold py-3 px-8 rounded-lg shadow-lg transition-colors text-lg"
           >
-            Deal
+            Deal Cards
           </button>
         )}
 
         {/* BETTING phases: Show Check/Call button */}
-        {isBettingPhase && (
+        {isBettingPhase && myTurn && (
           <button
             onClick={() => submitBet(0)}
-            className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-8 rounded-lg shadow-lg transition-colors text-lg"
+            disabled={loading}
+            className="bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 text-white font-bold py-3 px-8 rounded-lg shadow-lg transition-colors text-lg"
           >
             Check / Call
           </button>
         )}
 
         {/* DRAW phases: Show Discard button */}
-        {isDrawPhase && (
+        {isDrawPhase && myTurn && (
           <button
-            onClick={submitDraw}
-            className="bg-purple-600 hover:bg-purple-500 text-white font-bold py-3 px-8 rounded-lg shadow-lg transition-colors text-lg"
+            onClick={handleSubmitDraw}
+            disabled={loading}
+            className="bg-purple-600 hover:bg-purple-500 disabled:bg-purple-800 text-white font-bold py-3 px-8 rounded-lg shadow-lg transition-colors text-lg"
           >
             {selectedCardIndices.size > 0
               ? `Discard ${selectedCardIndices.size} Card${selectedCardIndices.size > 1 ? 's' : ''}`
@@ -196,7 +478,8 @@ function GameTable() {
         {isShowdown && (
           <button
             onClick={startNextHand}
-            className="bg-yellow-600 hover:bg-yellow-500 text-white font-bold py-3 px-8 rounded-lg shadow-lg transition-colors text-lg"
+            disabled={loading}
+            className="bg-yellow-600 hover:bg-yellow-500 disabled:bg-yellow-800 text-white font-bold py-3 px-8 rounded-lg shadow-lg transition-colors text-lg"
           >
             Next Hand
           </button>
@@ -204,6 +487,21 @@ function GameTable() {
       </div>
     </div>
   );
+}
+
+function GameTable() {
+  const { currentTableId, loading } = useGame();
+
+  if (loading && !currentTableId) {
+    return (
+      <div className="min-h-screen bg-green-800 flex items-center justify-center">
+        <p className="text-white text-xl">Loading...</p>
+      </div>
+    );
+  }
+
+  // Show lobby if no table selected, otherwise show game
+  return currentTableId ? <GameView /> : <LobbyView />;
 }
 
 export default GameTable;
