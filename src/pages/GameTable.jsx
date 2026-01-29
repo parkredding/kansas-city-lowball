@@ -1,7 +1,10 @@
-import { useState } from 'react';
-import { useGame } from '../context/GameContext';
+import { useState, useEffect } from 'react';
+import { useGame, BetAction } from '../context/GameContext';
 import { useAuth } from '../context/AuthContext';
 import { PHASE_DISPLAY_NAMES } from '../game/usePokerGame';
+import BuyInModal from '../components/BuyInModal';
+import BettingControls from '../components/BettingControls';
+import TurnTimer, { CircularTimer } from '../components/TurnTimer';
 
 const SUIT_SYMBOLS = {
   h: { symbol: '\u2665', color: 'text-red-500' },
@@ -100,35 +103,62 @@ function ChipDisplay({ label, amount, variant = 'default' }) {
   );
 }
 
-function PlayerSlot({ player, isCurrentUser, isActive, showCards, handResult }) {
+function WalletDisplay({ balance, loading }) {
+  return (
+    <div className="bg-gradient-to-r from-green-700 to-green-600 px-4 py-2 rounded-lg shadow flex items-center gap-2">
+      <svg className="w-5 h-5 text-green-300" fill="currentColor" viewBox="0 0 20 20">
+        <path d="M4 4a2 2 0 00-2 2v1h16V6a2 2 0 00-2-2H4z" />
+        <path fillRule="evenodd" d="M18 9H2v5a2 2 0 002 2h12a2 2 0 002-2V9zM4 13a1 1 0 011-1h1a1 1 0 110 2H5a1 1 0 01-1-1zm5-1a1 1 0 100 2h1a1 1 0 100-2H9z" clipRule="evenodd" />
+      </svg>
+      <div>
+        <span className="text-green-200 text-xs">Wallet</span>
+        <span className="text-white font-bold ml-2">
+          {loading ? '...' : `$${(balance || 0).toLocaleString()}`}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function PlayerSlot({ player, isCurrentUser, isActive, showCards, handResult, turnDeadline }) {
   const statusColors = {
     active: 'border-green-500',
-    folded: 'border-gray-500',
+    folded: 'border-gray-500 opacity-50',
     'all-in': 'border-yellow-500',
+    'sitting_out': 'border-gray-600 opacity-40',
   };
 
   return (
     <div
       className={`
-        bg-gray-800 rounded-xl p-4 border-2
+        relative bg-gray-800 rounded-xl p-4 border-2
         ${isActive ? 'ring-2 ring-yellow-400' : ''}
         ${statusColors[player.status] || 'border-gray-600'}
       `}
     >
+      {/* Circular timer around avatar when active */}
+      {isActive && turnDeadline && (
+        <div className="absolute -top-1 -left-1">
+          <CircularTimer turnDeadline={turnDeadline} size={40} isActive={isActive} />
+        </div>
+      )}
+
       <div className="flex items-center gap-2 mb-2">
-        {player.photoURL ? (
-          <img
-            src={player.photoURL}
-            alt={player.displayName}
-            className="w-8 h-8 rounded-full"
-          />
-        ) : (
-          <div className="w-8 h-8 rounded-full bg-gray-600 flex items-center justify-center">
-            <span className="text-white text-sm">
-              {player.displayName?.charAt(0)?.toUpperCase() || '?'}
-            </span>
-          </div>
-        )}
+        <div className="relative">
+          {player.photoURL ? (
+            <img
+              src={player.photoURL}
+              alt={player.displayName}
+              className="w-8 h-8 rounded-full"
+            />
+          ) : (
+            <div className="w-8 h-8 rounded-full bg-gray-600 flex items-center justify-center">
+              <span className="text-white text-sm">
+                {player.displayName?.charAt(0)?.toUpperCase() || '?'}
+              </span>
+            </div>
+          )}
+        </div>
         <div className="flex-1">
           <p className={`text-sm font-medium ${isCurrentUser ? 'text-yellow-400' : 'text-white'}`}>
             {player.displayName}
@@ -137,11 +167,30 @@ function PlayerSlot({ player, isCurrentUser, isActive, showCards, handResult }) 
           <p className="text-xs text-gray-400">${player.chips}</p>
         </div>
         {isActive && (
-          <span className="text-xs bg-yellow-500 text-black px-2 py-1 rounded">
+          <span className="text-xs bg-yellow-500 text-black px-2 py-1 rounded animate-pulse">
             Turn
           </span>
         )}
+        {player.status === 'folded' && (
+          <span className="text-xs bg-gray-600 text-gray-300 px-2 py-1 rounded">
+            Folded
+          </span>
+        )}
+        {player.status === 'all-in' && (
+          <span className="text-xs bg-purple-600 text-white px-2 py-1 rounded">
+            All-In
+          </span>
+        )}
       </div>
+
+      {/* Current round bet indicator */}
+      {player.currentRoundBet > 0 && (
+        <div className="mb-2 text-center">
+          <span className="text-xs bg-blue-600/50 text-blue-200 px-2 py-1 rounded">
+            Bet: ${player.currentRoundBet}
+          </span>
+        </div>
+      )}
 
       {/* Player's cards */}
       {player.hand && player.hand.length > 0 && (
@@ -171,7 +220,7 @@ function PlayerSlot({ player, isCurrentUser, isActive, showCards, handResult }) 
 }
 
 function LobbyView() {
-  const { createTable, joinTable, loading, error, setError } = useGame();
+  const { createTable, joinTable, loading, error, setError, userWallet, walletLoading } = useGame();
   const { logout } = useAuth();
   const [tableIdInput, setTableIdInput] = useState('');
 
@@ -191,6 +240,9 @@ function LobbyView() {
     <div className="min-h-screen bg-green-800 flex flex-col items-center justify-center gap-6 p-4">
       <h1 className="text-4xl font-bold text-white">Kansas City Lowball</h1>
       <p className="text-gray-300">2-7 Triple Draw Poker</p>
+
+      {/* Wallet Display */}
+      <WalletDisplay balance={userWallet?.balance} loading={walletLoading} />
 
       <div className="bg-gray-800 rounded-xl p-8 shadow-2xl max-w-md w-full">
         <h2 className="text-xl font-semibold text-white mb-6 text-center">
@@ -264,25 +316,47 @@ function GameView() {
     isDrawPhase,
     isShowdown,
     isIdle,
+    userWallet,
+    walletLoading,
     leaveTable,
     dealCards,
-    submitBet,
+    buyIn,
+    performBetAction,
     submitDraw,
     startNextHand,
+    handleTimeout,
     getCurrentPlayer,
     isMyTurn,
     getActivePlayer,
     evaluateHand,
+    getCallAmount,
+    getMinRaise,
+    canCheck,
+    BetAction,
   } = useGame();
 
   const [selectedCardIndices, setSelectedCardIndices] = useState(new Set());
+  const [showBuyInModal, setShowBuyInModal] = useState(false);
 
   const currentPlayer = getCurrentPlayer();
   const activePlayer = getActivePlayer();
   const myTurn = isMyTurn();
+  const callAmount = getCallAmount();
+  const minRaise = getMinRaise();
+  const playerCanCheck = canCheck();
 
   // Get opponents (other players)
   const opponents = tableData?.players?.filter((p) => p.uid !== currentUser?.uid) || [];
+
+  // Check if player needs to buy in
+  const needsBuyIn = currentPlayer?.chips === 0;
+
+  // Auto-show buy-in modal when joining with no chips
+  useEffect(() => {
+    if (needsBuyIn && isIdle && !showBuyInModal) {
+      setShowBuyInModal(true);
+    }
+  }, [needsBuyIn, isIdle, showBuyInModal]);
 
   const toggleCardSelection = (index) => {
     if (!isDrawPhase || !myTurn) return;
@@ -308,15 +382,40 @@ function GameView() {
     await dealCards();
   };
 
+  const handleBuyIn = async (amount) => {
+    const success = await buyIn(amount);
+    return success;
+  };
+
+  // Betting action handlers
+  const handleFold = () => performBetAction(BetAction.FOLD);
+  const handleCheck = () => performBetAction(BetAction.CHECK);
+  const handleCall = () => performBetAction(BetAction.CALL);
+  const handleRaise = (amount) => performBetAction(BetAction.RAISE, amount);
+
   // Evaluate hands at showdown
   const playerHandResult = isShowdown && currentPlayer?.hand
     ? evaluateHand(currentPlayer.hand)
     : null;
 
+  // Check if we have enough players with chips to start
+  const playersWithChips = tableData?.players?.filter((p) => p.chips > 0)?.length || 0;
+  const canStartGame = playersWithChips >= 2;
+
   return (
     <div className="min-h-screen bg-green-800 flex flex-col items-center gap-4 p-4">
+      {/* Buy-In Modal */}
+      <BuyInModal
+        isOpen={showBuyInModal}
+        onClose={() => setShowBuyInModal(false)}
+        onBuyIn={handleBuyIn}
+        maxAmount={userWallet?.balance || 0}
+        minBet={tableData?.minBet || 50}
+        loading={loading}
+      />
+
       {/* Header */}
-      <div className="w-full max-w-4xl flex items-center justify-between">
+      <div className="w-full max-w-4xl flex items-center justify-between flex-wrap gap-2">
         <button
           onClick={leaveTable}
           className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm"
@@ -329,6 +428,8 @@ function GameView() {
           <span className="text-white font-mono font-bold">{currentTableId}</span>
         </div>
 
+        <WalletDisplay balance={userWallet?.balance} loading={walletLoading} />
+
         <PhaseIndicator phase={tableData?.phase} />
       </div>
 
@@ -339,10 +440,32 @@ function GameView() {
         </div>
       )}
 
+      {/* Turn Timer (for betting/draw phases) */}
+      {tableData?.turnDeadline && (isBettingPhase || isDrawPhase) && (
+        <div className="w-full max-w-md">
+          <TurnTimer
+            turnDeadline={tableData.turnDeadline}
+            onTimeout={handleTimeout}
+            isMyTurn={myTurn}
+          />
+        </div>
+      )}
+
       {/* Chip Displays */}
-      <div className="flex gap-4">
+      <div className="flex gap-4 flex-wrap justify-center">
         <ChipDisplay label="Your Chips" amount={currentPlayer?.chips || 0} />
         <ChipDisplay label="Pot" amount={tableData?.pot || 0} variant="pot" />
+        {tableData?.currentBet > 0 && (
+          <ChipDisplay label="To Call" amount={callAmount} />
+        )}
+        {needsBuyIn && isIdle && (
+          <button
+            onClick={() => setShowBuyInModal(true)}
+            className="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-lg font-medium"
+          >
+            + Buy More Chips
+          </button>
+        )}
       </div>
 
       {/* Opponents */}
@@ -356,6 +479,7 @@ function GameView() {
               isActive={player.uid === activePlayer?.uid}
               showCards={isShowdown}
               handResult={isShowdown ? evaluateHand(player.hand) : null}
+              turnDeadline={tableData?.turnDeadline}
             />
           ))}
           {opponents.length === 0 && isIdle && (
@@ -415,15 +539,18 @@ function GameView() {
         ) : (
           <div className="text-center">
             <p className="text-white text-xl font-semibold px-8 py-4">
-              {isIdle
-                ? tableData?.players?.length >= 2
-                  ? 'Ready to deal!'
-                  : 'Waiting for more players...'
-                : 'Waiting for cards...'
+              {needsBuyIn
+                ? 'Buy in to play!'
+                : isIdle
+                  ? canStartGame
+                    ? 'Ready to deal!'
+                    : 'Waiting for more players with chips...'
+                  : 'Waiting for cards...'
               }
             </p>
             <p className="text-gray-400 text-sm">
               {tableData?.players?.length || 0} player(s) at table
+              {canStartGame ? '' : ` (${playersWithChips} with chips)`}
             </p>
           </div>
         )}
@@ -434,55 +561,71 @@ function GameView() {
         <p className="text-gray-300 text-sm">
           Playing as <span className="text-yellow-400 font-medium">{currentPlayer?.displayName}</span>
         </p>
+        {currentPlayer?.currentRoundBet > 0 && (
+          <p className="text-gray-400 text-xs">
+            Your bet this round: ${currentPlayer.currentRoundBet}
+          </p>
+        )}
       </div>
 
-      {/* Action Buttons */}
-      <div className="flex gap-4">
-        {/* IDLE: Show Deal button (only if enough players and creator or any player can start) */}
-        {isIdle && tableData?.players?.length >= 2 && (
-          <button
-            onClick={handleDeal}
-            disabled={loading}
-            className="bg-yellow-600 hover:bg-yellow-500 disabled:bg-yellow-800 text-white font-bold py-3 px-8 rounded-lg shadow-lg transition-colors text-lg"
-          >
-            Deal Cards
-          </button>
+      {/* Action Buttons / Betting Controls */}
+      <div className="w-full max-w-lg">
+        {/* IDLE: Show Deal button */}
+        {isIdle && canStartGame && !needsBuyIn && (
+          <div className="flex justify-center">
+            <button
+              onClick={handleDeal}
+              disabled={loading}
+              className="bg-yellow-600 hover:bg-yellow-500 disabled:bg-yellow-800 text-white font-bold py-3 px-8 rounded-lg shadow-lg transition-colors text-lg"
+            >
+              Deal Cards
+            </button>
+          </div>
         )}
 
-        {/* BETTING phases: Show Check/Call button */}
-        {isBettingPhase && myTurn && (
-          <button
-            onClick={() => submitBet(0)}
+        {/* BETTING phases: Show Betting Controls */}
+        {isBettingPhase && myTurn && currentPlayer?.status === 'active' && (
+          <BettingControls
+            onFold={handleFold}
+            onCheck={handleCheck}
+            onCall={handleCall}
+            onRaise={handleRaise}
+            callAmount={callAmount}
+            minRaise={minRaise}
+            maxRaise={currentPlayer?.chips || 0}
+            canCheck={playerCanCheck}
+            currentBet={tableData?.currentBet || 0}
             disabled={loading}
-            className="bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 text-white font-bold py-3 px-8 rounded-lg shadow-lg transition-colors text-lg"
-          >
-            Check / Call
-          </button>
+          />
         )}
 
         {/* DRAW phases: Show Discard button */}
         {isDrawPhase && myTurn && (
-          <button
-            onClick={handleSubmitDraw}
-            disabled={loading}
-            className="bg-purple-600 hover:bg-purple-500 disabled:bg-purple-800 text-white font-bold py-3 px-8 rounded-lg shadow-lg transition-colors text-lg"
-          >
-            {selectedCardIndices.size > 0
-              ? `Discard ${selectedCardIndices.size} Card${selectedCardIndices.size > 1 ? 's' : ''}`
-              : 'Stand Pat'
-            }
-          </button>
+          <div className="flex justify-center">
+            <button
+              onClick={handleSubmitDraw}
+              disabled={loading}
+              className="bg-purple-600 hover:bg-purple-500 disabled:bg-purple-800 text-white font-bold py-3 px-8 rounded-lg shadow-lg transition-colors text-lg"
+            >
+              {selectedCardIndices.size > 0
+                ? `Discard ${selectedCardIndices.size} Card${selectedCardIndices.size > 1 ? 's' : ''}`
+                : 'Stand Pat'
+              }
+            </button>
+          </div>
         )}
 
         {/* SHOWDOWN: Show Next Hand button */}
         {isShowdown && (
-          <button
-            onClick={startNextHand}
-            disabled={loading}
-            className="bg-yellow-600 hover:bg-yellow-500 disabled:bg-yellow-800 text-white font-bold py-3 px-8 rounded-lg shadow-lg transition-colors text-lg"
-          >
-            Next Hand
-          </button>
+          <div className="flex justify-center">
+            <button
+              onClick={startNextHand}
+              disabled={loading}
+              className="bg-yellow-600 hover:bg-yellow-500 disabled:bg-yellow-800 text-white font-bold py-3 px-8 rounded-lg shadow-lg transition-colors text-lg"
+            >
+              Next Hand
+            </button>
+          </div>
         )}
       </div>
     </div>

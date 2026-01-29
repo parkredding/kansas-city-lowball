@@ -1,6 +1,6 @@
-import { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { useAuth } from './AuthContext';
-import { GameService } from '../game/GameService';
+import { GameService, BetAction } from '../game/GameService';
 import { HandEvaluator } from '../game/HandEvaluator';
 
 const GameContext = createContext();
@@ -20,6 +20,45 @@ export function GameProvider({ children }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
+  // User wallet state
+  const [userWallet, setUserWallet] = useState(null);
+  const [walletLoading, setWalletLoading] = useState(false);
+
+  // Track if we've processed a timeout to avoid duplicates
+  const timeoutProcessedRef = useRef(false);
+
+  // Initialize user wallet when logged in
+  useEffect(() => {
+    if (!currentUser) {
+      setUserWallet(null);
+      return;
+    }
+
+    setWalletLoading(true);
+
+    // Initialize user (creates if doesn't exist)
+    GameService.getOrCreateUser(currentUser.uid, currentUser.displayName)
+      .then((userData) => {
+        setUserWallet(userData);
+        setWalletLoading(false);
+      })
+      .catch((err) => {
+        console.error('Error initializing user:', err);
+        setWalletLoading(false);
+      });
+
+    // Subscribe to user wallet updates
+    const unsubscribe = GameService.subscribeToUser(currentUser.uid, (data, err) => {
+      if (err) {
+        console.error('User subscription error:', err);
+      } else if (data) {
+        setUserWallet(data);
+      }
+    });
+
+    return () => unsubscribe();
+  }, [currentUser]);
+
   // Subscribe to table updates when currentTableId changes
   useEffect(() => {
     if (!currentTableId) {
@@ -38,6 +77,8 @@ export function GameProvider({ children }) {
       } else {
         setTableData(data);
         setError(null);
+        // Reset timeout flag when table data changes
+        timeoutProcessedRef.current = false;
       }
     });
 
@@ -93,7 +134,28 @@ export function GameProvider({ children }) {
     }
   }, [currentUser]);
 
-  // Leave the current table
+  // Buy in to current table
+  const buyIn = useCallback(async (amount) => {
+    if (!currentTableId || !currentUser) {
+      setError('Must be at a table to buy in');
+      return false;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      await GameService.buyInToTable(currentTableId, currentUser.uid, amount);
+      return true;
+    } catch (err) {
+      setError(err.message);
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  }, [currentTableId, currentUser]);
+
+  // Leave the current table (with cash out)
   const leaveTable = useCallback(async () => {
     if (!currentTableId || !tableData || !currentUser) return;
 
@@ -119,7 +181,18 @@ export function GameProvider({ children }) {
     }
   }, [currentTableId, tableData]);
 
-  // Submit a bet
+  // Perform a betting action (FOLD, CHECK, CALL, RAISE, BET)
+  const performBetAction = useCallback(async (action, amount = 0) => {
+    if (!currentTableId || !tableData || !currentUser) return;
+
+    try {
+      await GameService.performBetAction(currentTableId, tableData, currentUser.uid, action, amount);
+    } catch (err) {
+      setError(err.message);
+    }
+  }, [currentTableId, tableData, currentUser]);
+
+  // Submit a bet (legacy interface)
   const submitBet = useCallback(async (amount = 0) => {
     if (!currentTableId || !tableData || !currentUser) return;
 
@@ -152,6 +225,28 @@ export function GameProvider({ children }) {
     }
   }, [currentTableId, tableData]);
 
+  // Handle turn timeout (auto-fold/check)
+  const handleTimeout = useCallback(async () => {
+    if (!currentTableId || !tableData || !currentUser) return;
+    if (timeoutProcessedRef.current) return;
+
+    const activePlayer = tableData.players[tableData.activePlayerIndex];
+    if (!activePlayer) return;
+
+    // Only the active player should trigger timeout action
+    // This prevents multiple clients from triggering the same action
+    if (activePlayer.uid !== currentUser.uid) return;
+
+    timeoutProcessedRef.current = true;
+
+    try {
+      await GameService.handleTimeout(currentTableId, tableData, activePlayer.uid);
+    } catch (err) {
+      console.error('Error handling timeout:', err);
+      timeoutProcessedRef.current = false;
+    }
+  }, [currentTableId, tableData, currentUser]);
+
   // Get current player's data
   const getCurrentPlayer = useCallback(() => {
     if (!tableData || !currentUser) return null;
@@ -177,6 +272,32 @@ export function GameProvider({ children }) {
     return HandEvaluator.evaluate(hand);
   }, []);
 
+  // Calculate call amount
+  const getCallAmount = useCallback(() => {
+    if (!tableData || !currentUser) return 0;
+    const player = tableData.players.find((p) => p.uid === currentUser.uid);
+    if (!player) return 0;
+    const currentBet = tableData.currentBet || 0;
+    return Math.max(0, currentBet - (player.currentRoundBet || 0));
+  }, [tableData, currentUser]);
+
+  // Calculate minimum raise
+  const getMinRaise = useCallback(() => {
+    if (!tableData) return 0;
+    const currentBet = tableData.currentBet || 0;
+    const minBet = tableData.minBet || 50;
+    return currentBet + minBet;
+  }, [tableData]);
+
+  // Check if player can check
+  const canCheck = useCallback(() => {
+    if (!tableData || !currentUser) return false;
+    const player = tableData.players.find((p) => p.uid === currentUser.uid);
+    if (!player) return false;
+    const currentBet = tableData.currentBet || 0;
+    return (player.currentRoundBet || 0) >= currentBet;
+  }, [tableData, currentUser]);
+
   // Determine phase helpers
   const isBettingPhase = tableData?.phase?.startsWith('BETTING_') || false;
   const isDrawPhase = tableData?.phase?.startsWith('DRAW_') || false;
@@ -190,6 +311,10 @@ export function GameProvider({ children }) {
     loading,
     error,
 
+    // Wallet state
+    userWallet,
+    walletLoading,
+
     // Phase helpers
     isBettingPhase,
     isDrawPhase,
@@ -199,18 +324,27 @@ export function GameProvider({ children }) {
     // Actions
     createTable,
     joinTable,
+    buyIn,
     leaveTable,
     dealCards,
+    performBetAction,
     submitBet,
     submitDraw,
     startNextHand,
+    handleTimeout,
 
     // Utilities
     getCurrentPlayer,
     isMyTurn,
     getActivePlayer,
     evaluateHand,
+    getCallAmount,
+    getMinRaise,
+    canCheck,
     setError,
+
+    // Export BetAction for use in components
+    BetAction,
   };
 
   return (
@@ -219,3 +353,6 @@ export function GameProvider({ children }) {
     </GameContext.Provider>
   );
 }
+
+// Re-export BetAction for convenience
+export { BetAction };
