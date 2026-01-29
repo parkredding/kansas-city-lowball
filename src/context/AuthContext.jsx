@@ -6,7 +6,7 @@ import {
   signOut,
   onAuthStateChanged,
 } from 'firebase/auth';
-import { auth } from '../firebase';
+import { auth, configError } from '../firebase';
 
 const AuthContext = createContext();
 
@@ -21,18 +21,28 @@ export function useAuth() {
 export function AuthProvider({ children }) {
   const [currentUser, setCurrentUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [authError, setAuthError] = useState(null);
+  const [authError, setAuthError] = useState(configError);
 
   function signInWithGoogle() {
+    if (!auth) {
+      setAuthError(configError || 'Firebase is not configured properly');
+      return Promise.reject(new Error(configError || 'Firebase is not configured'));
+    }
     const provider = new GoogleAuthProvider();
     return signInWithRedirect(auth, provider);
   }
 
   function logout() {
+    if (!auth) return Promise.resolve();
     return signOut(auth);
   }
 
   useEffect(() => {
+    if (!auth) {
+      setLoading(false);
+      return;
+    }
+
     // Handle redirect result when returning from Google sign-in
     getRedirectResult(auth)
       .then((result) => {

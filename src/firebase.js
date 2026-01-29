@@ -11,6 +11,21 @@ const firebaseConfig = {
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
 };
 
-const app = initializeApp(firebaseConfig);
-export const auth = getAuth(app);
-export default app;
+// Validate required Firebase config values
+const requiredKeys = ['apiKey', 'authDomain', 'projectId', 'appId'];
+const missingKeys = requiredKeys.filter((key) => !firebaseConfig[key]);
+
+export let configError = null;
+export let auth = null;
+
+if (missingKeys.length > 0) {
+  configError = `Missing Firebase configuration: ${missingKeys.join(', ')}. ` +
+    'Make sure you have a .env file with the required VITE_FIREBASE_* variables. ' +
+    'See .env.example for the required format.';
+  console.error(configError);
+} else {
+  const app = initializeApp(firebaseConfig);
+  auth = getAuth(app);
+}
+
+export default auth;
