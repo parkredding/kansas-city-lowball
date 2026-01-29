@@ -19,7 +19,7 @@ function Login() {
       setError('');
       setLoading(true);
       await signInWithGoogle();
-      navigate('/game');
+      // Navigation is handled by useEffect when currentUser changes
     } catch (err) {
       setError('Failed to sign in. Please try again.');
       console.error(err);

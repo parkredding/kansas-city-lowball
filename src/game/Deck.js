@@ -18,9 +18,11 @@ export class Deck {
   }
 
   shuffle() {
-    // Fisher-Yates shuffle
+    // Fisher-Yates shuffle using cryptographically secure random source
     for (let i = this.cards.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
+      const random = new Uint32Array(1);
+      crypto.getRandomValues(random);
+      const j = Math.floor((random[0] / (0xffffffff + 1)) * (i + 1));
       [this.cards[i], this.cards[j]] = [this.cards[j], this.cards[i]];
     }
     return this;
