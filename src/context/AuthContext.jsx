@@ -1,12 +1,11 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import {
   GoogleAuthProvider,
-  signInWithRedirect,
-  getRedirectResult,
+  signInWithPopup,
   signOut,
   onAuthStateChanged,
 } from 'firebase/auth';
-import { auth, authReady } from '../firebase';
+import { auth } from '../firebase';
 
 const AuthContext = createContext();
 
@@ -23,9 +22,23 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState(null);
 
-  function signInWithGoogle() {
+  async function signInWithGoogle() {
+    if (!auth) {
+      const error = new Error('Firebase auth not initialized');
+      setAuthError(error.message);
+      throw error;
+    }
+
     const provider = new GoogleAuthProvider();
-    return signInWithRedirect(auth, provider);
+    try {
+      const result = await signInWithPopup(auth, provider);
+      // User is automatically set via onAuthStateChanged listener
+      return result;
+    } catch (error) {
+      console.error('Google sign-in error:', error);
+      setAuthError(error.message);
+      throw error;
+    }
   }
 
   function logout() {
@@ -33,27 +46,22 @@ export function AuthProvider({ children }) {
   }
 
   useEffect(() => {
-    // Wait for persistence to be set before checking redirect result
-    // This is critical for the OAuth redirect flow to work properly
-    authReady
-      .then(() => getRedirectResult(auth))
-      .then((result) => {
-        if (result?.user) {
-          setCurrentUser(result.user);
-        }
-      })
-      .catch((error) => {
-        console.error('Redirect sign-in error:', error);
-        setAuthError(error.message);
-        setLoading(false);
-      });
+    // Handle case where Firebase failed to initialize
+    if (!auth) {
+      console.error('Firebase auth not initialized');
+      setAuthError('Firebase authentication failed to initialize');
+      setLoading(false);
+      return;
+    }
 
+    // Set up auth state listener immediately
+    // Firebase uses local persistence by default in browsers
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
       setLoading(false);
     });
 
-    return unsubscribe;
+    return () => unsubscribe();
   }, []);
 
   const value = {
