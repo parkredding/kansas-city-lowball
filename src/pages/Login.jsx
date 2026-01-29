@@ -17,8 +17,8 @@ function Login() {
     setLoading(true);
     try {
       await signInWithGoogle();
-      // User will be redirected to Google, then back to the app
-      // The redirect result is handled in AuthContext
+      // Popup completes and onAuthStateChanged will update currentUser
+      // The useEffect above will then navigate to /game
     } catch (error) {
       console.error('Sign-in error:', error);
       setLoading(false);

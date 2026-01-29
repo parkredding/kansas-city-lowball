@@ -1,8 +1,7 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import {
   GoogleAuthProvider,
-  signInWithRedirect,
-  getRedirectResult,
+  signInWithPopup,
   signOut,
   onAuthStateChanged,
 } from 'firebase/auth';
@@ -23,9 +22,17 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState(null);
 
-  function signInWithGoogle() {
+  async function signInWithGoogle() {
     const provider = new GoogleAuthProvider();
-    return signInWithRedirect(auth, provider);
+    try {
+      const result = await signInWithPopup(auth, provider);
+      // User is automatically set via onAuthStateChanged listener
+      return result;
+    } catch (error) {
+      console.error('Google sign-in error:', error);
+      setAuthError(error.message);
+      throw error;
+    }
   }
 
   function logout() {
@@ -35,30 +42,15 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     let unsubscribe = () => {};
 
-    // Wait for persistence to be set before checking redirect result
-    // This is critical for the OAuth redirect flow to work properly
-    // We must process getRedirectResult BEFORE setting up onAuthStateChanged
-    // to avoid a race condition where onAuthStateChanged fires with null
-    // before Firebase has processed the OAuth redirect
-    authReady
-      .then(() => getRedirectResult(auth))
-      .then((result) => {
-        if (result?.user) {
-          setCurrentUser(result.user);
-        }
-      })
-      .catch((error) => {
-        console.error('Redirect sign-in error:', error);
-        setAuthError(error.message);
-      })
-      .finally(() => {
-        // Only set up onAuthStateChanged after redirect result is processed
-        // This ensures we don't prematurely set loading=false with user=null
-        unsubscribe = onAuthStateChanged(auth, (user) => {
-          setCurrentUser(user);
-          setLoading(false);
-        });
+    // Wait for persistence to be ready before setting up auth listener
+    authReady.then(() => {
+      // onAuthStateChanged will fire immediately with current auth state
+      // and then again whenever auth state changes (login/logout)
+      unsubscribe = onAuthStateChanged(auth, (user) => {
+        setCurrentUser(user);
+        setLoading(false);
       });
+    });
 
     return () => unsubscribe();
   }, []);
