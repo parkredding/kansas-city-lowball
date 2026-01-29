@@ -33,8 +33,13 @@ export function AuthProvider({ children }) {
   }
 
   useEffect(() => {
+    let unsubscribe = () => {};
+
     // Wait for persistence to be set before checking redirect result
     // This is critical for the OAuth redirect flow to work properly
+    // We must process getRedirectResult BEFORE setting up onAuthStateChanged
+    // to avoid a race condition where onAuthStateChanged fires with null
+    // before Firebase has processed the OAuth redirect
     authReady
       .then(() => getRedirectResult(auth))
       .then((result) => {
@@ -45,15 +50,17 @@ export function AuthProvider({ children }) {
       .catch((error) => {
         console.error('Redirect sign-in error:', error);
         setAuthError(error.message);
-        setLoading(false);
+      })
+      .finally(() => {
+        // Only set up onAuthStateChanged after redirect result is processed
+        // This ensures we don't prematurely set loading=false with user=null
+        unsubscribe = onAuthStateChanged(auth, (user) => {
+          setCurrentUser(user);
+          setLoading(false);
+        });
       });
 
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setCurrentUser(user);
-      setLoading(false);
-    });
-
-    return unsubscribe;
+    return () => unsubscribe();
   }, []);
 
   const value = {
