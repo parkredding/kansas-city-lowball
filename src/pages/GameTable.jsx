@@ -337,6 +337,7 @@ function GameView() {
 
   const [selectedCardIndices, setSelectedCardIndices] = useState(new Set());
   const [showBuyInModal, setShowBuyInModal] = useState(false);
+  const [hasDismissedBuyIn, setHasDismissedBuyIn] = useState(false);
 
   const currentPlayer = getCurrentPlayer();
   const activePlayer = getActivePlayer();
@@ -351,12 +352,19 @@ function GameView() {
   // Check if player needs to buy in
   const needsBuyIn = currentPlayer?.chips === 0;
 
-  // Auto-show buy-in modal when joining with no chips
+  // Reset the dismissed flag when player has chips (successful buy-in was processed)
   useEffect(() => {
-    if (needsBuyIn && isIdle && !showBuyInModal) {
+    if (!needsBuyIn && hasDismissedBuyIn) {
+      setHasDismissedBuyIn(false);
+    }
+  }, [needsBuyIn, hasDismissedBuyIn]);
+
+  // Auto-show buy-in modal when joining with no chips (only if not already dismissed)
+  useEffect(() => {
+    if (needsBuyIn && isIdle && !showBuyInModal && !hasDismissedBuyIn) {
       setShowBuyInModal(true);
     }
-  }, [needsBuyIn, isIdle, showBuyInModal]);
+  }, [needsBuyIn, isIdle, showBuyInModal, hasDismissedBuyIn]);
 
   const toggleCardSelection = (index) => {
     if (!isDrawPhase || !myTurn) return;
@@ -384,7 +392,15 @@ function GameView() {
 
   const handleBuyIn = async (amount) => {
     const success = await buyIn(amount);
+    if (success) {
+      setHasDismissedBuyIn(true);
+    }
     return success;
+  };
+
+  const handleCloseBuyInModal = () => {
+    setShowBuyInModal(false);
+    setHasDismissedBuyIn(true);
   };
 
   // Betting action handlers
@@ -407,7 +423,7 @@ function GameView() {
       {/* Buy-In Modal */}
       <BuyInModal
         isOpen={showBuyInModal}
-        onClose={() => setShowBuyInModal(false)}
+        onClose={handleCloseBuyInModal}
         onBuyIn={handleBuyIn}
         maxAmount={userWallet?.balance || 0}
         minBet={tableData?.minBet || 50}
