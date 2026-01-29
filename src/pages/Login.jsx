@@ -3,9 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 function Login() {
-  const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { signInWithGoogle, currentUser } = useAuth();
+  const { signInWithGoogle, currentUser, authError } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -14,18 +13,11 @@ function Login() {
     }
   }, [currentUser, navigate]);
 
-  async function handleGoogleSignIn() {
-    try {
-      setError('');
-      setLoading(true);
-      await signInWithGoogle();
-      // Navigation is handled by useEffect when currentUser changes
-    } catch (err) {
-      setError('Failed to sign in. Please try again.');
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
+  function handleGoogleSignIn() {
+    setLoading(true);
+    signInWithGoogle();
+    // User will be redirected to Google, then back to the app
+    // The redirect result is handled in AuthContext
   }
 
   return (
@@ -64,9 +56,9 @@ function Login() {
           </div>
         </div>
 
-        {error && (
+        {authError && (
           <div className="mb-4 p-3 bg-red-100 border border-red-300 text-red-700 rounded-lg text-sm text-center">
-            {error}
+            {authError}
           </div>
         )}
 
