@@ -5,7 +5,7 @@ import {
   signOut,
   onAuthStateChanged,
 } from 'firebase/auth';
-import { auth, authReady } from '../firebase';
+import { auth } from '../firebase';
 
 const AuthContext = createContext();
 
@@ -40,26 +40,12 @@ export function AuthProvider({ children }) {
   }
 
   useEffect(() => {
-    let unsubscribe = () => {};
-
-    // Set up auth listener - works even if persistence setup fails
-    const setupAuthListener = () => {
-      unsubscribe = onAuthStateChanged(auth, (user) => {
-        setCurrentUser(user);
-        setLoading(false);
-      });
-    };
-
-    // Wait for persistence to be ready, but set up listener regardless of outcome
-    authReady
-      .then(() => {
-        setupAuthListener();
-      })
-      .catch((error) => {
-        console.error('Auth persistence error:', error);
-        // Still set up the listener even if persistence fails
-        setupAuthListener();
-      });
+    // Set up auth state listener immediately
+    // Firebase uses local persistence by default in browsers
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setCurrentUser(user);
+      setLoading(false);
+    });
 
     return () => unsubscribe();
   }, []);
