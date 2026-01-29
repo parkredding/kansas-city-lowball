@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Kansas City Lowball</title>
+    <script>
+      // GitHub Pages SPA routing fallback
+      // This script saves the current path and redirects to the app root
+      // The main index.html will then restore the proper route
+      var pathSegmentsToKeep = 1; // Keep '/kansas-city-lowball' segment
+      var l = window.location;
+      var path = l.pathname.split('/').slice(pathSegmentsToKeep + 1).join('/');
+      var search = l.search;
+      var hash = l.hash;
+
+      // Store the redirect path in sessionStorage
+      sessionStorage.setItem('spa-redirect', path + search + hash);
+
+      // Redirect to app root
+      l.replace(
+        l.protocol + '//' + l.hostname + (l.port ? ':' + l.port : '') +
+        l.pathname.split('/').slice(0, pathSegmentsToKeep + 1).join('/') + '/'
+      );
+    </script>
+  </head>
+  <body>
+    <noscript>
+      <p>This application requires JavaScript to run.</p>
+    </noscript>
+  </body>
+</html>

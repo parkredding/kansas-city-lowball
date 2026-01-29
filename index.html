@@ -8,6 +8,19 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      // GitHub Pages SPA routing - restore path from 404 redirect
+      (function() {
+        var redirect = sessionStorage.getItem('spa-redirect');
+        if (redirect) {
+          sessionStorage.removeItem('spa-redirect');
+          // Use replaceState to restore the proper URL without adding to history
+          window.history.replaceState(null, null,
+            window.location.pathname.replace(/\/$/, '') + '/' + redirect
+          );
+        }
+      })();
+    </script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
