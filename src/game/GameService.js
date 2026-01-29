@@ -992,8 +992,30 @@ export class GameService {
     try {
       await GameService.cashOutFromTable(tableId, playerUid);
     } catch (err) {
-      // If cash out fails, just remove from table
+      // If cash out fails, try to handle gracefully by:
+      // 1. Adding chips back to wallet manually
+      // 2. Removing player from table
       console.error('Cash out failed during leave:', err);
+
+      // Find the player's chips from local data
+      const leavingPlayer = tableData.players.find((p) => p.uid === playerUid);
+      const chipsToReturn = leavingPlayer?.chips || 0;
+
+      // Try to add chips back to wallet if player had any
+      if (chipsToReturn > 0) {
+        try {
+          const userRef = doc(db, USERS_COLLECTION, playerUid);
+          const userSnap = await getDoc(userRef);
+          if (userSnap.exists()) {
+            const currentBalance = userSnap.data().balance || 0;
+            await updateDoc(userRef, {
+              balance: currentBalance + chipsToReturn,
+            });
+          }
+        } catch (walletErr) {
+          console.error('Failed to return chips to wallet:', walletErr);
+        }
+      }
 
       const players = tableData.players.filter((p) => p.uid !== playerUid);
 
