@@ -42,15 +42,24 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     let unsubscribe = () => {};
 
-    // Wait for persistence to be ready before setting up auth listener
-    authReady.then(() => {
-      // onAuthStateChanged will fire immediately with current auth state
-      // and then again whenever auth state changes (login/logout)
+    // Set up auth listener - works even if persistence setup fails
+    const setupAuthListener = () => {
       unsubscribe = onAuthStateChanged(auth, (user) => {
         setCurrentUser(user);
         setLoading(false);
       });
-    });
+    };
+
+    // Wait for persistence to be ready, but set up listener regardless of outcome
+    authReady
+      .then(() => {
+        setupAuthListener();
+      })
+      .catch((error) => {
+        console.error('Auth persistence error:', error);
+        // Still set up the listener even if persistence fails
+        setupAuthListener();
+      });
 
     return () => unsubscribe();
   }, []);
