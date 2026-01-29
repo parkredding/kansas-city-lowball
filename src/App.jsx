@@ -1,5 +1,6 @@
 import { Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
+import { GameProvider } from './context/GameContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Login from './pages/Login';
 import GameTable from './pages/GameTable';
@@ -13,7 +14,9 @@ function App() {
           path="/game"
           element={
             <ProtectedRoute>
-              <GameTable />
+              <GameProvider>
+                <GameTable />
+              </GameProvider>
             </ProtectedRoute>
           }
         />
