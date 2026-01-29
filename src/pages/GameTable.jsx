@@ -40,8 +40,8 @@ function GameTable() {
         {playerHand.length > 0 ? (
           <div className="flex flex-col items-center gap-6">
             <div className="flex gap-3">
-              {playerHand.map((card, index) => (
-                <Card key={index} card={card} />
+              {playerHand.map((card) => (
+                <Card key={`${card.rank}-${card.suit}`} card={card} />
               ))}
             </div>
 
