@@ -1279,7 +1279,7 @@ export class GameService {
       // For betting phases, only active players with chips can act
       let activeIndices;
       if (isDrawPhase) {
-        // All-in players participate in draw (they auto stand pat)
+        // All-in players participate in draw and can choose to discard or stand pat
         activeIndices = players
           .map((p, i) => (p.status === 'active' || p.status === 'all-in' ? i : -1))
           .filter((i) => i !== -1);
@@ -1523,9 +1523,9 @@ export class GameService {
     const player = players[playerIndex];
     let hand = [...player.hand];
 
-    // All-in players are forced to stand pat (can't discard)
+    // All-in players CAN still discard cards - they just can't bet
     const isAllIn = player.status === 'all-in';
-    const effectiveCardIndices = isAllIn ? [] : cardIndices;
+    const effectiveCardIndices = cardIndices;
 
     // Sort indices in descending order to remove from end first
     const sortedIndices = [...effectiveCardIndices].sort((a, b) => b - a);
@@ -1567,11 +1567,13 @@ export class GameService {
 
     // Create activity log description
     let drawDescription;
-    if (isAllIn) {
-      drawDescription = `${player.displayName} stood pat (all-in)`;
+    if (numToDraw === 0) {
+      drawDescription = isAllIn 
+        ? `${player.displayName} stood pat (all-in)`
+        : `${player.displayName} stood pat`;
     } else {
-      drawDescription = numToDraw === 0
-        ? `${player.displayName} stood pat`
+      drawDescription = isAllIn
+        ? `${player.displayName} drew ${numToDraw} card${numToDraw > 1 ? 's' : ''} (all-in)`
         : `${player.displayName} drew ${numToDraw} card${numToDraw > 1 ? 's' : ''}`;
     }
 
@@ -1581,7 +1583,7 @@ export class GameService {
       .filter(({ player: p }) => p.status === 'active' || p.status === 'all-in');
 
     // Find next player who needs to act (hasn't acted yet)
-    // All-in players DO participate in draw phase but auto-stand pat
+    // All-in players participate in draw phases and can choose to discard or stand pat
     let nextPlayerIndex = -1;
     for (let i = 1; i <= playersInHand.length; i++) {
       const lookupIdx = (playersInHand.findIndex(p => p.index === playerIndex) + i) % playersInHand.length;
@@ -1594,11 +1596,18 @@ export class GameService {
 
     const roundComplete = nextPlayerIndex === -1;
 
-    // Determine next phase
+    // Determine next phase - normally goes to betting, but if no one can bet, skip to next draw
     const phaseAfterDraw = {
       DRAW_1: 'BETTING_2',
       DRAW_2: 'BETTING_3',
       DRAW_3: 'BETTING_4',
+    };
+    
+    // Map betting phases to their subsequent draw phases (for skipping when all are all-in)
+    const phaseAfterBetting = {
+      BETTING_2: 'DRAW_2',
+      BETTING_3: 'DRAW_3',
+      BETTING_4: 'SHOWDOWN',
     };
 
     // Add activity event for this draw
@@ -1625,47 +1634,63 @@ export class GameService {
         .map((p, i) => (p.status === 'active' && p.chips > 0 ? i : -1))
         .filter((i) => i !== -1);
 
-      // If no active players can bet, check if we should skip to showdown
-      const allInOrFolded = players.every(p =>
-        p.status === 'folded' || p.status === 'all-in' || p.status === 'sitting_out'
-      );
+      // Check if no one can bet (all players are all-in or folded)
+      const canAnyoneBet = bettingActiveIndices.length >= 2;
 
-      if (allInOrFolded || bettingActiveIndices.length <= 1) {
-        // All remaining players are all-in or only one can bet
-        // Skip remaining betting/draw rounds and go to showdown
-        const showdownResult = calculateShowdownResult(players, tableData.pot);
+      if (!canAnyoneBet) {
+        // No betting possible - skip the betting phase
+        // Determine the phase after the betting phase we're skipping
+        const phaseAfterSkippedBetting = phaseAfterBetting[nextPhase];
+        
+        if (phaseAfterSkippedBetting === 'SHOWDOWN') {
+          // After DRAW_3, there are no more draw opportunities - go to showdown
+          const showdownResult = calculateShowdownResult(players, tableData.pot);
 
-        // Award pot to winner(s)
-        const updatedPlayers = players.map(p => {
-          const winner = showdownResult.winners.find(w => w.uid === p.uid);
-          if (winner) {
-            return { ...p, chips: p.chips + winner.amount };
+          // Award pot to winner(s)
+          const updatedPlayers = players.map(p => {
+            const winner = showdownResult.winners.find(w => w.uid === p.uid);
+            if (winner) {
+              return { ...p, chips: p.chips + winner.amount };
+            }
+            return p;
+          });
+
+          // Reset totalContribution for next hand
+          updatedPlayers.forEach(p => {
+            p.totalContribution = 0;
+          });
+
+          updates.phase = 'SHOWDOWN';
+          updates.turnDeadline = null;
+          updates.activePlayerIndex = 0;
+          updates.players = updatedPlayers;
+          updates.pot = 0;
+          updates.pots = [];
+          updates.showdownResult = showdownResult;
+
+          // Add winner message to activity log
+          if (showdownResult.message) {
+            updates.chatLog = [...activityLog, {
+              type: 'game_event',
+              text: showdownResult.message,
+              timestamp: Date.now(),
+            }];
           }
-          return p;
-        });
-
-        // Reset totalContribution for next hand
-        updatedPlayers.forEach(p => {
-          p.totalContribution = 0;
-        });
-
-        updates.phase = 'SHOWDOWN';
-        updates.turnDeadline = null;
-        updates.activePlayerIndex = 0;
-        updates.players = updatedPlayers;
-        updates.pot = 0;
-        updates.pots = [];
-        updates.showdownResult = showdownResult;
-
-        // Add winner message to activity log
-        if (showdownResult.message) {
-          updates.chatLog = [...activityLog, {
-            type: 'game_event',
-            text: showdownResult.message,
-            timestamp: Date.now(),
-          }];
+        } else {
+          // Skip to next draw phase (DRAW_2 or DRAW_3)
+          // All-in players still get to draw cards
+          updates.phase = phaseAfterSkippedBetting;
+          updates.turnDeadline = GameService.calculateTurnDeadline();
+          
+          // Find first player in hand (active or all-in) to act in the draw phase
+          const drawActiveIndices = players
+            .map((p, i) => (p.status === 'active' || p.status === 'all-in' ? i : -1))
+            .filter((i) => i !== -1);
+          updates.activePlayerIndex = drawActiveIndices[0] || 0;
+          updates.players = players;
         }
       } else {
+        // Normal case - proceed to betting phase
         updates.phase = nextPhase;
         updates.activePlayerIndex = bettingActiveIndices[0];
         updates.currentBet = 0;
