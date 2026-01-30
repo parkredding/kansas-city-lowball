@@ -117,10 +117,8 @@ export function useTurnNotification(isMyTurn, gamePhase, enabled = true) {
       gamePhase !== 'SHOWDOWN';
 
     if (isMyTurn && !wasMyTurnRef.current && isActivePhase) {
-      // Play sound if document is not focused (player on different tab)
-      if (document.hidden || !document.hasFocus()) {
-        playTurnSound();
-      }
+      // Play sound when it becomes the player's turn
+      playTurnSound();
       
       // Always update title when it becomes player's turn
       updateTitle(true);
