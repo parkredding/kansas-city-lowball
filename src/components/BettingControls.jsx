@@ -5,6 +5,7 @@ function BettingControls({
   onCheck,
   onCall,
   onRaise,
+  onAllIn, // New: explicit all-in handler
   callAmount,
   minRaise,
   maxRaise, // player's chips
@@ -14,6 +15,11 @@ function BettingControls({
 }) {
   const [raiseAmount, setRaiseAmount] = useState(minRaise);
   const [showRaiseSlider, setShowRaiseSlider] = useState(false);
+
+  // Determine if player must go all-in to call (chips < callAmount)
+  const mustAllInToCall = callAmount > 0 && maxRaise < callAmount && maxRaise > 0;
+  // Check if player can raise (has more chips than needed to call)
+  const canRaise = maxRaise > callAmount && maxRaise >= minRaise;
 
   // Update raise amount when minRaise changes
   useEffect(() => {
@@ -117,7 +123,7 @@ function BettingControls({
           Fold
         </button>
 
-        {/* Check or Call Button */}
+        {/* Check, Call, or All-In Button */}
         {canCheck ? (
           <button
             onClick={onCheck}
@@ -126,10 +132,20 @@ function BettingControls({
           >
             Check
           </button>
+        ) : mustAllInToCall ? (
+          // Show All-In button when player can't afford to call but has chips
+          <button
+            onClick={onAllIn || (() => onRaise(maxRaise))}
+            disabled={disabled}
+            className="flex-1 py-3 bg-purple-600 hover:bg-purple-500 disabled:bg-purple-900 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-colors animate-pulse"
+          >
+            <span className="block">All-In</span>
+            <span className="text-xs opacity-80">${maxRaise}</span>
+          </button>
         ) : (
           <button
             onClick={onCall}
-            disabled={disabled || callAmount > maxRaise}
+            disabled={disabled}
             className="flex-1 py-3 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-900 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-colors"
           >
             <span className="block">Call</span>
@@ -137,28 +153,30 @@ function BettingControls({
           </button>
         )}
 
-        {/* Raise Button */}
-        <button
-          onClick={() => setShowRaiseSlider(!showRaiseSlider)}
-          disabled={disabled || maxRaise <= minRaise}
-          className={`
-            flex-1 py-3 font-bold rounded-lg transition-colors
-            ${showRaiseSlider
-              ? 'bg-yellow-700 text-white'
-              : 'bg-yellow-600 hover:bg-yellow-500 disabled:bg-yellow-900 disabled:cursor-not-allowed text-white'
-            }
-          `}
-        >
-          <span className="block">{currentBet > 0 ? 'Raise' : 'Bet'}</span>
-          {!showRaiseSlider && (
-            <span className="text-xs opacity-80">${minRaise}+</span>
-          )}
-        </button>
-
-        {/* All-In Button (quick access) */}
-        {maxRaise > minRaise && (
+        {/* Raise Button - only show if player can raise */}
+        {canRaise && (
           <button
-            onClick={() => onRaise(maxRaise)}
+            onClick={() => setShowRaiseSlider(!showRaiseSlider)}
+            disabled={disabled}
+            className={`
+              flex-1 py-3 font-bold rounded-lg transition-colors
+              ${showRaiseSlider
+                ? 'bg-yellow-700 text-white'
+                : 'bg-yellow-600 hover:bg-yellow-500 disabled:bg-yellow-900 disabled:cursor-not-allowed text-white'
+              }
+            `}
+          >
+            <span className="block">{currentBet > 0 ? 'Raise' : 'Bet'}</span>
+            {!showRaiseSlider && (
+              <span className="text-xs opacity-80">${minRaise}+</span>
+            )}
+          </button>
+        )}
+
+        {/* All-In Button (quick access) - show if player can afford to raise */}
+        {canRaise && maxRaise > minRaise && (
+          <button
+            onClick={onAllIn || (() => onRaise(maxRaise))}
             disabled={disabled}
             className="py-3 px-4 bg-purple-600 hover:bg-purple-500 disabled:bg-purple-900 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-colors"
           >

@@ -32,6 +32,7 @@ export const BetAction = {
   CALL: 'CALL',
   RAISE: 'RAISE',
   BET: 'BET',
+  ALL_IN: 'ALL_IN',
 };
 
 /**
@@ -723,65 +724,108 @@ export class GameService {
    * @param {string} tableId - The table ID
    * @param {Object} tableData - Current table data
    * @param {string} playerUid - The player's UID
-   * @param {string} action - BetAction type (FOLD, CHECK, CALL, RAISE, BET)
+   * @param {string} action - BetAction type (FOLD, CHECK, CALL, RAISE, BET, ALL_IN)
    * @param {number} amount - Amount for RAISE/BET (optional)
-   * @returns {Promise<void>}
+   * @returns {Promise<Object>} - Returns { success: true, action, amount } or throws error
    */
   static async performBetAction(tableId, tableData, playerUid, action, amount = 0) {
     const playerIndex = tableData.players.findIndex((p) => p.uid === playerUid);
     if (playerIndex === -1) {
-      throw new Error('Player not found');
+      throw new Error('Player not found at this table');
     }
 
     if (playerIndex !== tableData.activePlayerIndex) {
-      throw new Error('Not your turn');
+      throw new Error('Not your turn - please wait');
     }
 
     const players = tableData.players.map((p) => ({ ...p }));
     const player = players[playerIndex];
-    const currentBet = tableData.currentBet || 0;
-    const minBet = tableData.minBet || DEFAULT_MIN_BET;
-    let pot = tableData.pot;
+
+    // Use Math.floor() for all chip values to avoid floating-point errors
+    const currentBet = Math.floor(tableData.currentBet || 0);
+    const minBet = Math.floor(tableData.minBet || DEFAULT_MIN_BET);
+    const playerChips = Math.floor(player.chips || 0);
+    const playerCurrentRoundBet = Math.floor(player.currentRoundBet || 0);
+
+    let pot = Math.floor(tableData.pot);
     let newCurrentBet = currentBet;
 
     if (player.status !== 'active') {
-      throw new Error('Player cannot act');
+      throw new Error('You cannot act - status: ' + player.status);
     }
+
+    // Track what action was taken for activity log
+    let actionDescription = '';
 
     switch (action) {
       case BetAction.FOLD:
         player.status = 'folded';
         player.hasActedThisRound = true;
+        actionDescription = `${player.displayName} folded`;
         break;
 
       case BetAction.CHECK:
         // Can only check if current bet matches player's round bet
-        if (player.currentRoundBet < currentBet) {
-          throw new Error('Cannot check - must call or raise');
+        if (playerCurrentRoundBet < currentBet) {
+          throw new Error(`Cannot check - you must call $${currentBet - playerCurrentRoundBet} or raise`);
         }
         player.hasActedThisRound = true;
+        actionDescription = `${player.displayName} checked`;
         break;
 
       case BetAction.CALL:
         {
-          const callAmount = currentBet - player.currentRoundBet;
+          const callAmount = Math.floor(currentBet - playerCurrentRoundBet);
           if (callAmount <= 0) {
             // Nothing to call, treat as check
             player.hasActedThisRound = true;
-          } else if (player.chips <= callAmount) {
+            actionDescription = `${player.displayName} checked`;
+          } else if (playerChips <= callAmount) {
             // All-in call
-            pot += player.chips;
-            player.currentRoundBet += player.chips;
+            const allInAmount = playerChips;
+            pot += allInAmount;
+            player.currentRoundBet = playerCurrentRoundBet + allInAmount;
             player.chips = 0;
             player.status = 'all-in';
             player.hasActedThisRound = true;
+            actionDescription = `${player.displayName} called all-in for $${allInAmount}`;
           } else {
             // Regular call
-            player.chips -= callAmount;
-            player.currentRoundBet += callAmount;
+            player.chips = playerChips - callAmount;
+            player.currentRoundBet = playerCurrentRoundBet + callAmount;
             pot += callAmount;
             player.hasActedThisRound = true;
+            actionDescription = `${player.displayName} called $${callAmount}`;
           }
+        }
+        break;
+
+      case BetAction.ALL_IN:
+        {
+          // Player is going all-in with their entire stack
+          const allInAmount = playerChips;
+          if (allInAmount <= 0) {
+            throw new Error('You have no chips to go all-in with');
+          }
+
+          pot += allInAmount;
+          player.currentRoundBet = playerCurrentRoundBet + allInAmount;
+
+          // If this all-in is a raise (exceeds current bet), update the bet and reset other players
+          if (player.currentRoundBet > currentBet) {
+            newCurrentBet = Math.floor(player.currentRoundBet);
+            // Reset hasActed for other active players since there's a raise
+            players.forEach((p, i) => {
+              if (i !== playerIndex && p.status === 'active') {
+                p.hasActedThisRound = false;
+              }
+            });
+          }
+
+          player.chips = 0;
+          player.status = 'all-in';
+          player.hasActedThisRound = true;
+          actionDescription = `${player.displayName} went all-in for $${allInAmount}`;
         }
         break;
 
@@ -790,26 +834,33 @@ export class GameService {
         {
           // For RAISE, amount is the total bet (not additional)
           // For BET (when currentBet is 0), amount is the bet size
-          const totalBetAmount = action === BetAction.RAISE ? amount : amount;
-          const additionalAmount = totalBetAmount - player.currentRoundBet;
+          const totalBetAmount = Math.floor(amount);
+          const additionalAmount = Math.floor(totalBetAmount - playerCurrentRoundBet);
 
-          if (totalBetAmount < currentBet + minBet && player.chips > additionalAmount) {
-            throw new Error(`Minimum raise is ${currentBet + minBet}`);
+          // Validate minimum raise (unless going all-in)
+          if (totalBetAmount < currentBet + minBet && playerChips > additionalAmount) {
+            throw new Error(`Minimum raise is $${currentBet + minBet} (you tried $${totalBetAmount})`);
           }
 
           if (additionalAmount <= 0) {
-            throw new Error('Raise amount must be greater than current bet');
+            throw new Error(`Raise amount must be greater than current bet ($${currentBet})`);
           }
 
-          if (player.chips <= additionalAmount) {
+          if (additionalAmount > playerChips) {
+            throw new Error(`Insufficient chips - you have $${playerChips}, need $${additionalAmount}`);
+          }
+
+          if (playerChips <= additionalAmount) {
             // All-in raise
-            pot += player.chips;
-            player.currentRoundBet += player.chips;
+            pot += playerChips;
+            player.currentRoundBet = playerCurrentRoundBet + playerChips;
             if (player.currentRoundBet > currentBet) {
-              newCurrentBet = player.currentRoundBet;
+              newCurrentBet = Math.floor(player.currentRoundBet);
             }
             player.chips = 0;
             player.status = 'all-in';
+            player.hasActedThisRound = true;
+            actionDescription = `${player.displayName} raised all-in to $${player.currentRoundBet}`;
             // Reset hasActed for other players since there's a raise
             players.forEach((p, i) => {
               if (i !== playerIndex && p.status === 'active') {
@@ -818,11 +869,14 @@ export class GameService {
             });
           } else {
             // Regular raise
-            player.chips -= additionalAmount;
+            player.chips = playerChips - additionalAmount;
             player.currentRoundBet = totalBetAmount;
             pot += additionalAmount;
             newCurrentBet = totalBetAmount;
             player.hasActedThisRound = true;
+            actionDescription = currentBet === 0
+              ? `${player.displayName} bet $${totalBetAmount}`
+              : `${player.displayName} raised to $${totalBetAmount}`;
             // Reset hasActed for other players since there's a raise
             players.forEach((p, i) => {
               if (i !== playerIndex && p.status === 'active') {
@@ -834,7 +888,7 @@ export class GameService {
         break;
 
       default:
-        throw new Error('Invalid action');
+        throw new Error(`Invalid action: ${action}`);
     }
 
     players[playerIndex] = player;
@@ -844,8 +898,20 @@ export class GameService {
     if (activePlayers === 1) {
       // Hand is over, award pot to winner
       const winner = players.find((p) => p.status === 'active' || p.status === 'all-in');
+      let winnerDescription = '';
       if (winner) {
         winner.chips += pot;
+        winnerDescription = `${winner.displayName} wins $${pot} (others folded)`;
+      }
+
+      // Get updated activity log
+      const activityLog = await GameService.addActivityEvent(tableId, actionDescription);
+      if (winnerDescription) {
+        activityLog.push({
+          type: 'game_event',
+          text: winnerDescription,
+          timestamp: Date.now(),
+        });
       }
 
       await GameService.updateTable(tableId, {
@@ -854,8 +920,9 @@ export class GameService {
         currentBet: 0,
         phase: 'SHOWDOWN',
         turnDeadline: null,
+        chatLog: activityLog,
       });
-      return;
+      return { success: true, action, actionDescription };
     }
 
     // Check if betting round is complete
@@ -868,6 +935,9 @@ export class GameService {
       BETTING_4: 'SHOWDOWN',
     };
 
+    // Add activity event for this action
+    const activityLog = await GameService.addActivityEvent(tableId, actionDescription);
+
     if (roundComplete) {
       // Reset for next phase
       players.forEach((p) => {
@@ -875,7 +945,7 @@ export class GameService {
         p.hasActedThisRound = false;
       });
 
-      // Find first active player for next phase
+      // Find first active player for next phase (only players who can still act)
       const activeIndices = players
         .map((p, i) => (p.status === 'active' ? i : -1))
         .filter((i) => i !== -1);
@@ -890,6 +960,7 @@ export class GameService {
         phase: nextPhase,
         activePlayerIndex: activeIndices.length > 0 ? activeIndices[0] : 0,
         turnDeadline: isShowdown ? null : GameService.calculateTurnDeadline(),
+        chatLog: activityLog,
       });
     } else {
       // Move to next player
@@ -901,8 +972,11 @@ export class GameService {
         currentBet: newCurrentBet,
         activePlayerIndex: nextPlayerIndex,
         turnDeadline: GameService.calculateTurnDeadline(),
+        chatLog: activityLog,
       });
     }
+
+    return { success: true, action, actionDescription };
   }
 
   /**
@@ -1022,11 +1096,17 @@ export class GameService {
     player.hasActedThisRound = true;
 
     // Set lastAction to show what the player did
-    player.lastAction = numToDraw === 0 ? 'Stood Pat' : `Drew ${numToDraw}`;
+    const actionText = numToDraw === 0 ? 'Stood Pat' : `Drew ${numToDraw}`;
+    player.lastAction = actionText;
+
+    // Create activity log description
+    const drawDescription = numToDraw === 0
+      ? `${player.displayName} stood pat`
+      : `${player.displayName} drew ${numToDraw} card${numToDraw > 1 ? 's' : ''}`;
 
     players[playerIndex] = player;
 
-    // Find next active player who can still draw
+    // Find next active player who can still draw (skip all-in players)
     const activeIndices = players
       .map((p, i) => (p.status === 'active' || p.status === 'all-in' ? i : -1))
       .filter((i) => i !== -1);
@@ -1034,10 +1114,21 @@ export class GameService {
     let nextPlayerIndex = -1;
     for (let i = 1; i <= activeIndices.length; i++) {
       const candidateIndex = activeIndices[(activeIndices.indexOf(playerIndex) + i) % activeIndices.length];
-      if (!players[candidateIndex].hasActedThisRound) {
+      // Skip all-in players for draw actions - they auto stand pat
+      if (!players[candidateIndex].hasActedThisRound && players[candidateIndex].status === 'active') {
         nextPlayerIndex = candidateIndex;
         break;
       }
+    }
+
+    // If no active player found, mark all-in players as having acted (they stand pat)
+    if (nextPlayerIndex === -1) {
+      players.forEach((p) => {
+        if (p.status === 'all-in' && !p.hasActedThisRound) {
+          p.hasActedThisRound = true;
+          p.lastAction = 'Stood Pat';
+        }
+      });
     }
 
     const roundComplete = nextPlayerIndex === -1;
@@ -1049,10 +1140,14 @@ export class GameService {
       DRAW_3: 'BETTING_4',
     };
 
+    // Add activity event for this draw
+    const activityLog = await GameService.addActivityEvent(tableId, drawDescription);
+
     const updates = {
       deck,
       muck, // Include updated muck pile
       players,
+      chatLog: activityLog,
     };
 
     if (roundComplete) {
@@ -1177,13 +1272,51 @@ export class GameService {
   }
 
   // ============================================
-  // CHAT OPERATIONS
+  // CHAT & ACTIVITY LOG OPERATIONS
   // ============================================
 
   /**
-   * Maximum number of chat messages to keep in the log
+   * Maximum number of messages (chat + game events) to keep in the log
    */
-  static MAX_CHAT_MESSAGES = 20;
+  static MAX_CHAT_MESSAGES = 50;
+
+  /**
+   * Add a game activity event to the activity log
+   * @param {string} tableId - The table ID
+   * @param {string} eventText - Description of the game event
+   * @returns {Promise<Array>} - Updated activity log array
+   */
+  static async addActivityEvent(tableId, eventText) {
+    if (!db || !eventText) {
+      return [];
+    }
+
+    const tableRef = doc(db, TABLES_COLLECTION, tableId);
+    const tableSnap = await getDoc(tableRef);
+
+    if (!tableSnap.exists()) {
+      return [];
+    }
+
+    const tableData = tableSnap.data();
+    let chatLog = tableData.chatLog || [];
+
+    // Add new game event
+    const newEvent = {
+      type: 'game_event',
+      text: eventText,
+      timestamp: Date.now(),
+    };
+
+    chatLog.push(newEvent);
+
+    // Keep only the last MAX_CHAT_MESSAGES entries
+    if (chatLog.length > GameService.MAX_CHAT_MESSAGES) {
+      chatLog = chatLog.slice(-GameService.MAX_CHAT_MESSAGES);
+    }
+
+    return chatLog;
+  }
 
   /**
    * Send a chat message to a table
@@ -1214,8 +1347,9 @@ export class GameService {
     const tableData = tableSnap.data();
     let chatLog = tableData.chatLog || [];
 
-    // Add new message
+    // Add new message with type 'chat' to distinguish from game events
     const newMessage = {
+      type: 'chat',
       sender: senderName,
       text: trimmedText,
       timestamp: Date.now(),
