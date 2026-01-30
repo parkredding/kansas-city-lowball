@@ -4,11 +4,15 @@ import {
   setDoc,
   getDoc,
   updateDoc,
+  deleteDoc,
   onSnapshot,
   arrayUnion,
   serverTimestamp,
   runTransaction,
   Timestamp,
+  query,
+  where,
+  getDocs,
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Deck } from './Deck';
@@ -1269,6 +1273,153 @@ export class GameService {
         });
       }
     }
+  }
+
+  // ============================================
+  // STALE TABLE CLEANUP OPERATIONS
+  // ============================================
+
+  /**
+   * Stale table threshold in milliseconds (3 hours)
+   */
+  static STALE_TABLE_THRESHOLD_MS = 3 * 60 * 60 * 1000;
+
+  /**
+   * Clean up stale tables that have been inactive for more than 3 hours
+   * This runs client-side since we're on Firebase Free Plan (no scheduled functions)
+   *
+   * Before deleting:
+   * 1. Refund all players' chips back to their wallets
+   * 2. Delete the table document
+   *
+   * @returns {Promise<{cleaned: number, errors: string[]}>}
+   */
+  static async cleanupStaleTables() {
+    if (!db) {
+      return { cleaned: 0, errors: ['Firestore not initialized'] };
+    }
+
+    const errors = [];
+    let cleaned = 0;
+
+    try {
+      // Calculate the cutoff time (3 hours ago)
+      const cutoffTime = new Date(Date.now() - GameService.STALE_TABLE_THRESHOLD_MS);
+      const cutoffTimestamp = Timestamp.fromDate(cutoffTime);
+
+      // Query for stale tables
+      const tablesRef = collection(db, TABLES_COLLECTION);
+      const staleQuery = query(
+        tablesRef,
+        where('lastUpdated', '<', cutoffTimestamp)
+      );
+
+      const staleTablesSnap = await getDocs(staleQuery);
+
+      if (staleTablesSnap.empty) {
+        return { cleaned: 0, errors: [] };
+      }
+
+      console.log(`[Cleanup] Found ${staleTablesSnap.size} stale tables to clean up`);
+
+      // Process each stale table
+      for (const tableDoc of staleTablesSnap.docs) {
+        const tableId = tableDoc.id;
+        const tableData = tableDoc.data();
+
+        try {
+          // Step 1: Refund all players' chips back to their wallets
+          if (tableData.players && tableData.players.length > 0) {
+            for (const player of tableData.players) {
+              if (player.chips > 0 && player.uid) {
+                try {
+                  await GameService.refundPlayerChips(player.uid, player.chips);
+                  console.log(`[Cleanup] Refunded $${player.chips} to ${player.displayName || player.uid}`);
+                } catch (refundError) {
+                  errors.push(`Failed to refund ${player.uid}: ${refundError.message}`);
+                }
+              }
+            }
+          }
+
+          // Also refund any chips in the pot (split evenly among players if possible)
+          if (tableData.pot > 0 && tableData.players && tableData.players.length > 0) {
+            const playersWithUid = tableData.players.filter(p => p.uid);
+            if (playersWithUid.length > 0) {
+              const refundPerPlayer = Math.floor(tableData.pot / playersWithUid.length);
+              for (const player of playersWithUid) {
+                try {
+                  await GameService.refundPlayerChips(player.uid, refundPerPlayer);
+                  console.log(`[Cleanup] Refunded pot share $${refundPerPlayer} to ${player.displayName || player.uid}`);
+                } catch (refundError) {
+                  errors.push(`Failed to refund pot to ${player.uid}: ${refundError.message}`);
+                }
+              }
+            }
+          }
+
+          // Step 2: Delete the table document
+          const tableRef = doc(db, TABLES_COLLECTION, tableId);
+          await deleteDoc(tableRef);
+          console.log(`[Cleanup] Deleted stale table: ${tableId}`);
+          cleaned++;
+        } catch (tableError) {
+          errors.push(`Failed to clean up table ${tableId}: ${tableError.message}`);
+        }
+      }
+    } catch (queryError) {
+      errors.push(`Failed to query stale tables: ${queryError.message}`);
+    }
+
+    return { cleaned, errors };
+  }
+
+  /**
+   * Refund chips to a player's wallet
+   * @param {string} uid - Player's Firebase UID
+   * @param {number} amount - Amount to refund
+   */
+  static async refundPlayerChips(uid, amount) {
+    if (!db || !uid || amount <= 0) return;
+
+    const userRef = doc(db, USERS_COLLECTION, uid);
+
+    await runTransaction(db, async (transaction) => {
+      const userDoc = await transaction.get(userRef);
+
+      if (!userDoc.exists()) {
+        // Create user document if it doesn't exist
+        transaction.set(userRef, {
+          balance: amount,
+          createdAt: serverTimestamp(),
+        });
+      } else {
+        const currentBalance = userDoc.data().balance || 0;
+        transaction.update(userRef, {
+          balance: currentBalance + amount,
+        });
+      }
+    });
+  }
+
+  /**
+   * Check if cleanup should run (rate limiting)
+   * Returns true if at least 5 minutes have passed since last cleanup
+   */
+  static shouldRunCleanup() {
+    const lastCleanup = localStorage.getItem('lastTableCleanup');
+    if (!lastCleanup) return true;
+
+    const lastCleanupTime = parseInt(lastCleanup, 10);
+    const fiveMinutes = 5 * 60 * 1000;
+    return Date.now() - lastCleanupTime > fiveMinutes;
+  }
+
+  /**
+   * Mark that cleanup has run (for rate limiting)
+   */
+  static markCleanupRun() {
+    localStorage.setItem('lastTableCleanup', Date.now().toString());
   }
 
   // ============================================

@@ -186,7 +186,53 @@ function WalletDisplay({ balance, loading }) {
   );
 }
 
-function PlayerSlot({ player, isCurrentUser, isActive, showCards, handResult, turnDeadline }) {
+/**
+ * Badge component for dealer/blind positions
+ */
+function PositionBadge({ type }) {
+  const badges = {
+    dealer: { label: 'D', bg: 'bg-white', text: 'text-black', title: 'Dealer' },
+    sb: { label: 'SB', bg: 'bg-blue-500', text: 'text-white', title: 'Small Blind' },
+    bb: { label: 'BB', bg: 'bg-yellow-500', text: 'text-black', title: 'Big Blind' },
+  };
+
+  const badge = badges[type];
+  if (!badge) return null;
+
+  return (
+    <div
+      className={`${badge.bg} ${badge.text} w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shadow-lg border-2 border-gray-800`}
+      title={badge.title}
+    >
+      {badge.label}
+    </div>
+  );
+}
+
+/**
+ * Visual chip stack based on amount
+ */
+function MiniChipStack({ amount }) {
+  if (amount <= 0) return null;
+
+  // Calculate number of visual chips (1-5 based on amount)
+  const chipCount = Math.min(5, Math.max(1, Math.ceil(amount / 200)));
+  const chipColors = ['bg-red-500', 'bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-yellow-400'];
+
+  return (
+    <div className="flex flex-col-reverse items-center">
+      {Array.from({ length: chipCount }).map((_, i) => (
+        <div
+          key={i}
+          className={`w-5 h-1.5 ${chipColors[i % chipColors.length]} rounded-full border border-gray-800 ${i > 0 ? '-mt-0.5' : ''}`}
+          style={{ boxShadow: 'inset 0 1px 2px rgba(255,255,255,0.3)' }}
+        />
+      ))}
+    </div>
+  );
+}
+
+function PlayerSlot({ player, isCurrentUser, isActive, showCards, handResult, turnDeadline, isDealer, isSmallBlind, isBigBlind }) {
   const statusColors = {
     active: 'border-green-500',
     folded: 'border-gray-500 opacity-50',
@@ -202,6 +248,13 @@ function PlayerSlot({ player, isCurrentUser, isActive, showCards, handResult, tu
         ${statusColors[player.status] || 'border-gray-600'}
       `}
     >
+      {/* Position badges (Dealer/SB/BB) */}
+      <div className="absolute -top-2 -right-2 flex gap-1 z-20">
+        {isDealer && <PositionBadge type="dealer" />}
+        {isSmallBlind && <PositionBadge type="sb" />}
+        {isBigBlind && <PositionBadge type="bb" />}
+      </div>
+
       {/* Circular timer around avatar when active */}
       {isActive && turnDeadline && (
         <div className="absolute -top-1 -left-1">
@@ -239,7 +292,10 @@ function PlayerSlot({ player, isCurrentUser, isActive, showCards, handResult, tu
             {player.displayName}
             {isCurrentUser && ' (You)'}
           </p>
-          <p className="text-xs text-gray-400">${player.chips}</p>
+          <div className="flex items-center gap-2">
+            <MiniChipStack amount={player.chips} />
+            <p className="text-xs text-gray-400">${player.chips}</p>
+          </div>
         </div>
         {isActive && (
           <span className="text-xs bg-yellow-500 text-black px-2 py-1 rounded animate-pulse">
@@ -258,11 +314,12 @@ function PlayerSlot({ player, isCurrentUser, isActive, showCards, handResult, tu
         )}
       </div>
 
-      {/* Current round bet indicator */}
+      {/* Current round bet indicator with chip visualization */}
       {player.currentRoundBet > 0 && (
-        <div className="mb-2 text-center">
+        <div className="mb-2 flex items-center justify-center gap-2">
+          <MiniChipStack amount={player.currentRoundBet} />
           <span className="text-xs bg-blue-600/50 text-blue-200 px-2 py-1 rounded">
-            Bet: ${player.currentRoundBet}
+            ${player.currentRoundBet}
           </span>
         </div>
       )}
@@ -306,6 +363,29 @@ function LobbyView() {
       setShowUsernameModal(true);
     }
   }, [needsUsername, walletLoading]);
+
+  // Run stale table cleanup on lobby load (rate-limited to once per 5 minutes)
+  useEffect(() => {
+    const runCleanup = async () => {
+      // Import dynamically to avoid circular dependencies
+      const { GameService } = await import('../game/GameService');
+
+      if (GameService.shouldRunCleanup()) {
+        console.log('[Lobby] Running stale table cleanup...');
+        const result = await GameService.cleanupStaleTables();
+        GameService.markCleanupRun();
+
+        if (result.cleaned > 0) {
+          console.log(`[Lobby] Cleaned up ${result.cleaned} stale tables`);
+        }
+        if (result.errors.length > 0) {
+          console.warn('[Lobby] Cleanup errors:', result.errors);
+        }
+      }
+    };
+
+    runCleanup();
+  }, []);
 
   const handleCreateTable = async () => {
     await createTable();
@@ -499,6 +579,25 @@ function GameView() {
     }))
     .filter((p) => p.uid !== currentUser?.uid)
     .sort((a, b) => a.relativeIndex - b.relativeIndex);
+
+  // Calculate dealer, small blind, and big blind positions
+  const dealerIndex = tableData?.dealerIndex ?? 0;
+  const smallBlindIndex = (dealerIndex + 1) % totalPlayers;
+  const bigBlindIndex = (dealerIndex + 2) % totalPlayers;
+
+  // Helper to check if a player is at a specific position
+  const isDealer = (seatIndex) => seatIndex === dealerIndex;
+  const isSmallBlind = (seatIndex) => seatIndex === smallBlindIndex && totalPlayers > 2;
+  const isBigBlind = (seatIndex) => seatIndex === bigBlindIndex || (totalPlayers === 2 && seatIndex === smallBlindIndex);
+
+  // Detect desktop mode
+  const [isDesktop, setIsDesktop] = useState(false);
+  useEffect(() => {
+    const checkDesktop = () => setIsDesktop(window.innerWidth >= 1024);
+    checkDesktop();
+    window.addEventListener('resize', checkDesktop);
+    return () => window.removeEventListener('resize', checkDesktop);
+  }, []);
 
   // Check if player needs to buy in
   const needsBuyIn = currentPlayer?.chips === 0;
@@ -757,6 +856,9 @@ function GameView() {
                 showCards={isShowdown}
                 handResult={isShowdown ? evaluateHand(player.hand) : null}
                 turnDeadline={tableData?.turnDeadline}
+                isDealer={isDealer(player.seatIndex)}
+                isSmallBlind={isSmallBlind(player.seatIndex)}
+                isBigBlind={isBigBlind(player.seatIndex)}
               />
             </div>
           );
@@ -774,10 +876,11 @@ function GameView() {
           </div>
         )}
 
-        {/* Pot display in center of table */}
+        {/* Pot display in center of table with chip stack */}
         {tableData?.pot > 0 && (
-          <div className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2">
-            <div className="bg-yellow-600/90 px-4 py-2 rounded-lg shadow-lg">
+          <div className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 flex flex-col items-center">
+            <MiniChipStack amount={tableData.pot} />
+            <div className="bg-yellow-600/90 px-4 py-2 rounded-lg shadow-lg mt-1">
               <span className="text-white font-bold text-lg">Pot: ${tableData.pot}</span>
             </div>
           </div>
@@ -891,9 +994,11 @@ function GameView() {
             callAmount={callAmount}
             minRaise={minRaise}
             maxRaise={currentPlayer?.chips || 0}
+            playerCurrentRoundBet={currentPlayer?.currentRoundBet || 0}
             canCheck={playerCanCheck}
             currentBet={tableData?.currentBet || 0}
             disabled={loading}
+            isDesktop={isDesktop}
           />
         )}
 
