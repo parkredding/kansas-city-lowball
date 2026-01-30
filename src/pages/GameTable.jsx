@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
 import { useGame, BetAction } from '../context/GameContext';
 import { useAuth } from '../context/AuthContext';
 import { PHASE_DISPLAY_NAMES } from '../game/usePokerGame';
@@ -8,6 +9,8 @@ import BettingControls from '../components/BettingControls';
 import TurnTimer, { CircularTimer } from '../components/TurnTimer';
 import UsernameModal from '../components/UsernameModal';
 import ChatBox from '../components/ChatBox';
+import ChipStack, { MiniChipStack, BetChip, PotDisplay } from '../components/ChipStack';
+import PotManager, { PlayerBetChips, useChipSounds } from '../components/PotManager';
 
 const SUIT_SYMBOLS = {
   h: { symbol: '\u2665', color: 'text-red-500' },
@@ -210,26 +213,28 @@ function PositionBadge({ type }) {
 }
 
 /**
- * Visual chip stack based on amount
+ * Calculate bet chip position between player and center
+ * Returns { x, y } as percentage offsets from center
  */
-function MiniChipStack({ amount }) {
-  if (amount <= 0) return null;
+function getBetChipPosition(relativeIndex, totalPlayers) {
+  if (relativeIndex === 0) {
+    // Hero's bet - slightly above center
+    return { x: '50%', y: '70%' };
+  }
 
-  // Calculate number of visual chips (1-5 based on amount)
-  const chipCount = Math.min(5, Math.max(1, Math.ceil(amount / 200)));
-  const chipColors = ['bg-red-500', 'bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-yellow-400'];
+  // Get player position and calculate midpoint to center
+  const playerPos = getRadialPosition(relativeIndex, totalPlayers);
+  const centerX = 50;
+  const centerY = 45;
 
-  return (
-    <div className="flex flex-col-reverse items-center">
-      {Array.from({ length: chipCount }).map((_, i) => (
-        <div
-          key={i}
-          className={`w-5 h-1.5 ${chipColors[i % chipColors.length]} rounded-full border border-gray-800 ${i > 0 ? '-mt-0.5' : ''}`}
-          style={{ boxShadow: 'inset 0 1px 2px rgba(255,255,255,0.3)' }}
-        />
-      ))}
-    </div>
-  );
+  const playerX = parseFloat(playerPos.left);
+  const playerY = parseFloat(playerPos.top);
+
+  // Position bets 40% of the way from player to center
+  const betX = playerX + (centerX - playerX) * 0.45;
+  const betY = playerY + (centerY - playerY) * 0.45;
+
+  return { x: `${betX}%`, y: `${betY}%` };
 }
 
 function PlayerSlot({ player, isCurrentUser, isActive, showCards, handResult, turnDeadline, isDealer, isSmallBlind, isBigBlind }) {
@@ -314,14 +319,17 @@ function PlayerSlot({ player, isCurrentUser, isActive, showCards, handResult, tu
         )}
       </div>
 
-      {/* Current round bet indicator with chip visualization */}
+      {/* Current round bet text indicator (chips shown separately) */}
       {player.currentRoundBet > 0 && (
-        <div className="mb-2 flex items-center justify-center gap-2">
-          <MiniChipStack amount={player.currentRoundBet} />
-          <span className="text-xs bg-blue-600/50 text-blue-200 px-2 py-1 rounded">
-            ${player.currentRoundBet}
+        <motion.div
+          className="mb-2 flex items-center justify-center"
+          initial={{ opacity: 0, scale: 0.8 }}
+          animate={{ opacity: 1, scale: 1 }}
+        >
+          <span className="text-xs bg-yellow-600/80 text-white font-medium px-2 py-1 rounded shadow">
+            Bet: ${player.currentRoundBet}
           </span>
-        </div>
+        </motion.div>
       )}
 
       {/* Player's cards */}
@@ -703,8 +711,14 @@ function GameView() {
   const playersWithChips = tableData?.players?.filter((p) => p.chips > 0)?.length || 0;
   const canStartGame = playersWithChips >= 2;
 
+  // Sound effects hook placeholder
+  const { playChipSound } = useChipSounds();
+
   return (
-    <div className="min-h-screen bg-green-800 flex flex-col items-center gap-4 p-4">
+    <LayoutGroup>
+    <div className={`min-h-screen bg-green-800 ${isDesktop ? 'flex' : 'flex flex-col'}`}>
+      {/* Main Game Area */}
+      <div className={`flex-1 flex flex-col items-center gap-4 p-4 ${isDesktop ? 'pr-80' : ''}`}>
       {/* Buy-In Modal */}
       <BuyInModal
         isOpen={showBuyInModal}
@@ -806,20 +820,45 @@ function GameView() {
         </div>
       )}
 
-      {/* Chip Displays */}
-      <div className="flex gap-4 flex-wrap justify-center">
-        <ChipDisplay label="Your Chips" amount={currentPlayer?.chips || 0} />
-        <ChipDisplay label="Pot" amount={tableData?.pot || 0} variant="pot" />
+      {/* Hero Chip Stack Display */}
+      <div className="flex gap-6 flex-wrap justify-center items-end">
+        {/* Your Chips with 3D stack */}
+        <motion.div
+          className="flex flex-col items-center"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+        >
+          <span className="text-gray-400 text-xs mb-1">Your Stack</span>
+          <div className="bg-gray-800/80 rounded-xl p-3 border border-gray-700">
+            <MiniChipStack amount={currentPlayer?.chips || 0} showAmount />
+          </div>
+        </motion.div>
+
+        {/* Current Bet Info */}
         {tableData?.currentBet > 0 && (
-          <ChipDisplay label="To Call" amount={callAmount} />
-        )}
-        {needsBuyIn && isIdle && (
-          <button
-            onClick={() => setShowBuyInModal(true)}
-            className="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-lg font-medium"
+          <motion.div
+            className="flex flex-col items-center"
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
           >
-            + Buy More Chips
-          </button>
+            <span className="text-gray-400 text-xs mb-1">To Call</span>
+            <div className="bg-red-600/80 px-4 py-2 rounded-lg">
+              <span className="text-white font-bold text-lg">${callAmount}</span>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Buy More Chips Button */}
+        {needsBuyIn && isIdle && (
+          <motion.button
+            onClick={() => setShowBuyInModal(true)}
+            className="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-lg font-medium shadow-lg"
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+          >
+            + Buy Chips
+          </motion.button>
         )}
       </div>
 
@@ -841,13 +880,16 @@ function GameView() {
         {opponentsWithPositions.map((player) => {
           const position = getRadialPosition(player.relativeIndex, totalPlayers);
           return (
-            <div
+            <motion.div
               key={player.uid}
               className="absolute transform -translate-x-1/2 -translate-y-1/2 z-10"
               style={{
                 left: position.left,
                 top: position.top,
               }}
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 25 }}
             >
               <PlayerSlot
                 player={player}
@@ -860,9 +902,46 @@ function GameView() {
                 isSmallBlind={isSmallBlind(player.seatIndex)}
                 isBigBlind={isBigBlind(player.seatIndex)}
               />
-            </div>
+            </motion.div>
           );
         })}
+
+        {/* Opponent bet chips positioned between players and center */}
+        <AnimatePresence>
+          {opponentsWithPositions.map((player) => {
+            if (player.currentRoundBet <= 0) return null;
+            const betPos = getBetChipPosition(player.relativeIndex, totalPlayers);
+            return (
+              <motion.div
+                key={`bet-${player.uid}`}
+                className="absolute transform -translate-x-1/2 -translate-y-1/2 z-20"
+                style={{ left: betPos.x, top: betPos.y }}
+                initial={{ scale: 0, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0, opacity: 0, y: -20 }}
+                transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+              >
+                <BetChip amount={player.currentRoundBet} playerId={player.uid} />
+              </motion.div>
+            );
+          })}
+        </AnimatePresence>
+
+        {/* Hero's bet chips */}
+        <AnimatePresence>
+          {currentPlayer?.currentRoundBet > 0 && (
+            <motion.div
+              className="absolute transform -translate-x-1/2 -translate-y-1/2 z-20"
+              style={{ left: '50%', top: '72%' }}
+              initial={{ scale: 0, opacity: 0, y: 30 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0, opacity: 0, y: -20 }}
+              transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+            >
+              <BetChip amount={currentPlayer.currentRoundBet} playerId={currentPlayer.uid} />
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Empty table message when no opponents */}
         {opponentsWithPositions.length === 0 && isIdle && (
@@ -876,14 +955,16 @@ function GameView() {
           </div>
         )}
 
-        {/* Pot display in center of table with chip stack */}
+        {/* Pot display in center of table with 3D chip stack */}
         {tableData?.pot > 0 && (
-          <div className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 flex flex-col items-center">
-            <MiniChipStack amount={tableData.pot} />
-            <div className="bg-yellow-600/90 px-4 py-2 rounded-lg shadow-lg mt-1">
-              <span className="text-white font-bold text-lg">Pot: ${tableData.pot}</span>
-            </div>
-          </div>
+          <motion.div
+            className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 flex flex-col items-center z-30"
+            initial={{ scale: 0, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+          >
+            <PotDisplay amount={tableData.pot} isWinning={isShowdown} />
+          </motion.div>
         )}
       </div>
 
@@ -1018,17 +1099,24 @@ function GameView() {
           </div>
         )}
 
-        {/* SHOWDOWN: Show Next Hand button */}
-        {isShowdown && (
-          <div className="flex justify-center">
-            <button
-              onClick={startNextHand}
-              disabled={loading}
-              className="bg-yellow-600 hover:bg-yellow-500 disabled:bg-yellow-800 text-white font-bold py-3 px-8 rounded-lg shadow-lg transition-colors text-lg"
-            >
-              Next Hand
-            </button>
-          </div>
+        {/* Mobile: Show action buttons inline */}
+        {!isDesktop && (
+          <>
+            {/* SHOWDOWN: Show Next Hand button */}
+            {isShowdown && (
+              <div className="flex justify-center">
+                <motion.button
+                  onClick={startNextHand}
+                  disabled={loading}
+                  className="bg-yellow-600 hover:bg-yellow-500 disabled:bg-yellow-800 text-white font-bold py-3 px-8 rounded-lg shadow-lg text-lg"
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                >
+                  Next Hand
+                </motion.button>
+              </div>
+            )}
+          </>
         )}
       </div>
 
@@ -1039,7 +1127,154 @@ function GameView() {
         currentUsername={getDisplayName()}
         disabled={needsUsername}
       />
+      </div>
+
+      {/* Desktop: Fixed Right Sidebar for Betting Controls */}
+      {isDesktop && (
+        <motion.div
+          className="fixed right-0 top-0 bottom-0 w-72 bg-gray-900/95 border-l border-gray-700 flex flex-col shadow-2xl z-40"
+          initial={{ x: 100, opacity: 0 }}
+          animate={{ x: 0, opacity: 1 }}
+          transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+        >
+          {/* Sidebar Header */}
+          <div className="p-4 border-b border-gray-700 bg-gray-800/50">
+            <h3 className="text-white font-bold text-lg">Game Controls</h3>
+            <p className="text-gray-400 text-xs mt-1">
+              {myTurn ? "It's your turn!" : `Waiting for ${activePlayer?.displayName || '...'}` }
+            </p>
+          </div>
+
+          {/* Your Stack Display */}
+          <div className="p-4 border-b border-gray-700">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-gray-400 text-sm">Your Stack</span>
+              <span className="text-white font-bold">${currentPlayer?.chips || 0}</span>
+            </div>
+            <div className="flex justify-center">
+              <MiniChipStack amount={currentPlayer?.chips || 0} />
+            </div>
+          </div>
+
+          {/* Pot Info */}
+          <div className="p-4 border-b border-gray-700">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-gray-400 text-sm">Current Pot</span>
+              <span className="text-yellow-400 font-bold">${tableData?.pot || 0}</span>
+            </div>
+            {tableData?.currentBet > 0 && (
+              <div className="flex items-center justify-between">
+                <span className="text-gray-400 text-sm">To Call</span>
+                <span className="text-red-400 font-bold">${callAmount}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex-1 p-4 overflow-y-auto">
+            {/* IDLE: Deal button */}
+            {isIdle && canStartGame && !needsBuyIn && (
+              <motion.button
+                onClick={handleDeal}
+                disabled={loading}
+                className="w-full bg-yellow-600 hover:bg-yellow-500 disabled:bg-yellow-800 text-white font-bold py-4 px-6 rounded-xl shadow-lg text-lg mb-4"
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+              >
+                Deal Cards
+              </motion.button>
+            )}
+
+            {/* Buy In button */}
+            {needsBuyIn && isIdle && (
+              <motion.button
+                onClick={() => setShowBuyInModal(true)}
+                className="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-4 px-6 rounded-xl shadow-lg text-lg mb-4"
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+              >
+                Buy In
+              </motion.button>
+            )}
+
+            {/* BETTING: Betting Controls */}
+            {isBettingPhase && myTurn && currentPlayer?.status === 'active' && (
+              <div className="space-y-3">
+                <BettingControls
+                  onFold={handleFold}
+                  onCheck={handleCheck}
+                  onCall={handleCall}
+                  onRaise={handleRaise}
+                  onAllIn={handleAllIn}
+                  callAmount={callAmount}
+                  minRaise={minRaise}
+                  maxRaise={currentPlayer?.chips || 0}
+                  playerCurrentRoundBet={currentPlayer?.currentRoundBet || 0}
+                  canCheck={playerCanCheck}
+                  currentBet={tableData?.currentBet || 0}
+                  disabled={loading}
+                  isDesktop={true}
+                />
+              </div>
+            )}
+
+            {/* DRAW: Discard button */}
+            {isDrawPhase && myTurn && (
+              <motion.button
+                onClick={handleSubmitDraw}
+                disabled={loading}
+                className="w-full bg-purple-600 hover:bg-purple-500 disabled:bg-purple-800 text-white font-bold py-4 px-6 rounded-xl shadow-lg text-lg"
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+              >
+                {selectedCardIndices.size > 0
+                  ? `Discard ${selectedCardIndices.size} Card${selectedCardIndices.size > 1 ? 's' : ''}`
+                  : 'Stand Pat'
+                }
+              </motion.button>
+            )}
+
+            {/* SHOWDOWN: Next Hand button */}
+            {isShowdown && (
+              <motion.button
+                onClick={startNextHand}
+                disabled={loading}
+                className="w-full bg-yellow-600 hover:bg-yellow-500 disabled:bg-yellow-800 text-white font-bold py-4 px-6 rounded-xl shadow-lg text-lg"
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+              >
+                Next Hand
+              </motion.button>
+            )}
+
+            {/* Waiting message */}
+            {!myTurn && !isIdle && !isShowdown && (
+              <div className="text-center py-8">
+                <motion.div
+                  className="w-8 h-8 border-3 border-yellow-400 border-t-transparent rounded-full mx-auto mb-3"
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                />
+                <p className="text-gray-400 text-sm">
+                  Waiting for {activePlayer?.displayName || 'opponent'}...
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Sidebar Footer */}
+          <div className="p-4 border-t border-gray-700 bg-gray-800/50">
+            <button
+              onClick={leaveTable}
+              className="w-full bg-gray-700 hover:bg-gray-600 text-gray-300 py-2 px-4 rounded-lg text-sm"
+            >
+              Leave Table
+            </button>
+          </div>
+        </motion.div>
+      )}
     </div>
+    </LayoutGroup>
   );
 }
 
