@@ -3,154 +3,161 @@ import { motion, LayoutGroup } from 'framer-motion';
 import PokerChip, { CHIP_DENOMINATIONS } from './PokerChip';
 
 /**
- * Configuration for chip stacking behavior
+ * 3D Chip component with realistic stacking effect using CSS box-shadow
  */
-const STACK_CONFIG = {
-  maxChipsPerStack: 10,      // Split into new column after this many
-  maxStacks: 5,             // Maximum number of columns
-  overlapPercent: 0.78,     // How much chips overlap (negative margin %)
-  rotationRange: 5,         // Rotation range in degrees (-5 to +5)
-};
+function Chip3D({ color, size = 'md', stackPosition = 0 }) {
+  const sizeConfig = {
+    sm: { width: 'w-5', height: 'h-2', edge: 2 },
+    md: { width: 'w-7', height: 'h-2.5', edge: 3 },
+    lg: { width: 'w-9', height: 'h-3', edge: 4 },
+  };
 
-/**
- * Chip size in pixels for each size variant
- */
-export const CHIP_SIZES = {
-  xs: 28,
-  sm: 36,
-  md: 48,
-  lg: 64,
-};
+  const colorConfig = {
+    red: {
+      bg: '#dc2626',
+      edge: '#991b1b',
+      highlight: 'rgba(255,255,255,0.3)',
+      stripe: 'rgba(255,255,255,0.15)',
+    },
+    blue: {
+      bg: '#2563eb',
+      edge: '#1d4ed8',
+      highlight: 'rgba(255,255,255,0.3)',
+      stripe: 'rgba(255,255,255,0.15)',
+    },
+    green: {
+      bg: '#16a34a',
+      edge: '#15803d',
+      highlight: 'rgba(255,255,255,0.3)',
+      stripe: 'rgba(255,255,255,0.15)',
+    },
+    black: {
+      bg: '#1f2937',
+      edge: '#111827',
+      highlight: 'rgba(255,255,255,0.2)',
+      stripe: 'rgba(255,255,255,0.1)',
+    },
+    gold: {
+      bg: '#eab308',
+      edge: '#ca8a04',
+      highlight: 'rgba(255,255,255,0.4)',
+      stripe: 'rgba(255,255,255,0.2)',
+    },
+    purple: {
+      bg: '#9333ea',
+      edge: '#7e22ce',
+      highlight: 'rgba(255,255,255,0.3)',
+      stripe: 'rgba(255,255,255,0.15)',
+    },
+    white: {
+      bg: '#f8fafc',
+      edge: '#cbd5e1',
+      highlight: 'rgba(255,255,255,0.8)',
+      stripe: 'rgba(0,0,0,0.05)',
+    },
+  };
 
-/**
- * Size configurations for different stack sizes
- */
-const SIZE_CONFIGS = {
-  xs: { chipSize: 'xs', gap: 2, stackGap: 4 },
-  sm: { chipSize: 'sm', gap: 3, stackGap: 6 },
-  md: { chipSize: 'md', gap: 4, stackGap: 8 },
-  lg: { chipSize: 'lg', gap: 5, stackGap: 12 },
-};
+  const config = sizeConfig[size];
+  const colors = colorConfig[color] || colorConfig.red;
 
-/**
- * Calculate deterministic rotation based on index and denomination
- * Uses a simple hash-like formula to produce varied but stable values
- */
-function getDeterministicRotation(index, denomination, range = STACK_CONFIG.rotationRange) {
-  // Use prime multipliers for better distribution
-  const hash = (index * 17 + denomination * 13) % 100;
-  return (hash / 100) * range * 2 - range;
-}
+  // Create stacked 3D effect using multiple box-shadows
+  const stackedShadow = Array.from({ length: config.edge }, (_, i) => {
+    const offset = (i + 1);
+    return `0 ${offset}px 0 ${colors.edge}`;
+  }).join(', ');
 
-/**
- * Calculate overlap margin for chip stacking
- */
-export function getOverlapMargin(chipSize) {
-  const size = CHIP_SIZES[chipSize] || CHIP_SIZES.md;
-  return -Math.floor(size * STACK_CONFIG.overlapPercent);
-}
-
-/**
- * Greedy algorithm to break down an amount into optimal chip denominations
- * Returns array of chip objects with denomination and count
- */
-export function calculateChipBreakdown(amount) {
-  if (amount <= 0) return [];
-
-  // Sorted from highest to lowest
-  const denominations = [1000, 500, 100, 25, 5, 1];
-  const breakdown = [];
-  let remaining = Math.floor(amount);
-
-  for (const denom of denominations) {
-    if (remaining >= denom) {
-      const count = Math.floor(remaining / denom);
-      breakdown.push({ denomination: denom, count });
-      remaining = remaining % denom;
-    }
-  }
-
-  return breakdown;
-}
-
-/**
- * Convert breakdown into individual chip objects with stable IDs and rotations
- * Limit total chips and organize into stacks
- */
-function createChipObjects(breakdown, maxTotal = 50) {
-  const chips = [];
-  let totalCount = 0;
-
-  for (const { denomination, count } of breakdown) {
-    const chipsToAdd = Math.min(count, maxTotal - totalCount);
-
-    for (let i = 0; i < chipsToAdd; i++) {
-      // Deterministic rotation based on position and denomination
-      const rotation = getDeterministicRotation(totalCount, denomination);
-      chips.push({
-        // Stable ID using denomination and global index
-        id: `chip-${denomination}-${totalCount}`,
-        denomination,
-        rotation,
-        stackIndex: Math.floor(chips.length / STACK_CONFIG.maxChipsPerStack),
-      });
-      totalCount++;
-      if (totalCount >= maxTotal) break;
-    }
-    if (totalCount >= maxTotal) break;
-  }
-
-  return chips;
-}
-
-/**
- * Organize chips into stack columns
- */
-function organizeIntoStacks(chips) {
-  const stacks = [];
-  const maxStacks = STACK_CONFIG.maxStacks;
-
-  for (const chip of chips) {
-    const stackIndex = Math.min(chip.stackIndex, maxStacks - 1);
-    if (!stacks[stackIndex]) {
-      stacks[stackIndex] = [];
-    }
-    stacks[stackIndex].push(chip);
-  }
-
-  return stacks;
-}
-
-/**
- * Main ChipStack component with physics-based animations
- */
-function ChipStack({
-  amount,
-  size = 'md',
-  showAmount = true,
-  animate = true,
-  layoutId,
-  playerId,
-  compact = false,
-  onAnimationComplete,
-}) {
-  const sizeConfig = SIZE_CONFIGS[size] || SIZE_CONFIGS.md;
-
-  // Memoize breakdown calculation
-  const breakdown = useMemo(() => calculateChipBreakdown(amount), [amount]);
-
-  // Memoize chip objects - limit more for compact mode
-  const maxChips = compact ? 15 : 50;
-  const chips = useMemo(
-    () => createChipObjects(breakdown, maxChips),
-    [breakdown, maxChips]
+  return (
+    <div
+      className={`${config.width} ${config.height} rounded-full relative`}
+      style={{
+        backgroundColor: colors.bg,
+        boxShadow: `
+          ${stackedShadow},
+          0 ${config.edge + 2}px 6px rgba(0,0,0,0.3),
+          inset 0 1px 2px ${colors.highlight},
+          inset 0 -1px 2px rgba(0,0,0,0.2)
+        `,
+        marginTop: stackPosition > 0 ? `-${config.edge + 1}px` : '0',
+      }}
+    >
+      {/* Chip stripe pattern */}
+      <div
+        className="absolute inset-0 rounded-full overflow-hidden"
+        style={{
+          background: `repeating-linear-gradient(
+            90deg,
+            transparent 0px,
+            transparent 2px,
+            ${colors.stripe} 2px,
+            ${colors.stripe} 4px
+          )`,
+        }}
+      />
+    </div>
   );
+}
 
-  // Organize into stacks
-  const stacks = useMemo(() => organizeIntoStacks(chips), [chips]);
+/**
+ * Enhanced Visual chip stack component with 3D effect
+ * - amount < 100: Small stack of Red chips
+ * - amount >= 100 && < 1000: Mixed stack
+ * - amount >= 1000: High Value Gold/Black stack
+ */
+function ChipStack({ amount, size = 'md', showAmount = true, animate = false }) {
+  // Determine chip configuration based on amount
+  const chipConfig = useMemo(() => {
+    if (amount <= 0) return { chips: [], type: 'none' };
 
-  // Calculate overlap margin dynamically
-  const overlapMargin = getOverlapMargin(sizeConfig.chipSize);
+    // Low value: Red chips
+    if (amount < 100) {
+      const chipCount = Math.min(5, Math.max(1, Math.ceil(amount / 20)));
+      return {
+        chips: Array(chipCount).fill('red'),
+        type: 'low',
+      };
+    }
+
+    // High value: Gold and Black chips
+    if (amount >= 1000) {
+      const goldCount = Math.min(3, Math.floor(amount / 1000));
+      const blackCount = Math.min(4, Math.ceil((amount % 1000) / 250));
+      return {
+        chips: [
+          ...Array(goldCount).fill('gold'),
+          ...Array(Math.max(1, blackCount)).fill('black'),
+        ].slice(0, 7),
+        type: 'high',
+      };
+    }
+
+    // Medium value: Mixed stack
+    const denominations = [
+      { value: 500, color: 'purple' },
+      { value: 100, color: 'black' },
+      { value: 50, color: 'green' },
+      { value: 25, color: 'blue' },
+      { value: 10, color: 'red' },
+      { value: 5, color: 'white' },
+    ];
+
+    let remaining = amount;
+    const chips = [];
+
+    for (const denom of denominations) {
+      const count = Math.floor(remaining / denom.value);
+      if (count > 0) {
+        const visualCount = Math.min(count, 3);
+        for (let i = 0; i < visualCount; i++) {
+          chips.push(denom.color);
+        }
+        remaining = remaining % denom.value;
+      }
+      if (chips.length >= 8) break;
+    }
+  }
+
+    return { chips, type: 'medium' };
+  }, [amount]);
 
   if (amount <= 0) {
     return null;
@@ -182,115 +189,29 @@ function ChipStack({
   };
 
   return (
-    <LayoutGroup id={layoutId || playerId}>
-      <motion.div
-        className="flex flex-col items-center"
-        initial={animate ? 'hidden' : false}
-        animate="visible"
-        variants={stackVariants}
-        onAnimationComplete={onAnimationComplete}
-      >
-        {/* Chip stacks container */}
-        <div
-          className="flex items-end justify-center"
-          style={{ gap: sizeConfig.stackGap }}
-        >
-          {stacks.map((stack, stackIndex) => (
-            <div
-              key={`stack-${stackIndex}`}
-              className="flex flex-col-reverse items-center"
-            >
-              {stack.map((chip, chipIndex) => (
-                <motion.div
-                  key={chip.id}
-                  layoutId={playerId ? `${playerId}-${chip.id}` : undefined}
-                  variants={animate ? chipVariants : undefined}
-                  style={{
-                    marginTop: chipIndex > 0 ? overlapMargin : 0,
-                    zIndex: chipIndex,
-                  }}
-                >
-                  <PokerChip
-                    denomination={chip.denomination}
-                    size={sizeConfig.chipSize}
-                    rotation={chip.rotation}
-                  />
-                </motion.div>
-              ))}
-            </div>
-          ))}
-        </div>
-
-        {/* Amount label */}
-        {showAmount && (
-          <motion.div
-            initial={animate ? { opacity: 0, y: 10 } : false}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-            className="mt-2 bg-gray-900/90 px-3 py-1 rounded-lg shadow-lg border border-gray-700"
-          >
-            <span className="text-white font-bold text-sm">
-              ${amount.toLocaleString()}
-            </span>
-          </motion.div>
-        )}
-      </motion.div>
-    </LayoutGroup>
-  );
-}
-
-/**
- * Mini chip stack for player seats - more compact
- */
-export function MiniChipStack({ amount, showAmount = false }) {
-  const breakdown = useMemo(() => calculateChipBreakdown(amount), [amount]);
-
-  // Show at most 5 chips for mini display
-  const chips = useMemo(() => {
-    const result = [];
-    let count = 0;
-    for (const { denomination, count: denomCount } of breakdown) {
-      const toAdd = Math.min(denomCount, 5 - count);
-      for (let i = 0; i < toAdd; i++) {
-        result.push({
-          id: `mini-${denomination}-${count}`,
-          denomination,
-          // Deterministic rotation
-          rotation: getDeterministicRotation(count, denomination, 3),
-        });
-        count++;
-      }
-      if (count >= 5) break;
-    }
-    return result;
-  }, [breakdown]);
-
-  // Calculate overlap margin dynamically for xs chips
-  const overlapMargin = getOverlapMargin('xs');
-
-  if (amount <= 0) return null;
-
-  return (
-    <div className="flex flex-col items-center">
-      <div className="flex flex-col-reverse items-center">
-        {chips.map((chip, index) => (
-          <div
-            key={chip.id}
-            style={{
-              marginTop: index > 0 ? overlapMargin : 0,
-              zIndex: index,
-            }}
-          >
-            <PokerChip
-              denomination={chip.denomination}
-              size="xs"
-              rotation={chip.rotation}
-            />
-          </div>
+    <div className={`flex flex-col items-center ${animate ? 'animate-pulse' : ''}`}>
+      {/* 3D Chip stack visualization */}
+      <div className="flex flex-col-reverse items-center relative">
+        {chipConfig.chips.map((color, index) => (
+          <Chip3D
+            key={index}
+            color={color}
+            size={size}
+            stackPosition={index}
+          />
         ))}
       </div>
       {showAmount && (
-        <span className="text-xs font-bold text-white mt-1 bg-gray-800/80 px-1.5 rounded">
+        <div
+          className={`
+            font-bold text-white mt-2 px-2 py-0.5 rounded
+            ${size === 'lg' ? 'text-sm' : size === 'md' ? 'text-xs' : 'text-[10px]'}
+            ${chipConfig.type === 'high' ? 'bg-yellow-600/90' : 'bg-gray-800/90'}
+          `}
+          style={{
+            boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
+          }}
+        >
           ${amount.toLocaleString()}
         </span>
       )}

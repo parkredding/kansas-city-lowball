@@ -40,6 +40,145 @@ export const BetAction = {
 };
 
 /**
+ * Calculate side pots based on player contributions.
+ *
+ * This handles the case where players go all-in for different amounts.
+ *
+ * Example: Player A goes all-in for 100, Player B bets 500, Player C calls 500
+ * Result:
+ *   - Main Pot: 300 (100 from each), eligible: [A, B, C]
+ *   - Side Pot: 800 (400 from B + 400 from C), eligible: [B, C]
+ *
+ * @param {Array} players - Array of player objects with uid, totalContribution, status
+ * @returns {Array} - Array of pot objects: { amount, eligiblePlayers: [uid, ...] }
+ */
+export function calculateSidePots(players) {
+  // Filter to players who are still in the hand (not folded)
+  const eligiblePlayers = players.filter(
+    p => p.status === 'active' || p.status === 'all-in'
+  );
+
+  if (eligiblePlayers.length === 0) {
+    return [];
+  }
+
+  // Get all unique contribution levels from players who contributed
+  const contributions = eligiblePlayers
+    .map(p => p.totalContribution || 0)
+    .filter(c => c > 0);
+
+  // Get unique contribution levels sorted ascending
+  const uniqueContributions = [...new Set(contributions)].sort((a, b) => a - b);
+
+  if (uniqueContributions.length === 0) {
+    return [];
+  }
+
+  const pots = [];
+  let previousLevel = 0;
+
+  for (const contributionLevel of uniqueContributions) {
+    const levelDiff = contributionLevel - previousLevel;
+
+    if (levelDiff > 0) {
+      // Find all players who contributed at least this much
+      const playersAtThisLevel = eligiblePlayers.filter(
+        p => (p.totalContribution || 0) >= contributionLevel
+      );
+
+      // The pot amount is (level difference) * (number of players who contributed at least this much)
+      const potAmount = levelDiff * playersAtThisLevel.length;
+
+      if (potAmount > 0) {
+        pots.push({
+          amount: potAmount,
+          eligiblePlayers: playersAtThisLevel.map(p => p.uid),
+        });
+      }
+    }
+
+    previousLevel = contributionLevel;
+  }
+
+  return pots;
+}
+
+/**
+ * Get total pot amount from pots array
+ * @param {Array} pots - Array of pot objects
+ * @returns {number} - Total pot amount
+ */
+export function getTotalPotAmount(pots) {
+  if (!Array.isArray(pots)) return 0;
+  return pots.reduce((sum, pot) => sum + (pot.amount || 0), 0);
+}
+
+/**
+ * Distribute winnings from pots to winners.
+ * Each pot is awarded to the best hand among eligible players.
+ *
+ * @param {Array} pots - Array of pot objects
+ * @param {Array} players - Array of player objects with uid, hand
+ * @param {Function} evaluateHand - Function to evaluate hand strength
+ * @returns {Object} - { winners: [{uid, amount, potIndex}], updatedPlayers: [...] }
+ */
+export function distributePots(pots, players, evaluateHand) {
+  const updatedPlayers = players.map(p => ({ ...p }));
+  const winners = [];
+
+  for (let potIndex = 0; potIndex < pots.length; potIndex++) {
+    const pot = pots[potIndex];
+    const eligibleUids = pot.eligiblePlayers;
+
+    // Find eligible players with hands (not folded)
+    const contenders = updatedPlayers.filter(
+      p => eligibleUids.includes(p.uid) &&
+           (p.status === 'active' || p.status === 'all-in') &&
+           p.hand && p.hand.length > 0
+    );
+
+    if (contenders.length === 0) continue;
+
+    // Evaluate each contender's hand
+    const evaluatedContenders = contenders.map(p => ({
+      player: p,
+      handResult: evaluateHand(p.hand),
+    }));
+
+    // Find the best hand (lowest in lowball)
+    // Sort by hand value ascending (lower is better in 2-7 lowball)
+    evaluatedContenders.sort((a, b) => a.handResult.value - b.handResult.value);
+
+    // Get all players tied for best hand
+    const bestValue = evaluatedContenders[0].handResult.value;
+    const potWinners = evaluatedContenders.filter(
+      c => c.handResult.value === bestValue
+    );
+
+    // Split pot among winners
+    const sharePerWinner = Math.floor(pot.amount / potWinners.length);
+    const remainder = pot.amount % potWinners.length;
+
+    potWinners.forEach((winner, idx) => {
+      const winAmount = sharePerWinner + (idx === 0 ? remainder : 0);
+      const playerIdx = updatedPlayers.findIndex(p => p.uid === winner.player.uid);
+      if (playerIdx !== -1) {
+        updatedPlayers[playerIdx].chips += winAmount;
+        winners.push({
+          uid: winner.player.uid,
+          displayName: winner.player.displayName,
+          amount: winAmount,
+          potIndex,
+          handResult: winner.handResult,
+        });
+      }
+    });
+  }
+
+  return { winners, updatedPlayers };
+}
+
+/**
  * GameService - Handles all Firestore operations for multiplayer poker tables
  */
 export class GameService {
@@ -389,7 +528,8 @@ export class GameService {
       phase: 'IDLE',
       deck: GameService.createShuffledDeck(),
       muck: [], // Discard pile for reshuffling when deck runs low
-      pot: 0,
+      pots: [], // Array of pot objects: { amount, eligiblePlayers: [uid, ...] }
+      pot: 0, // Legacy: total pot for display (sum of all pots)
       minBet: minBet,
       currentBet: 0,
       activePlayerIndex: 0,
@@ -405,6 +545,7 @@ export class GameService {
           status: 'active',
           cardsToDiscard: [],
           currentRoundBet: 0,
+          totalContribution: 0, // Total contributed to pot this hand
           hasActedThisRound: false,
           lastAction: null, // Track last draw action for display
         },
@@ -468,6 +609,7 @@ export class GameService {
       status: 'active',
       cardsToDiscard: [],
       currentRoundBet: 0,
+      totalContribution: 0, // Total contributed to pot this hand
       hasActedThisRound: false,
       lastAction: null, // Track last draw action for display
     };
@@ -585,6 +727,7 @@ export class GameService {
       status: player.chips > 0 ? 'active' : 'sitting_out',
       cardsToDiscard: [],
       currentRoundBet: 0,
+      totalContribution: 0, // Reset for new hand
       hasActedThisRound: false,
       lastAction: null, // Clear any previous action text
     }));
@@ -628,12 +771,14 @@ export class GameService {
     const sbAmount = Math.min(smallBlind, players[sbActiveIndex].chips);
     players[sbActiveIndex].chips -= sbAmount;
     players[sbActiveIndex].currentRoundBet = sbAmount;
+    players[sbActiveIndex].totalContribution = sbAmount;
     pot += sbAmount;
 
     // Post big blind
     const bbAmount = Math.min(bigBlind, players[bbActiveIndex].chips);
     players[bbActiveIndex].chips -= bbAmount;
     players[bbActiveIndex].currentRoundBet = bbAmount;
+    players[bbActiveIndex].totalContribution = bbAmount;
     pot += bbAmount;
 
     // Action starts with player after big blind (UTG)
@@ -789,6 +934,7 @@ export class GameService {
             const allInAmount = playerChips;
             pot += allInAmount;
             player.currentRoundBet = playerCurrentRoundBet + allInAmount;
+            player.totalContribution = (player.totalContribution || 0) + allInAmount;
             player.chips = 0;
             player.status = 'all-in';
             player.hasActedThisRound = true;
@@ -797,6 +943,7 @@ export class GameService {
             // Regular call
             player.chips = playerChips - callAmount;
             player.currentRoundBet = playerCurrentRoundBet + callAmount;
+            player.totalContribution = (player.totalContribution || 0) + callAmount;
             pot += callAmount;
             player.hasActedThisRound = true;
             actionDescription = `${player.displayName} called $${callAmount}`;
@@ -814,6 +961,7 @@ export class GameService {
 
           pot += allInAmount;
           player.currentRoundBet = playerCurrentRoundBet + allInAmount;
+          player.totalContribution = (player.totalContribution || 0) + allInAmount;
 
           // If this all-in is a raise (exceeds current bet), update the bet and reset other players
           if (player.currentRoundBet > currentBet) {
@@ -858,6 +1006,7 @@ export class GameService {
             // All-in raise
             pot += playerChips;
             player.currentRoundBet = playerCurrentRoundBet + playerChips;
+            player.totalContribution = (player.totalContribution || 0) + playerChips;
             if (player.currentRoundBet > currentBet) {
               newCurrentBet = Math.floor(player.currentRoundBet);
             }
@@ -875,6 +1024,7 @@ export class GameService {
             // Regular raise
             player.chips = playerChips - additionalAmount;
             player.currentRoundBet = totalBetAmount;
+            player.totalContribution = (player.totalContribution || 0) + additionalAmount;
             pot += additionalAmount;
             newCurrentBet = totalBetAmount;
             player.hasActedThisRound = true;
@@ -898,8 +1048,8 @@ export class GameService {
     players[playerIndex] = player;
 
     // Check if only one player remains
-    const activePlayers = GameService.countActivePlayers(players);
-    if (activePlayers === 1) {
+    const activePlayersCount = GameService.countActivePlayers(players);
+    if (activePlayersCount === 1) {
       // Hand is over, award pot to winner
       const winner = players.find((p) => p.status === 'active' || p.status === 'all-in');
       let winnerDescription = '';
@@ -907,6 +1057,11 @@ export class GameService {
         winner.chips += pot;
         winnerDescription = `${winner.displayName} wins $${pot} (others folded)`;
       }
+
+      // Reset totalContribution for next hand
+      players.forEach(p => {
+        p.totalContribution = 0;
+      });
 
       // Get updated activity log
       const activityLog = await GameService.addActivityEvent(tableId, actionDescription);
@@ -921,6 +1076,7 @@ export class GameService {
       await GameService.updateTable(tableId, {
         players,
         pot: 0,
+        pots: [],
         currentBet: 0,
         phase: 'SHOWDOWN',
         turnDeadline: null,
@@ -943,23 +1099,39 @@ export class GameService {
     const activityLog = await GameService.addActivityEvent(tableId, actionDescription);
 
     if (roundComplete) {
-      // Reset for next phase
+      // Calculate side pots when betting round completes
+      const sidePots = calculateSidePots(players);
+
+      // Reset currentRoundBet for next phase (but keep totalContribution)
       players.forEach((p) => {
         p.currentRoundBet = 0;
         p.hasActedThisRound = false;
       });
 
-      // Find first active player for next phase (only players who can still act)
-      const activeIndices = players
-        .map((p, i) => (p.status === 'active' ? i : -1))
-        .filter((i) => i !== -1);
-
+      // Find first active player for next phase
+      // For draw phases, include all-in players since they must still draw
       const nextPhase = phaseAfterBet[tableData.phase];
       const isShowdown = nextPhase === 'SHOWDOWN';
+      const isDrawPhase = nextPhase.startsWith('DRAW_');
+
+      // For draw phases, find first player who can draw (active or all-in)
+      // For betting phases, only active players with chips can act
+      let activeIndices;
+      if (isDrawPhase) {
+        // All-in players participate in draw (they auto stand pat)
+        activeIndices = players
+          .map((p, i) => (p.status === 'active' || p.status === 'all-in' ? i : -1))
+          .filter((i) => i !== -1);
+      } else {
+        activeIndices = players
+          .map((p, i) => (p.status === 'active' && p.chips > 0 ? i : -1))
+          .filter((i) => i !== -1);
+      }
 
       await GameService.updateTable(tableId, {
         players,
         pot,
+        pots: sidePots,
         currentBet: 0,
         phase: nextPhase,
         activePlayerIndex: activeIndices.length > 0 ? activeIndices[0] : 0,
@@ -1043,6 +1215,8 @@ export class GameService {
 
   /**
    * Submit a draw action for the current player
+   * All-in players automatically stand pat and cannot discard cards.
+   *
    * @param {string} tableId - The table ID
    * @param {Object} tableData - Current table data
    * @param {string} playerUid - The player's UID
@@ -1061,12 +1235,16 @@ export class GameService {
 
     let deck = [...tableData.deck];
     let muck = [...(tableData.muck || [])];
-    const players = [...tableData.players];
-    const player = { ...players[playerIndex] };
+    const players = tableData.players.map(p => ({ ...p }));
+    const player = players[playerIndex];
     let hand = [...player.hand];
 
+    // All-in players are forced to stand pat (can't discard)
+    const isAllIn = player.status === 'all-in';
+    const effectiveCardIndices = isAllIn ? [] : cardIndices;
+
     // Sort indices in descending order to remove from end first
-    const sortedIndices = [...cardIndices].sort((a, b) => b - a);
+    const sortedIndices = [...effectiveCardIndices].sort((a, b) => b - a);
 
     // Remove discarded cards and add them to the muck
     const discardedCards = [];
@@ -1081,7 +1259,7 @@ export class GameService {
     muck = [...muck, ...discardedCards];
 
     // Deal replacement cards (reshuffle muck if needed)
-    const numToDraw = cardIndices.length;
+    const numToDraw = effectiveCardIndices.length;
 
     // Check if we need to reshuffle the muck
     if (numToDraw > 0) {
@@ -1104,35 +1282,30 @@ export class GameService {
     player.lastAction = actionText;
 
     // Create activity log description
-    const drawDescription = numToDraw === 0
-      ? `${player.displayName} stood pat`
-      : `${player.displayName} drew ${numToDraw} card${numToDraw > 1 ? 's' : ''}`;
-
-    players[playerIndex] = player;
-
-    // Find next active player who can still draw (skip all-in players)
-    const activeIndices = players
-      .map((p, i) => (p.status === 'active' || p.status === 'all-in' ? i : -1))
-      .filter((i) => i !== -1);
-
-    let nextPlayerIndex = -1;
-    for (let i = 1; i <= activeIndices.length; i++) {
-      const candidateIndex = activeIndices[(activeIndices.indexOf(playerIndex) + i) % activeIndices.length];
-      // Skip all-in players for draw actions - they auto stand pat
-      if (!players[candidateIndex].hasActedThisRound && players[candidateIndex].status === 'active') {
-        nextPlayerIndex = candidateIndex;
-        break;
-      }
+    let drawDescription;
+    if (isAllIn) {
+      drawDescription = `${player.displayName} stood pat (all-in)`;
+    } else {
+      drawDescription = numToDraw === 0
+        ? `${player.displayName} stood pat`
+        : `${player.displayName} drew ${numToDraw} card${numToDraw > 1 ? 's' : ''}`;
     }
 
-    // If no active player found, mark all-in players as having acted (they stand pat)
-    if (nextPlayerIndex === -1) {
-      players.forEach((p) => {
-        if (p.status === 'all-in' && !p.hasActedThisRound) {
-          p.hasActedThisRound = true;
-          p.lastAction = 'Stood Pat';
-        }
-      });
+    // Get all players still in hand (active or all-in, not folded)
+    const playersInHand = players
+      .map((p, i) => ({ player: p, index: i }))
+      .filter(({ player: p }) => p.status === 'active' || p.status === 'all-in');
+
+    // Find next player who needs to act (hasn't acted yet)
+    // All-in players DO participate in draw phase but auto-stand pat
+    let nextPlayerIndex = -1;
+    for (let i = 1; i <= playersInHand.length; i++) {
+      const lookupIdx = (playersInHand.findIndex(p => p.index === playerIndex) + i) % playersInHand.length;
+      const candidate = playersInHand[lookupIdx];
+      if (!candidate.player.hasActedThisRound) {
+        nextPlayerIndex = candidate.index;
+        break;
+      }
     }
 
     const roundComplete = nextPlayerIndex === -1;
@@ -1149,7 +1322,7 @@ export class GameService {
 
     const updates = {
       deck,
-      muck, // Include updated muck pile
+      muck,
       players,
       chatLog: activityLog,
     };
@@ -1158,13 +1331,34 @@ export class GameService {
       // Reset for next phase - clear lastAction when moving to betting
       players.forEach((p) => {
         p.hasActedThisRound = false;
-        p.lastAction = null; // Clear action text when phase changes
+        p.lastAction = null;
       });
+
+      const nextPhase = phaseAfterDraw[tableData.phase];
+
+      // For betting phase, find first active player with chips (skip all-in)
+      const bettingActiveIndices = players
+        .map((p, i) => (p.status === 'active' && p.chips > 0 ? i : -1))
+        .filter((i) => i !== -1);
+
+      // If no active players can bet, check if we should skip to showdown
+      const allInOrFolded = players.every(p =>
+        p.status === 'folded' || p.status === 'all-in' || p.status === 'sitting_out'
+      );
+
+      if (allInOrFolded || bettingActiveIndices.length <= 1) {
+        // All remaining players are all-in or only one can bet
+        // Skip remaining betting/draw rounds and go to showdown
+        updates.phase = 'SHOWDOWN';
+        updates.turnDeadline = null;
+        updates.activePlayerIndex = 0;
+      } else {
+        updates.phase = nextPhase;
+        updates.activePlayerIndex = bettingActiveIndices[0];
+        updates.currentBet = 0;
+        updates.turnDeadline = GameService.calculateTurnDeadline();
+      }
       updates.players = players;
-      updates.phase = phaseAfterDraw[tableData.phase];
-      updates.activePlayerIndex = activeIndices.length > 0 ? activeIndices[0] : 0;
-      updates.currentBet = 0;
-      updates.turnDeadline = GameService.calculateTurnDeadline();
     } else {
       updates.activePlayerIndex = nextPlayerIndex;
       updates.turnDeadline = GameService.calculateTurnDeadline();
@@ -1186,6 +1380,7 @@ export class GameService {
       status: player.chips > 0 ? 'active' : 'sitting_out',
       cardsToDiscard: [],
       currentRoundBet: 0,
+      totalContribution: 0, // Reset for new hand
       hasActedThisRound: false,
       lastAction: null, // Clear action text for new hand
     }));
@@ -1199,6 +1394,7 @@ export class GameService {
       deck: GameService.createShuffledDeck(),
       muck: [], // Clear muck for new hand
       pot: 0,
+      pots: [], // Clear side pots
       currentBet: 0,
       players,
       activePlayerIndex: 0,
