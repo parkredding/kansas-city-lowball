@@ -14,6 +14,7 @@ import ChatBox from '../components/ChatBox';
 import ChipStack, { MiniChipStack, BetChip, PotDisplay } from '../components/ChipStack';
 import { PositionIndicators } from '../components/PositionButtons';
 import { useBotOrchestrator } from '../game/ai/useBotOrchestrator';
+import { useTurnNotification, playNotificationSound } from '../hooks/useTurnNotification';
 
 /**
  * Error Boundary component to catch rendering errors and prevent white screens
@@ -854,6 +855,44 @@ function GameView() {
   const callAmount = getCallAmount();
   const minRaise = getMinRaise();
   const playerCanCheck = canCheck();
+
+  // Turn notification - plays audio cue when it becomes player's turn
+  useTurnNotification(myTurn, tableData?.phase);
+
+  // Track previous phase for detecting phase transitions
+  const prevPhaseRef = useRef(tableData?.phase);
+
+  // Deal sound - plays when cards are dealt (phase transitions to BETTING_1)
+  useEffect(() => {
+    const currentPhase = tableData?.phase;
+    const prevPhase = prevPhaseRef.current;
+
+    // Detect deal: transitioning from IDLE to BETTING_1
+    if (prevPhase === 'IDLE' && currentPhase === 'BETTING_1') {
+      playNotificationSound('deal');
+    }
+
+    // Detect showdown: play win/loss sound based on result
+    if (currentPhase === 'SHOWDOWN' && prevPhase !== 'SHOWDOWN') {
+      // Small delay to let the UI update first
+      setTimeout(() => {
+        const showdownResult = tableData?.showdownResult;
+        if (showdownResult?.winners && currentUser) {
+          const isWinner = showdownResult.winners.some(w => w.uid === currentUser.uid);
+          const currentPlayerFolded = currentPlayer?.status === 'folded';
+          
+          if (isWinner) {
+            playNotificationSound('win');
+          } else if (!currentPlayerFolded) {
+            // Only play lose sound if player didn't fold (they saw it through)
+            playNotificationSound('lose');
+          }
+        }
+      }, 300);
+    }
+
+    prevPhaseRef.current = currentPhase;
+  }, [tableData?.phase, tableData?.showdownResult, currentUser, currentPlayer?.status]);
 
   // Bot orchestrator - runs in table creator's browser
   useBotOrchestrator(
