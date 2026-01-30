@@ -5,6 +5,8 @@ import { PHASE_DISPLAY_NAMES } from '../game/usePokerGame';
 import BuyInModal from '../components/BuyInModal';
 import BettingControls from '../components/BettingControls';
 import TurnTimer, { CircularTimer } from '../components/TurnTimer';
+import UsernameModal from '../components/UsernameModal';
+import ChatBox from '../components/ChatBox';
 
 const SUIT_SYMBOLS = {
   h: { symbol: '\u2665', color: 'text-red-500' },
@@ -143,6 +145,15 @@ function PlayerSlot({ player, isCurrentUser, isActive, showCards, handResult, tu
         </div>
       )}
 
+      {/* Last Action Badge (speech bubble style) */}
+      {player.lastAction && (
+        <div className="absolute -top-3 left-1/2 -translate-x-1/2 z-10">
+          <div className="bg-purple-600 text-white text-xs font-medium px-2 py-1 rounded-full shadow-lg whitespace-nowrap">
+            {player.lastAction}
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center gap-2 mb-2">
         <div className="relative">
           {player.photoURL ? (
@@ -220,9 +231,17 @@ function PlayerSlot({ player, isCurrentUser, isActive, showCards, handResult, tu
 }
 
 function LobbyView() {
-  const { createTable, joinTable, loading, error, setError, userWallet, walletLoading } = useGame();
+  const { createTable, joinTable, loading, error, setError, userWallet, walletLoading, needsUsername, updateUsername } = useGame();
   const { logout } = useAuth();
   const [tableIdInput, setTableIdInput] = useState('');
+  const [showUsernameModal, setShowUsernameModal] = useState(false);
+
+  // Show username modal if user needs to set username
+  useEffect(() => {
+    if (needsUsername && !walletLoading) {
+      setShowUsernameModal(true);
+    }
+  }, [needsUsername, walletLoading]);
 
   const handleCreateTable = async () => {
     await createTable();
@@ -236,13 +255,45 @@ function LobbyView() {
     await joinTable(tableIdInput.trim());
   };
 
+  const handleSaveUsername = async (username) => {
+    await updateUsername(username);
+    setShowUsernameModal(false);
+  };
+
   return (
     <div className="min-h-screen bg-green-800 flex flex-col items-center justify-center gap-6 p-4">
+      {/* Username Modal */}
+      <UsernameModal
+        isOpen={showUsernameModal || needsUsername}
+        onClose={() => setShowUsernameModal(false)}
+        onSave={handleSaveUsername}
+        currentUsername={userWallet?.username}
+        isRequired={needsUsername}
+        loading={loading}
+      />
+
       <h1 className="text-4xl font-bold text-white">Kansas City Lowball</h1>
       <p className="text-gray-300">2-7 Triple Draw Poker</p>
 
-      {/* Wallet Display */}
-      <WalletDisplay balance={userWallet?.balance} loading={walletLoading} />
+      {/* User Display with Edit Button */}
+      <div className="flex items-center gap-3">
+        <WalletDisplay balance={userWallet?.balance} loading={walletLoading} />
+        {userWallet?.username && (
+          <div className="bg-gray-700 px-3 py-2 rounded-lg flex items-center gap-2">
+            <span className="text-gray-300 text-sm">Playing as:</span>
+            <span className="text-yellow-400 font-medium">{userWallet.username}</span>
+            <button
+              onClick={() => setShowUsernameModal(true)}
+              className="text-gray-400 hover:text-white ml-1"
+              title="Edit username"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+              </svg>
+            </button>
+          </div>
+        )}
+      </div>
 
       <div className="bg-gray-800 rounded-xl p-8 shadow-2xl max-w-md w-full">
         <h2 className="text-xl font-semibold text-white mb-6 text-center">
@@ -259,7 +310,7 @@ function LobbyView() {
         <div className="mb-6">
           <button
             onClick={handleCreateTable}
-            disabled={loading}
+            disabled={loading || needsUsername}
             className="w-full bg-yellow-600 hover:bg-yellow-500 disabled:bg-yellow-800 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition-colors"
           >
             {loading ? 'Creating...' : 'Create New Table'}
@@ -287,12 +338,18 @@ function LobbyView() {
           />
           <button
             onClick={handleJoinTable}
-            disabled={loading || !tableIdInput.trim()}
+            disabled={loading || !tableIdInput.trim() || needsUsername}
             className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition-colors"
           >
             {loading ? 'Joining...' : 'Join Table'}
           </button>
         </div>
+
+        {needsUsername && (
+          <p className="text-yellow-400 text-sm text-center mt-4">
+            Please set your username to continue
+          </p>
+        )}
       </div>
 
       <button
@@ -318,6 +375,7 @@ function GameView() {
     isIdle,
     userWallet,
     walletLoading,
+    needsUsername,
     leaveTable,
     dealCards,
     buyIn,
@@ -325,6 +383,8 @@ function GameView() {
     submitDraw,
     startNextHand,
     handleTimeout,
+    sendChatMessage,
+    updateUsername,
     getCurrentPlayer,
     isMyTurn,
     getActivePlayer,
@@ -332,12 +392,14 @@ function GameView() {
     getCallAmount,
     getMinRaise,
     canCheck,
+    getDisplayName,
     BetAction,
   } = useGame();
 
   const [selectedCardIndices, setSelectedCardIndices] = useState(new Set());
   const [showBuyInModal, setShowBuyInModal] = useState(false);
   const [hasDismissedBuyIn, setHasDismissedBuyIn] = useState(false);
+  const [showUsernameModal, setShowUsernameModal] = useState(false);
 
   const currentPlayer = getCurrentPlayer();
   const activePlayer = getActivePlayer();
@@ -403,6 +465,11 @@ function GameView() {
     setHasDismissedBuyIn(true);
   };
 
+  const handleSaveUsername = async (username) => {
+    await updateUsername(username);
+    setShowUsernameModal(false);
+  };
+
   // Betting action handlers
   const handleFold = () => performBetAction(BetAction.FOLD);
   const handleCheck = () => performBetAction(BetAction.CHECK);
@@ -430,6 +497,16 @@ function GameView() {
         loading={loading}
       />
 
+      {/* Username Modal */}
+      <UsernameModal
+        isOpen={showUsernameModal}
+        onClose={() => setShowUsernameModal(false)}
+        onSave={handleSaveUsername}
+        currentUsername={userWallet?.username}
+        isRequired={false}
+        loading={loading}
+      />
+
       {/* Header */}
       <div className="w-full max-w-4xl flex items-center justify-between flex-wrap gap-2">
         <button
@@ -439,9 +516,23 @@ function GameView() {
           Leave Table
         </button>
 
-        <div className="bg-gray-800 px-4 py-2 rounded-lg">
+        <div className="bg-gray-800 px-4 py-2 rounded-lg flex items-center gap-2">
           <span className="text-gray-400 text-sm">Table: </span>
           <span className="text-white font-mono font-bold">{currentTableId}</span>
+        </div>
+
+        {/* Username Display with Edit */}
+        <div className="bg-gray-700 px-3 py-2 rounded-lg flex items-center gap-2">
+          <span className="text-yellow-400 font-medium text-sm">{getDisplayName()}</span>
+          <button
+            onClick={() => setShowUsernameModal(true)}
+            className="text-gray-400 hover:text-white"
+            title="Edit username"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+            </svg>
+          </button>
         </div>
 
         <WalletDisplay balance={userWallet?.balance} loading={walletLoading} />
@@ -582,6 +673,12 @@ function GameView() {
             Your bet this round: ${currentPlayer.currentRoundBet}
           </p>
         )}
+        {/* Show your last draw action */}
+        {currentPlayer?.lastAction && (
+          <span className="inline-block mt-1 bg-purple-600 text-white text-xs font-medium px-2 py-1 rounded-full">
+            {currentPlayer.lastAction}
+          </span>
+        )}
       </div>
 
       {/* Action Buttons / Betting Controls */}
@@ -644,6 +741,14 @@ function GameView() {
           </div>
         )}
       </div>
+
+      {/* Chat Box */}
+      <ChatBox
+        messages={tableData?.chatLog || []}
+        onSendMessage={sendChatMessage}
+        currentUsername={getDisplayName()}
+        disabled={needsUsername}
+      />
     </div>
   );
 }
