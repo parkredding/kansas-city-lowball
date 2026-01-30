@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, useCallback, useRef } f
 import { useAuth } from './AuthContext';
 import { GameService, BetAction } from '../game/GameService';
 import { HandEvaluator } from '../game/HandEvaluator';
+import { DEFAULT_MIN_BET } from '../game/constants';
 
 const GameContext = createContext();
 
@@ -95,7 +96,7 @@ export function GameProvider({ children }) {
   }, [currentTableId]);
 
   // Create a new table
-  const createTable = useCallback(async () => {
+  const createTable = useCallback(async (config = null) => {
     if (!currentUser) {
       setError('You must be logged in to create a table');
       return null;
@@ -110,7 +111,8 @@ export function GameProvider({ children }) {
     setError(null);
 
     try {
-      const tableId = await GameService.createTable(currentUser, userWallet);
+      // Don't pass minBet explicitly - let it use the default value
+      const tableId = await GameService.createTable(currentUser, userWallet, DEFAULT_MIN_BET, config);
       setCurrentTableId(tableId);
       return tableId;
     } catch (err) {

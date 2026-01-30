@@ -226,12 +226,12 @@ export class GameService {
   /**
    * Create a bot player object
    */
-  static createBotPlayer(botDifficulty = 'medium', index = 0) {
+  static createBotPlayer(botDifficulty = 'medium', index = 0, initialChips = 1000) {
     return {
       uid: GameService.generateBotUid(),
       displayName: GameService.generateBotName(index),
       photoURL: null,
-      chips: 0, // Start with 0, must buy in
+      chips: initialChips, // Bots start with chips to allow immediate gameplay
       hand: [],
       status: 'active',
       cardsToDiscard: [],
@@ -551,9 +551,10 @@ export class GameService {
    * @param {Object} user - Firebase user object with uid, displayName, photoURL
    * @param {Object} userWallet - User wallet data with username
    * @param {number} minBet - Minimum bet for the table
+   * @param {Object} config - Table configuration object (optional)
    * @returns {Promise<string>} - The created table ID
    */
-  static async createTable(user, userWallet, minBet = DEFAULT_MIN_BET) {
+  static async createTable(user, userWallet, minBet = DEFAULT_MIN_BET, config = null) {
     if (!db) {
       throw new Error('Firestore not initialized');
     }
@@ -600,8 +601,11 @@ export class GameService {
     // Add bot players if configured
     const botConfig = finalConfig.bots || defaultConfig.bots;
     if (botConfig.count > 0) {
+      // Calculate bot starting chips: 20x the minimum bet (2x the minimum buy-in)
+      // This ensures bots have enough chips to play multiple hands
+      const botStartingChips = minBet * 20;
       for (let i = 0; i < botConfig.count && players.length < finalConfig.maxPlayers; i++) {
-        players.push(GameService.createBotPlayer(botConfig.difficulty, i));
+        players.push(GameService.createBotPlayer(botConfig.difficulty, i, botStartingChips));
       }
     }
 

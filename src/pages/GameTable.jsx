@@ -367,6 +367,7 @@ function LobbyView() {
   const { logout } = useAuth();
   const [tableIdInput, setTableIdInput] = useState('');
   const [showUsernameModal, setShowUsernameModal] = useState(false);
+  const [showCreateGameModal, setShowCreateGameModal] = useState(false);
 
   // Show username modal if user needs to set username
   useEffect(() => {
@@ -398,8 +399,12 @@ function LobbyView() {
     runCleanup();
   }, []);
 
-  const handleCreateTable = async () => {
-    await createTable();
+  const handleCreateTable = () => {
+    setShowCreateGameModal(true);
+  };
+
+  const handleCreateTableWithConfig = async (config) => {
+    await createTable(config);
   };
 
   const handleJoinTable = async () => {
@@ -424,6 +429,14 @@ function LobbyView() {
         onSave={handleSaveUsername}
         currentUsername={userWallet?.username}
         isRequired={needsUsername}
+        loading={loading}
+      />
+
+      {/* Create Game Modal */}
+      <CreateGameModal
+        isOpen={showCreateGameModal}
+        onClose={() => setShowCreateGameModal(false)}
+        onCreate={handleCreateTableWithConfig}
         loading={loading}
       />
 
