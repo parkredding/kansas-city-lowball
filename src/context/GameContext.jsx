@@ -123,8 +123,8 @@ export function GameProvider({ children }) {
     }
   }, [currentUser, userWallet]);
 
-  // Join an existing table
-  const joinTable = useCallback(async (tableId, password = null) => {
+  // Join an existing table (as player or railbird depending on game state)
+  const joinTable = useCallback(async (tableId, password = null, asRailbird = false) => {
     if (!currentUser) {
       setError('You must be logged in to join a table');
       return false;
@@ -144,9 +144,9 @@ export function GameProvider({ children }) {
     setError(null);
 
     try {
-      await GameService.joinTable(tableId.toUpperCase(), currentUser, userWallet, password);
+      const result = await GameService.joinTable(tableId.toUpperCase(), currentUser, userWallet, password, asRailbird);
       setCurrentTableId(tableId.toUpperCase());
-      return true;
+      return result; // Returns { joinedAs: 'player' | 'railbird' }
     } catch (err) {
       setError(err.message);
       return false;
@@ -176,12 +176,19 @@ export function GameProvider({ children }) {
     }
   }, [currentTableId, currentUser]);
 
-  // Leave the current table (with cash out)
+  // Leave the current table (with cash out if player, or remove from railbirds)
   const leaveTable = useCallback(async () => {
     if (!currentTableId || !tableData || !currentUser) return;
 
     try {
-      await GameService.leaveTable(currentTableId, tableData, currentUser.uid);
+      // Check if user is a railbird
+      const isRailbird = (tableData.railbirds || []).some((r) => r.uid === currentUser.uid);
+      
+      if (isRailbird) {
+        await GameService.removeRailbird(currentTableId, currentUser.uid);
+      } else {
+        await GameService.leaveTable(currentTableId, tableData, currentUser.uid);
+      }
     } catch (err) {
       console.error('Error leaving table:', err);
     }
@@ -190,6 +197,48 @@ export function GameProvider({ children }) {
     setTableData(null);
     setError(null);
   }, [currentTableId, tableData, currentUser]);
+
+  // Kick a bot player from the table (only table creator can do this)
+  const kickBot = useCallback(async (botUid) => {
+    if (!currentTableId || !currentUser) {
+      setError('Must be at a table to kick bots');
+      return false;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      await GameService.kickBot(currentTableId, botUid, currentUser.uid);
+      return true;
+    } catch (err) {
+      setError(err.message);
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  }, [currentTableId, currentUser]);
+
+  // Promote self from railbird to player (when game is IDLE and seats available)
+  const joinAsPlayer = useCallback(async () => {
+    if (!currentTableId || !currentUser) {
+      setError('Must be at a table to join as player');
+      return false;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      await GameService.promoteRailbirdToPlayer(currentTableId, currentUser.uid);
+      return true;
+    } catch (err) {
+      setError(err.message);
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  }, [currentTableId, currentUser]);
 
   // Deal cards (start the game)
   const dealCards = useCallback(async () => {
@@ -284,6 +333,33 @@ export function GameProvider({ children }) {
   const getCurrentPlayer = useCallback(() => {
     if (!tableData || !currentUser) return null;
     return tableData.players.find((p) => p.uid === currentUser.uid);
+  }, [tableData, currentUser]);
+
+  // Check if current user is a railbird
+  const isRailbird = useCallback(() => {
+    if (!tableData || !currentUser) return false;
+    return (tableData.railbirds || []).some((r) => r.uid === currentUser.uid);
+  }, [tableData, currentUser]);
+
+  // Get current user's railbird data
+  const getCurrentRailbird = useCallback(() => {
+    if (!tableData || !currentUser) return null;
+    return (tableData.railbirds || []).find((r) => r.uid === currentUser.uid);
+  }, [tableData, currentUser]);
+
+  // Check if user can become a player (is railbird, game is IDLE, seats available)
+  const canBecomePlayer = useCallback(() => {
+    if (!tableData || !currentUser) return false;
+    const userIsRailbird = (tableData.railbirds || []).some((r) => r.uid === currentUser.uid);
+    const gameIsIdle = tableData.phase === 'IDLE';
+    const seatsAvailable = tableData.players.length < 6; // MAX_PLAYERS
+    return userIsRailbird && gameIsIdle && seatsAvailable;
+  }, [tableData, currentUser]);
+
+  // Check if the current user is the table creator
+  const isTableCreator = useCallback(() => {
+    if (!tableData || !currentUser) return false;
+    return tableData.createdBy === currentUser.uid;
   }, [tableData, currentUser]);
 
   // Check if it's the current user's turn
@@ -411,6 +487,8 @@ export function GameProvider({ children }) {
     handleTimeout,
     updateUsername,
     sendChatMessage,
+    kickBot,
+    joinAsPlayer,
 
     // Utilities
     getCurrentPlayer,
@@ -422,6 +500,10 @@ export function GameProvider({ children }) {
     canCheck,
     getDisplayName,
     setError,
+    isRailbird,
+    getCurrentRailbird,
+    canBecomePlayer,
+    isTableCreator,
 
     // Export BetAction for use in components
     BetAction,

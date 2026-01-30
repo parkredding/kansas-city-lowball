@@ -147,13 +147,18 @@ export function distributePots(pots, players, evaluateHand) {
     }));
 
     // Find the best hand (lowest in lowball)
-    // Sort by hand value ascending (lower is better in 2-7 lowball)
-    evaluatedContenders.sort((a, b) => a.handResult.value - b.handResult.value);
+    // Sort by hand score ascending (lower is better in 2-7 lowball)
+    // Note: score is a string, so we use string comparison
+    evaluatedContenders.sort((a, b) => {
+      if (a.handResult.score < b.handResult.score) return -1;
+      if (a.handResult.score > b.handResult.score) return 1;
+      return 0;
+    });
 
     // Get all players tied for best hand
-    const bestValue = evaluatedContenders[0].handResult.value;
+    const bestScore = evaluatedContenders[0].handResult.score;
     const potWinners = evaluatedContenders.filter(
-      c => c.handResult.value === bestValue
+      c => c.handResult.score === bestScore
     );
 
     // Split pot among winners
@@ -275,7 +280,7 @@ export class GameService {
    * Generate a unique bot UID
    */
   static generateBotUid() {
-    return `bot_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return `bot_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
   }
 
   /**
@@ -690,6 +695,7 @@ export class GameService {
       turnDeadline: null,
       dealerIndex: 0,
       players: players,
+      railbirds: [], // Observers watching the game (can chat but can't see card indices)
       chatLog: [], // Chat messages array
       createdBy: user.uid,
       config: finalConfig, // Store configuration
@@ -702,13 +708,15 @@ export class GameService {
 
   /**
    * Join an existing table
+   * If game is in progress, joins as railbird (observer)
    * @param {string} tableId - The table ID to join
    * @param {Object} user - Firebase user object
    * @param {Object} userWallet - User wallet data with username
    * @param {string} password - Optional password for private tables
-   * @returns {Promise<void>}
+   * @param {boolean} asRailbird - Force joining as railbird even if seats available
+   * @returns {Promise<{joinedAs: 'player' | 'railbird'}>}
    */
-  static async joinTable(tableId, user, userWallet, password = null) {
+  static async joinTable(tableId, user, userWallet, password = null, asRailbird = false) {
     if (!db) {
       throw new Error('Firestore not initialized');
     }
@@ -722,21 +730,19 @@ export class GameService {
 
     const tableData = tableSnap.data();
 
-    // Check if user is already at the table
+    // Check if user is already at the table as a player
     const existingPlayer = tableData.players.find((p) => p.uid === user.uid);
     if (existingPlayer) {
-      // User is already at the table, no need to rejoin
-      return;
+      // User is already at the table as a player
+      return { joinedAs: 'player' };
     }
 
-    // Check if table is full
-    if (tableData.players.length >= MAX_PLAYERS) {
-      throw new Error('Table is full');
-    }
-
-    // Check if game is already in progress
-    if (tableData.phase !== 'IDLE') {
-      throw new Error('Game already in progress');
+    // Check if user is already a railbird
+    const railbirds = tableData.railbirds || [];
+    const existingRailbird = railbirds.find((r) => r.uid === user.uid);
+    if (existingRailbird) {
+      // User is already watching as railbird
+      return { joinedAs: 'railbird' };
     }
 
     // Check password for private tables
@@ -750,6 +756,30 @@ export class GameService {
     // Use custom username if available, otherwise fall back to Google displayName
     const displayName = GameService.getDisplayName(userWallet) || user.displayName || 'Anonymous';
 
+    // Determine if we should join as railbird or player
+    const gameInProgress = tableData.phase !== 'IDLE';
+    const tableIsFull = tableData.players.length >= MAX_PLAYERS;
+    const shouldJoinAsRailbird = asRailbird || gameInProgress || tableIsFull;
+
+    if (shouldJoinAsRailbird) {
+      // Join as railbird (observer)
+      const newRailbird = {
+        uid: user.uid,
+        displayName: displayName,
+        photoURL: user.photoURL || null,
+        joinedAt: Date.now(),
+        wantsToPlay: !asRailbird, // True if they wanted to play but couldn't
+      };
+
+      await updateDoc(tableRef, {
+        railbirds: arrayUnion(newRailbird),
+        lastUpdated: serverTimestamp(),
+      });
+
+      return { joinedAs: 'railbird' };
+    }
+
+    // Join as player
     const newPlayer = {
       uid: user.uid,
       displayName: displayName,
@@ -768,6 +798,205 @@ export class GameService {
       players: arrayUnion(newPlayer),
       lastUpdated: serverTimestamp(),
     });
+
+    return { joinedAs: 'player' };
+  }
+
+  /**
+   * Promote a railbird to a player when a seat becomes available
+   * @param {string} tableId - The table ID
+   * @param {string} railbirdUid - The railbird's UID to promote
+   * @returns {Promise<boolean>} - True if promotion was successful
+   */
+  static async promoteRailbirdToPlayer(tableId, railbirdUid) {
+    if (!db) {
+      throw new Error('Firestore not initialized');
+    }
+
+    const tableRef = doc(db, TABLES_COLLECTION, tableId);
+
+    return await runTransaction(db, async (transaction) => {
+      const tableDoc = await transaction.get(tableRef);
+      if (!tableDoc.exists()) {
+        throw new Error('Table not found');
+      }
+
+      const tableData = tableDoc.data();
+      const railbirds = tableData.railbirds || [];
+      const players = tableData.players || [];
+
+      // Check if table is full
+      if (players.length >= MAX_PLAYERS) {
+        throw new Error('Table is full');
+      }
+
+      // Check if game is in progress
+      if (tableData.phase !== 'IDLE') {
+        throw new Error('Cannot join while game is in progress');
+      }
+
+      // Find the railbird
+      const railbirdIndex = railbirds.findIndex((r) => r.uid === railbirdUid);
+      if (railbirdIndex === -1) {
+        throw new Error('Railbird not found');
+      }
+
+      const railbird = railbirds[railbirdIndex];
+
+      // Create new player from railbird data
+      const newPlayer = {
+        uid: railbird.uid,
+        displayName: railbird.displayName,
+        photoURL: railbird.photoURL || null,
+        chips: 0, // Start with 0, must buy in
+        hand: [],
+        status: 'active',
+        cardsToDiscard: [],
+        currentRoundBet: 0,
+        totalContribution: 0,
+        hasActedThisRound: false,
+        lastAction: null,
+      };
+
+      // Remove from railbirds and add to players
+      const updatedRailbirds = railbirds.filter((r) => r.uid !== railbirdUid);
+      const updatedPlayers = [...players, newPlayer];
+
+      transaction.update(tableRef, {
+        players: updatedPlayers,
+        railbirds: updatedRailbirds,
+        lastUpdated: serverTimestamp(),
+      });
+
+      return true;
+    });
+  }
+
+  /**
+   * Kick a bot player from the table to make room for a human player
+   * Only the table creator can kick bots
+   * @param {string} tableId - The table ID
+   * @param {string} botUid - The bot's UID to kick
+   * @param {string} requesterUid - The UID of the user requesting the kick
+   * @returns {Promise<void>}
+   */
+  static async kickBot(tableId, botUid, requesterUid) {
+    if (!db) {
+      throw new Error('Firestore not initialized');
+    }
+
+    const tableRef = doc(db, TABLES_COLLECTION, tableId);
+
+    await runTransaction(db, async (transaction) => {
+      const tableDoc = await transaction.get(tableRef);
+      if (!tableDoc.exists()) {
+        throw new Error('Table not found');
+      }
+
+      const tableData = tableDoc.data();
+
+      // Only table creator can kick bots
+      if (tableData.createdBy !== requesterUid) {
+        throw new Error('Only the table creator can kick bots');
+      }
+
+      // Can only kick bots when game is IDLE
+      if (tableData.phase !== 'IDLE') {
+        throw new Error('Cannot kick bots while game is in progress');
+      }
+
+      const players = tableData.players || [];
+      const botIndex = players.findIndex((p) => p.uid === botUid);
+
+      if (botIndex === -1) {
+        throw new Error('Bot not found');
+      }
+
+      const bot = players[botIndex];
+      if (!bot.isBot) {
+        throw new Error('Can only kick bot players');
+      }
+
+      // Remove the bot
+      const updatedPlayers = players.filter((p) => p.uid !== botUid);
+
+      // Adjust dealer index if needed
+      let dealerIndex = tableData.dealerIndex || 0;
+      if (botIndex <= dealerIndex && dealerIndex > 0) {
+        dealerIndex--;
+      }
+      if (dealerIndex >= updatedPlayers.length) {
+        dealerIndex = 0;
+      }
+
+      transaction.update(tableRef, {
+        players: updatedPlayers,
+        dealerIndex,
+        lastUpdated: serverTimestamp(),
+      });
+    });
+  }
+
+  /**
+   * Remove a railbird from the table (when they leave)
+   * @param {string} tableId - The table ID
+   * @param {string} railbirdUid - The railbird's UID
+   * @returns {Promise<void>}
+   */
+  static async removeRailbird(tableId, railbirdUid) {
+    if (!db) {
+      throw new Error('Firestore not initialized');
+    }
+
+    const tableRef = doc(db, TABLES_COLLECTION, tableId);
+    const tableSnap = await getDoc(tableRef);
+
+    if (!tableSnap.exists()) {
+      throw new Error('Table not found');
+    }
+
+    const tableData = tableSnap.data();
+    const railbirds = tableData.railbirds || [];
+    const updatedRailbirds = railbirds.filter((r) => r.uid !== railbirdUid);
+
+    await updateDoc(tableRef, {
+      railbirds: updatedRailbirds,
+      lastUpdated: serverTimestamp(),
+    });
+  }
+
+  /**
+   * Auto-promote railbirds who want to play when the game becomes IDLE and seats are available
+   * @param {string} tableId - The table ID
+   * @param {Object} tableData - Current table data
+   * @returns {Promise<void>}
+   */
+  static async autoPromoteRailbirds(tableId, tableData) {
+    if (!db) {
+      throw new Error('Firestore not initialized');
+    }
+
+    // Only run when game is IDLE
+    if (tableData.phase !== 'IDLE') return;
+
+    const railbirds = tableData.railbirds || [];
+    const players = tableData.players || [];
+
+    // Find railbirds who want to play, sorted by join time (first come first served)
+    const waitingRailbirds = railbirds
+      .filter((r) => r.wantsToPlay)
+      .sort((a, b) => (a.joinedAt || 0) - (b.joinedAt || 0));
+
+    const availableSeats = MAX_PLAYERS - players.length;
+
+    // Promote up to available seats
+    for (let i = 0; i < Math.min(waitingRailbirds.length, availableSeats); i++) {
+      try {
+        await GameService.promoteRailbirdToPlayer(tableId, waitingRailbirds[i].uid);
+      } catch (err) {
+        console.error(`Failed to promote railbird ${waitingRailbirds[i].uid}:`, err);
+      }
+    }
   }
 
   /**

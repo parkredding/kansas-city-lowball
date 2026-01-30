@@ -38,8 +38,12 @@ function JoinTableModal({ isOpen, onClose, onJoin, tableId: initialTableId, load
       return;
     }
 
-    const success = await onJoin(tableId.trim(), password.trim() || null);
-    if (success) {
+    const result = await onJoin(tableId.trim(), password.trim() || null);
+    if (result) {
+      // Check if joined as railbird and show a brief notification
+      if (result.joinedAs === 'railbird') {
+        // Could show a toast here, but the GameTable will display railbird status
+      }
       onClose();
     } else {
       // If join failed, check if it's a password error
@@ -70,8 +74,11 @@ function JoinTableModal({ isOpen, onClose, onJoin, tableId: initialTableId, load
       {/* Modal */}
       <div className="relative bg-gray-800 rounded-xl p-6 w-full max-w-md mx-4 shadow-2xl border border-gray-700">
         <h2 className="text-2xl font-bold text-white mb-2">Join Table</h2>
-        <p className="text-gray-400 text-sm mb-6">
+        <p className="text-gray-400 text-sm mb-4">
           Enter the table ID to join
+        </p>
+        <p className="text-violet-400/80 text-xs mb-4 bg-violet-900/30 rounded-lg p-2 border border-violet-600/30">
+          💡 If a game is in progress, you'll join as a railbird (observer) and can become a player when the hand ends.
         </p>
 
         <form onSubmit={handleSubmit}>
