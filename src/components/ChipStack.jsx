@@ -1,5 +1,5 @@
-import { useMemo, useCallback } from 'react';
-import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
+import { useMemo } from 'react';
+import { motion, LayoutGroup } from 'framer-motion';
 import PokerChip, { CHIP_DENOMINATIONS } from './PokerChip';
 
 /**
@@ -8,8 +8,18 @@ import PokerChip, { CHIP_DENOMINATIONS } from './PokerChip';
 const STACK_CONFIG = {
   maxChipsPerStack: 10,      // Split into new column after this many
   maxStacks: 5,             // Maximum number of columns
-  overlapPercent: 0.82,     // How much chips overlap (negative margin %)
-  rotationRange: 5,         // Random rotation range in degrees (-5 to +5)
+  overlapPercent: 0.78,     // How much chips overlap (negative margin %)
+  rotationRange: 5,         // Rotation range in degrees (-5 to +5)
+};
+
+/**
+ * Chip size in pixels for each size variant
+ */
+export const CHIP_SIZES = {
+  xs: 28,
+  sm: 36,
+  md: 48,
+  lg: 64,
 };
 
 /**
@@ -21,6 +31,24 @@ const SIZE_CONFIGS = {
   md: { chipSize: 'md', gap: 4, stackGap: 8 },
   lg: { chipSize: 'lg', gap: 5, stackGap: 12 },
 };
+
+/**
+ * Calculate deterministic rotation based on index and denomination
+ * Uses a simple hash-like formula to produce varied but stable values
+ */
+function getDeterministicRotation(index, denomination, range = STACK_CONFIG.rotationRange) {
+  // Use prime multipliers for better distribution
+  const hash = (index * 17 + denomination * 13) % 100;
+  return (hash / 100) * range * 2 - range;
+}
+
+/**
+ * Calculate overlap margin for chip stacking
+ */
+export function getOverlapMargin(chipSize) {
+  const size = CHIP_SIZES[chipSize] || CHIP_SIZES.md;
+  return -Math.floor(size * STACK_CONFIG.overlapPercent);
+}
 
 /**
  * Greedy algorithm to break down an amount into optimal chip denominations
@@ -46,7 +74,7 @@ export function calculateChipBreakdown(amount) {
 }
 
 /**
- * Convert breakdown into individual chip objects with unique IDs and rotations
+ * Convert breakdown into individual chip objects with stable IDs and rotations
  * Limit total chips and organize into stacks
  */
 function createChipObjects(breakdown, maxTotal = 50) {
@@ -57,10 +85,11 @@ function createChipObjects(breakdown, maxTotal = 50) {
     const chipsToAdd = Math.min(count, maxTotal - totalCount);
 
     for (let i = 0; i < chipsToAdd; i++) {
-      // Generate consistent but varied rotation based on index
-      const rotation = (Math.random() - 0.5) * 2 * STACK_CONFIG.rotationRange;
+      // Deterministic rotation based on position and denomination
+      const rotation = getDeterministicRotation(totalCount, denomination);
       chips.push({
-        id: `chip-${denomination}-${i}-${Math.random().toString(36).substr(2, 5)}`,
+        // Stable ID using denomination and global index
+        id: `chip-${denomination}-${totalCount}`,
         denomination,
         rotation,
         stackIndex: Math.floor(chips.length / STACK_CONFIG.maxChipsPerStack),
@@ -120,10 +149,8 @@ function ChipStack({
   // Organize into stacks
   const stacks = useMemo(() => organizeIntoStacks(chips), [chips]);
 
-  // Calculate overlap margin
-  const chipSizes = { xs: 28, sm: 36, md: 48, lg: 64 };
-  const chipHeight = chipSizes[sizeConfig.chipSize] || 48;
-  const overlapMargin = -Math.floor(chipHeight * STACK_CONFIG.overlapPercent);
+  // Calculate overlap margin dynamically
+  const overlapMargin = getOverlapMargin(sizeConfig.chipSize);
 
   if (amount <= 0) {
     return null;
@@ -226,8 +253,10 @@ export function MiniChipStack({ amount, showAmount = false }) {
       const toAdd = Math.min(denomCount, 5 - count);
       for (let i = 0; i < toAdd; i++) {
         result.push({
+          id: `mini-${denomination}-${count}`,
           denomination,
-          rotation: (Math.random() - 0.5) * 6,
+          // Deterministic rotation
+          rotation: getDeterministicRotation(count, denomination, 3),
         });
         count++;
       }
@@ -236,6 +265,9 @@ export function MiniChipStack({ amount, showAmount = false }) {
     return result;
   }, [breakdown]);
 
+  // Calculate overlap margin dynamically for xs chips
+  const overlapMargin = getOverlapMargin('xs');
+
   if (amount <= 0) return null;
 
   return (
@@ -243,9 +275,9 @@ export function MiniChipStack({ amount, showAmount = false }) {
       <div className="flex flex-col-reverse items-center">
         {chips.map((chip, index) => (
           <div
-            key={index}
+            key={chip.id}
             style={{
-              marginTop: index > 0 ? -22 : 0,
+              marginTop: index > 0 ? overlapMargin : 0,
               zIndex: index,
             }}
           >
@@ -282,9 +314,10 @@ export function BetChip({ amount, playerId, animate = true }) {
       const toAdd = Math.min(denomCount, 3 - count);
       for (let i = 0; i < toAdd; i++) {
         result.push({
+          id: `bet-${denomination}-${count}`,
           denomination,
-          rotation: (Math.random() - 0.5) * 8,
-          id: `bet-${denomination}-${i}`,
+          // Deterministic rotation
+          rotation: getDeterministicRotation(count, denomination, 4),
         });
         count++;
       }
@@ -292,6 +325,9 @@ export function BetChip({ amount, playerId, animate = true }) {
     }
     return result;
   }, [breakdown]);
+
+  // Calculate overlap margin dynamically for xs chips
+  const overlapMargin = getOverlapMargin('xs');
 
   return (
     <motion.div
@@ -304,9 +340,9 @@ export function BetChip({ amount, playerId, animate = true }) {
         {chips.map((chip, index) => (
           <motion.div
             key={chip.id}
-            layoutId={playerId ? `${playerId}-bet-${chip.id}` : undefined}
+            layoutId={playerId ? `${playerId}-${chip.id}` : undefined}
             style={{
-              marginTop: index > 0 ? -18 : 0,
+              marginTop: index > 0 ? overlapMargin : 0,
               zIndex: index,
             }}
             initial={animate ? { y: -30, opacity: 0 } : false}
@@ -341,7 +377,7 @@ export function BetChip({ amount, playerId, animate = true }) {
 /**
  * Pot display with large animated chips
  */
-export function PotDisplay({ amount, animate = true, isWinning = false, winnerId }) {
+export function PotDisplay({ amount, animate = true, isWinning = false }) {
   if (amount <= 0) return null;
 
   const breakdown = useMemo(() => calculateChipBreakdown(amount), [amount]);
@@ -354,9 +390,10 @@ export function PotDisplay({ amount, animate = true, isWinning = false, winnerId
       const toAdd = Math.min(denomCount, 12 - count);
       for (let i = 0; i < toAdd; i++) {
         result.push({
+          id: `pot-${denomination}-${count}`,
           denomination,
-          rotation: (Math.random() - 0.5) * 6,
-          id: `pot-${denomination}-${i}`,
+          // Deterministic rotation
+          rotation: getDeterministicRotation(count, denomination, 3),
         });
         count++;
       }
@@ -368,6 +405,9 @@ export function PotDisplay({ amount, animate = true, isWinning = false, winnerId
   // Split into 2 stacks if more than 6 chips
   const stack1 = chips.slice(0, 6);
   const stack2 = chips.slice(6);
+
+  // Calculate overlap margin dynamically for sm chips
+  const overlapMargin = getOverlapMargin('sm');
 
   return (
     <motion.div
@@ -393,9 +433,9 @@ export function PotDisplay({ amount, animate = true, isWinning = false, winnerId
           {stack1.map((chip, index) => (
             <motion.div
               key={chip.id}
-              layoutId={`pot-${chip.id}`}
+              layoutId={chip.id}
               style={{
-                marginTop: index > 0 ? -32 : 0,
+                marginTop: index > 0 ? overlapMargin : 0,
                 zIndex: index,
               }}
               initial={animate ? { y: -20, opacity: 0 } : false}
@@ -422,9 +462,9 @@ export function PotDisplay({ amount, animate = true, isWinning = false, winnerId
             {stack2.map((chip, index) => (
               <motion.div
                 key={chip.id}
-                layoutId={`pot-${chip.id}`}
+                layoutId={chip.id}
                 style={{
-                  marginTop: index > 0 ? -32 : 0,
+                  marginTop: index > 0 ? overlapMargin : 0,
                   zIndex: index,
                 }}
                 initial={animate ? { y: -20, opacity: 0 } : false}

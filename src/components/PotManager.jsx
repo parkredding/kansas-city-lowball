@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
 import PokerChip, { CHIP_DENOMINATIONS } from './PokerChip';
-import { calculateChipBreakdown } from './ChipStack';
+import { calculateChipBreakdown, getOverlapMargin, CHIP_SIZES } from './ChipStack';
 
 /**
  * PotManager - Manages pot display with animations for betting and winning
@@ -13,6 +13,14 @@ import { calculateChipBreakdown } from './ChipStack';
  * - Winning animation that slides chips to winner
  * - Sound trigger callbacks
  */
+
+/**
+ * Calculate deterministic rotation for pot chips
+ */
+function getDeterministicRotation(index, denomination, potIndex = 0, range = 5) {
+  const hash = (index * 17 + denomination * 13 + potIndex * 7) % 100;
+  return (hash / 100) * range * 2 - range;
+}
 
 /**
  * Individual pot stack component
@@ -29,7 +37,7 @@ function PotStack({
 }) {
   const breakdown = useMemo(() => calculateChipBreakdown(amount), [amount]);
 
-  // Create chip objects with stable IDs
+  // Create chip objects with stable IDs and deterministic rotation
   const chips = useMemo(() => {
     const result = [];
     let count = 0;
@@ -40,8 +48,9 @@ function PotStack({
       for (let i = 0; i < toAdd; i++) {
         result.push({
           denomination,
-          rotation: ((count + i) * 7 + index * 3) % 10 - 5, // Deterministic rotation
-          id: `pot-${index}-${denomination}-${count + i}`,
+          // Deterministic rotation based on position and pot index
+          rotation: getDeterministicRotation(count, denomination, index),
+          id: `pot-${index}-${denomination}-${count}`,
         });
         count++;
       }
@@ -53,6 +62,9 @@ function PotStack({
   // Split into columns if too many chips
   const stack1 = chips.slice(0, 5);
   const stack2 = chips.slice(5);
+
+  // Calculate overlap margin dynamically for sm chips
+  const overlapMargin = getOverlapMargin('sm');
 
   // Calculate winning animation target
   const winningAnimation = isWinning && winnerPosition ? {
@@ -93,7 +105,7 @@ function PotStack({
               key={chip.id}
               layoutId={chip.id}
               style={{
-                marginTop: chipIndex > 0 ? -28 : 0,
+                marginTop: chipIndex > 0 ? overlapMargin : 0,
                 zIndex: chipIndex,
               }}
               initial={animate ? { y: -30, opacity: 0, rotateX: -90 } : false}
@@ -127,7 +139,7 @@ function PotStack({
                 key={chip.id}
                 layoutId={chip.id}
                 style={{
-                  marginTop: chipIndex > 0 ? -28 : 0,
+                  marginTop: chipIndex > 0 ? overlapMargin : 0,
                   zIndex: chipIndex,
                 }}
                 initial={animate ? { y: -30, opacity: 0 } : false}
@@ -192,7 +204,7 @@ export function FlyingChips({
 
   const breakdown = useMemo(() => calculateChipBreakdown(amount), [amount]);
 
-  // Create flying chip objects (limit to 3 for performance)
+  // Create flying chip objects with stable IDs (limit to 3 for performance)
   const chips = useMemo(() => {
     const result = [];
     let count = 0;
@@ -201,8 +213,8 @@ export function FlyingChips({
       for (let i = 0; i < toAdd; i++) {
         result.push({
           denomination,
-          id: `flying-${playerId}-${denomination}-${count + i}`,
-          delay: (count + i) * 0.08,
+          id: `flying-${playerId}-${denomination}-${count}`,
+          delay: count * 0.08,
         });
         count++;
       }
@@ -373,7 +385,7 @@ export function CompactPotDisplay({ amount, animate = true }) {
 
   const breakdown = useMemo(() => calculateChipBreakdown(amount), [amount]);
 
-  // Show only 3 chips max
+  // Show only 3 chips max with deterministic rotation
   const chips = useMemo(() => {
     const result = [];
     let count = 0;
@@ -381,8 +393,9 @@ export function CompactPotDisplay({ amount, animate = true }) {
       const toAdd = Math.min(denomCount, 3 - count);
       for (let i = 0; i < toAdd; i++) {
         result.push({
+          id: `compact-${denomination}-${count}`,
           denomination,
-          rotation: (count + i) * 3 - 3,
+          rotation: getDeterministicRotation(count, denomination, 0, 3),
         });
         count++;
       }
@@ -390,6 +403,9 @@ export function CompactPotDisplay({ amount, animate = true }) {
     }
     return result;
   }, [breakdown]);
+
+  // Calculate overlap margin dynamically for xs chips
+  const overlapMargin = getOverlapMargin('xs');
 
   return (
     <motion.div
@@ -402,9 +418,9 @@ export function CompactPotDisplay({ amount, animate = true }) {
       <div className="flex flex-col-reverse items-center">
         {chips.map((chip, index) => (
           <div
-            key={index}
+            key={chip.id}
             style={{
-              marginTop: index > 0 ? -20 : 0,
+              marginTop: index > 0 ? overlapMargin : 0,
               zIndex: index,
             }}
           >
@@ -439,7 +455,7 @@ export function PlayerBetChips({
 }) {
   const breakdown = useMemo(() => calculateChipBreakdown(amount), [amount]);
 
-  // Create chips (max 4)
+  // Create chips (max 4) with deterministic rotation
   const chips = useMemo(() => {
     const result = [];
     let count = 0;
@@ -448,8 +464,8 @@ export function PlayerBetChips({
       for (let i = 0; i < toAdd; i++) {
         result.push({
           denomination,
-          rotation: (count + i) * 5 - 7.5,
-          id: `player-bet-${playerId}-${denomination}-${count + i}`,
+          rotation: getDeterministicRotation(count, denomination, 0, 4),
+          id: `player-bet-${playerId}-${denomination}-${count}`,
         });
         count++;
       }
@@ -457,6 +473,9 @@ export function PlayerBetChips({
     }
     return result;
   }, [breakdown, playerId]);
+
+  // Calculate overlap margin dynamically for xs chips
+  const overlapMargin = getOverlapMargin('xs');
 
   if (amount <= 0) return null;
 
@@ -481,7 +500,7 @@ export function PlayerBetChips({
             key={chip.id}
             layoutId={chip.id}
             style={{
-              marginTop: index > 0 ? -18 : 0,
+              marginTop: index > 0 ? overlapMargin : 0,
               zIndex: index,
             }}
             initial={animate ? { y: -20, opacity: 0 } : false}

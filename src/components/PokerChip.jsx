@@ -227,7 +227,6 @@ export function FlyingChip({
   denomination = 100,
   size = 'md',
   layoutId,
-  sourceId,
   onAnimationComplete,
 }) {
   const config = CHIP_DENOMINATIONS[denomination] || CHIP_DENOMINATIONS[100];
