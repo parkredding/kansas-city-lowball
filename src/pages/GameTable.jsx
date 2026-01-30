@@ -464,6 +464,20 @@ function GameView() {
   const [showBuyInModal, setShowBuyInModal] = useState(false);
   const [hasDismissedBuyIn, setHasDismissedBuyIn] = useState(false);
   const [showUsernameModal, setShowUsernameModal] = useState(false);
+  const [toast, setToast] = useState(null);
+
+  // Toast auto-dismiss
+  useEffect(() => {
+    if (toast) {
+      const timer = setTimeout(() => setToast(null), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast]);
+
+  // Helper to show toast notification
+  const showToast = (message, type = 'error') => {
+    setToast({ message, type });
+  };
 
   const currentPlayer = getCurrentPlayer();
   const activePlayer = getActivePlayer();
@@ -545,11 +559,41 @@ function GameView() {
     setShowUsernameModal(false);
   };
 
-  // Betting action handlers
-  const handleFold = () => performBetAction(BetAction.FOLD);
-  const handleCheck = () => performBetAction(BetAction.CHECK);
-  const handleCall = () => performBetAction(BetAction.CALL);
-  const handleRaise = (amount) => performBetAction(BetAction.RAISE, amount);
+  // Betting action handlers with toast feedback on error
+  const handleFold = async () => {
+    const result = await performBetAction(BetAction.FOLD);
+    if (!result.success) {
+      showToast(result.error);
+    }
+  };
+
+  const handleCheck = async () => {
+    const result = await performBetAction(BetAction.CHECK);
+    if (!result.success) {
+      showToast(result.error);
+    }
+  };
+
+  const handleCall = async () => {
+    const result = await performBetAction(BetAction.CALL);
+    if (!result.success) {
+      showToast(result.error);
+    }
+  };
+
+  const handleRaise = async (amount) => {
+    const result = await performBetAction(BetAction.RAISE, amount);
+    if (!result.success) {
+      showToast(result.error);
+    }
+  };
+
+  const handleAllIn = async () => {
+    const result = await performBetAction(BetAction.ALL_IN);
+    if (!result.success) {
+      showToast(result.error);
+    }
+  };
 
   // Evaluate hands at showdown
   const playerHandResult = isShowdown && currentPlayer?.hand
@@ -581,6 +625,36 @@ function GameView() {
         isRequired={false}
         loading={loading}
       />
+
+      {/* Toast Notification */}
+      {toast && (
+        <div
+          className={`fixed top-4 left-1/2 transform -translate-x-1/2 z-50 px-6 py-3 rounded-lg shadow-lg animate-pulse ${
+            toast.type === 'error'
+              ? 'bg-red-600 text-white border border-red-400'
+              : toast.type === 'success'
+              ? 'bg-green-600 text-white border border-green-400'
+              : 'bg-yellow-600 text-white border border-yellow-400'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            {toast.type === 'error' && (
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            )}
+            <span className="font-medium">{toast.message}</span>
+            <button
+              onClick={() => setToast(null)}
+              className="ml-2 text-white/80 hover:text-white"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Header */}
       <div className="w-full max-w-4xl flex items-center justify-between flex-wrap gap-2">
@@ -813,6 +887,7 @@ function GameView() {
             onCheck={handleCheck}
             onCall={handleCall}
             onRaise={handleRaise}
+            onAllIn={handleAllIn}
             callAmount={callAmount}
             minRaise={minRaise}
             maxRaise={currentPlayer?.chips || 0}

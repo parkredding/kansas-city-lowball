@@ -200,14 +200,22 @@ export function GameProvider({ children }) {
     }
   }, [currentTableId, tableData]);
 
-  // Perform a betting action (FOLD, CHECK, CALL, RAISE, BET)
+  // Perform a betting action (FOLD, CHECK, CALL, RAISE, BET, ALL_IN)
+  // Returns { success: true } on success, or { success: false, error: string } on failure
   const performBetAction = useCallback(async (action, amount = 0) => {
-    if (!currentTableId || !tableData || !currentUser) return;
+    if (!currentTableId || !tableData || !currentUser) {
+      return { success: false, error: 'Not connected to table' };
+    }
 
     try {
-      await GameService.performBetAction(currentTableId, tableData, currentUser.uid, action, amount);
+      const result = await GameService.performBetAction(currentTableId, tableData, currentUser.uid, action, amount);
+      setError(null);
+      return { success: true, ...result };
     } catch (err) {
+      // Set error for display in UI
       setError(err.message);
+      // Return error info so UI can show immediate feedback
+      return { success: false, error: err.message };
     }
   }, [currentTableId, tableData, currentUser]);
 
