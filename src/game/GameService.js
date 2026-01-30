@@ -16,6 +16,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Deck } from './Deck';
+import { HandEvaluator } from './HandEvaluator';
 import {
   MAX_PLAYERS,
   CARDS_PER_HAND,
@@ -176,6 +177,73 @@ export function distributePots(pots, players, evaluateHand) {
   }
 
   return { winners, updatedPlayers };
+}
+
+/**
+ * Calculate showdown result - who wins with what hand
+ * @param {Array} players - Array of player objects
+ * @param {number} pot - Total pot amount
+ * @returns {Object} - { winners: [{uid, displayName, amount, handDescription}], message }
+ */
+export function calculateShowdownResult(players, pot) {
+  // Find players still in the hand with hands
+  const contenders = players.filter(
+    p => (p.status === 'active' || p.status === 'all-in') &&
+         p.hand && p.hand.length === 5
+  );
+
+  if (contenders.length === 0) {
+    return { winners: [], message: 'No showdown' };
+  }
+
+  // Evaluate each contender's hand
+  const evaluated = contenders.map(p => {
+    const result = HandEvaluator.evaluate(p.hand);
+    return {
+      uid: p.uid,
+      displayName: p.displayName,
+      handResult: result,
+      handDescription: HandEvaluator.getHandDescription(result),
+    };
+  });
+
+  // Sort by hand value (lower is better in lowball)
+  evaluated.sort((a, b) => {
+    if (a.handResult.score < b.handResult.score) return -1;
+    if (a.handResult.score > b.handResult.score) return 1;
+    return 0;
+  });
+
+  // Find all players tied for best hand
+  const bestScore = evaluated[0].handResult.score;
+  const winners = evaluated.filter(e => e.handResult.score === bestScore);
+
+  // Calculate winnings
+  const sharePerWinner = Math.floor(pot / winners.length);
+  const remainder = pot % winners.length;
+
+  const winnersWithAmounts = winners.map((w, idx) => ({
+    uid: w.uid,
+    displayName: w.displayName,
+    amount: sharePerWinner + (idx === 0 ? remainder : 0),
+    handDescription: w.handDescription,
+    handResult: w.handResult,
+  }));
+
+  // Generate message
+  let message;
+  if (winners.length === 1) {
+    message = `${winners[0].displayName} wins $${pot} with ${winners[0].handDescription}`;
+  } else {
+    const names = winners.map(w => w.displayName).join(' and ');
+    message = `${names} split $${pot} with ${winners[0].handDescription}`;
+  }
+
+  return {
+    winners: winnersWithAmounts,
+    message,
+    allHands: evaluated, // Include all hands for display
+  };
 }
 
 /**
@@ -831,21 +899,26 @@ export class GameService {
       }
     }
 
-    // Determine dealer, small blind, big blind positions
-    const dealerIndex = (tableData.dealerIndex || 0) % activePlayers.length;
-
-    // Find active player indices
+    // Find active player indices (players who can participate in the hand)
     const activeIndices = players
       .map((p, i) => (p.status === 'active' ? i : -1))
       .filter((i) => i !== -1);
 
-    // Small blind is next to dealer, big blind is next after small blind
-    const dealerActivePos = activeIndices.indexOf(players.findIndex((p, i) =>
-      p.status === 'active' && activeIndices.indexOf(i) === dealerIndex
-    ));
+    // Determine dealer position within active players, then convert to actual seat index
+    const dealerActivePosition = (tableData.dealerIndex || 0) % activeIndices.length;
+    const dealerSeatIndex = activeIndices[dealerActivePosition];
 
-    const sbActiveIndex = activeIndices[(dealerActivePos + 1) % activeIndices.length];
-    const bbActiveIndex = activeIndices[(dealerActivePos + 2) % activeIndices.length];
+    // Small blind is next active player after dealer
+    const sbActivePosition = (dealerActivePosition + 1) % activeIndices.length;
+    const sbSeatIndex = activeIndices[sbActivePosition];
+
+    // Big blind is next active player after small blind
+    const bbActivePosition = (dealerActivePosition + 2) % activeIndices.length;
+    const bbSeatIndex = activeIndices[bbActivePosition];
+
+    // For legacy compatibility, use variable names matching existing code
+    const sbActiveIndex = sbSeatIndex;
+    const bbActiveIndex = bbSeatIndex;
 
     let pot = 0;
 
@@ -864,7 +937,8 @@ export class GameService {
     pot += bbAmount;
 
     // Action starts with player after big blind (UTG)
-    const utgActiveIndex = activeIndices[(dealerActivePos + 3) % activeIndices.length];
+    const utgActivePosition = (dealerActivePosition + 3) % activeIndices.length;
+    const utgActiveIndex = activeIndices[utgActivePosition];
 
     await GameService.updateTable(tableId, {
       deck,
@@ -874,7 +948,11 @@ export class GameService {
       currentBet: bigBlind,
       phase: 'BETTING_1',
       activePlayerIndex: utgActiveIndex,
-      dealerIndex: dealerIndex,
+      // Store actual seat indices (full players array indices) for UI
+      dealerIndex: dealerActivePosition, // Keep as position for rotation in startNextHand
+      dealerSeatIndex: dealerSeatIndex,
+      smallBlindSeatIndex: sbSeatIndex,
+      bigBlindSeatIndex: bbSeatIndex,
       turnDeadline: GameService.calculateTurnDeadline(),
     });
   }
@@ -1211,15 +1289,51 @@ export class GameService {
           .filter((i) => i !== -1);
       }
 
+      // If going to showdown, calculate result and award pot
+      let showdownResult = null;
+      let updatedPlayers = players;
+      let updatedPot = pot;
+      let updatedActivityLog = activityLog;
+
+      if (isShowdown) {
+        showdownResult = calculateShowdownResult(players, pot);
+
+        // Award pot to winner(s)
+        updatedPlayers = players.map(p => {
+          const winner = showdownResult.winners.find(w => w.uid === p.uid);
+          if (winner) {
+            return { ...p, chips: p.chips + winner.amount };
+          }
+          return p;
+        });
+
+        // Reset totalContribution for next hand
+        updatedPlayers.forEach(p => {
+          p.totalContribution = 0;
+        });
+
+        updatedPot = 0;
+
+        // Add winner message to activity log
+        if (showdownResult.message) {
+          updatedActivityLog = [...activityLog, {
+            type: 'game_event',
+            text: showdownResult.message,
+            timestamp: Date.now(),
+          }];
+        }
+      }
+
       await GameService.updateTable(tableId, {
-        players,
-        pot,
-        pots: sidePots,
+        players: updatedPlayers,
+        pot: updatedPot,
+        pots: isShowdown ? [] : sidePots,
         currentBet: 0,
         phase: nextPhase,
         activePlayerIndex: activeIndices.length > 0 ? activeIndices[0] : 0,
         turnDeadline: isShowdown ? null : GameService.calculateTurnDeadline(),
-        chatLog: activityLog,
+        chatLog: updatedActivityLog,
+        showdownResult: isShowdown ? showdownResult : null,
       });
     } else {
       // Move to next player
@@ -1253,15 +1367,51 @@ export class GameService {
               .filter((i) => i !== -1);
           }
 
+          // If going to showdown, calculate result and award pot
+          let showdownResult = null;
+          let updatedPlayers = players;
+          let updatedPot = pot;
+          let updatedActivityLog = activityLog;
+
+          if (isShowdown) {
+            showdownResult = calculateShowdownResult(players, pot);
+
+            // Award pot to winner(s)
+            updatedPlayers = players.map(p => {
+              const winner = showdownResult.winners.find(w => w.uid === p.uid);
+              if (winner) {
+                return { ...p, chips: p.chips + winner.amount };
+              }
+              return p;
+            });
+
+            // Reset totalContribution for next hand
+            updatedPlayers.forEach(p => {
+              p.totalContribution = 0;
+            });
+
+            updatedPot = 0;
+
+            // Add winner message to activity log
+            if (showdownResult.message) {
+              updatedActivityLog = [...activityLog, {
+                type: 'game_event',
+                text: showdownResult.message,
+                timestamp: Date.now(),
+              }];
+            }
+          }
+
           await GameService.updateTable(tableId, {
-            players,
-            pot,
-            pots: calculateSidePots(players),
+            players: updatedPlayers,
+            pot: updatedPot,
+            pots: isShowdown ? [] : calculateSidePots(players),
             currentBet: 0,
             phase: nextPhase,
             activePlayerIndex: activeIndices.length > 0 ? activeIndices[0] : 0,
             turnDeadline: isShowdown ? null : GameService.calculateTurnDeadline(),
-            chatLog: activityLog,
+            chatLog: updatedActivityLog,
+            showdownResult: isShowdown ? showdownResult : null,
           });
         } else {
           // Round not complete but no one can act - this shouldn't happen, but set to 0 as fallback
@@ -1483,16 +1633,45 @@ export class GameService {
       if (allInOrFolded || bettingActiveIndices.length <= 1) {
         // All remaining players are all-in or only one can bet
         // Skip remaining betting/draw rounds and go to showdown
+        const showdownResult = calculateShowdownResult(players, tableData.pot);
+
+        // Award pot to winner(s)
+        const updatedPlayers = players.map(p => {
+          const winner = showdownResult.winners.find(w => w.uid === p.uid);
+          if (winner) {
+            return { ...p, chips: p.chips + winner.amount };
+          }
+          return p;
+        });
+
+        // Reset totalContribution for next hand
+        updatedPlayers.forEach(p => {
+          p.totalContribution = 0;
+        });
+
         updates.phase = 'SHOWDOWN';
         updates.turnDeadline = null;
         updates.activePlayerIndex = 0;
+        updates.players = updatedPlayers;
+        updates.pot = 0;
+        updates.pots = [];
+        updates.showdownResult = showdownResult;
+
+        // Add winner message to activity log
+        if (showdownResult.message) {
+          updates.chatLog = [...activityLog, {
+            type: 'game_event',
+            text: showdownResult.message,
+            timestamp: Date.now(),
+          }];
+        }
       } else {
         updates.phase = nextPhase;
         updates.activePlayerIndex = bettingActiveIndices[0];
         updates.currentBet = 0;
         updates.turnDeadline = GameService.calculateTurnDeadline();
+        updates.players = players;
       }
-      updates.players = players;
     } else {
       // Move to next player who hasn't acted yet
       updates.activePlayerIndex = nextPlayerIndex;
@@ -1520,7 +1699,7 @@ export class GameService {
       lastAction: null, // Clear action text for new hand
     }));
 
-    // Move dealer button
+    // Move dealer button - dealerIndex is a position among active players
     const activePlayerCount = players.filter((p) => p.status === 'active').length;
     const newDealerIndex = ((tableData.dealerIndex || 0) + 1) % Math.max(activePlayerCount, 1);
 
@@ -1534,6 +1713,12 @@ export class GameService {
       players,
       activePlayerIndex: 0,
       dealerIndex: newDealerIndex,
+      // Clear seat indices - will be recalculated when dealing
+      dealerSeatIndex: null,
+      smallBlindSeatIndex: null,
+      bigBlindSeatIndex: null,
+      // Clear showdown result
+      showdownResult: null,
       turnDeadline: null,
     });
   }

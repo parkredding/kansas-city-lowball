@@ -11,7 +11,7 @@ import UsernameModal from '../components/UsernameModal';
 import CreateGameModal from '../components/CreateGameModal';
 import JoinTableModal from '../components/JoinTableModal';
 import ChatBox from '../components/ChatBox';
-import ChipStack, { MiniChipStack } from '../components/ChipStack';
+import ChipStack, { MiniChipStack, BetChip, PotDisplay } from '../components/ChipStack';
 import { PositionIndicators } from '../components/PositionButtons';
 import { useBotOrchestrator } from '../game/ai/useBotOrchestrator';
 
@@ -233,6 +233,103 @@ function formatHandName(categoryName) {
     .split('_')
     .map(word => word.charAt(0) + word.slice(1).toLowerCase())
     .join(' ');
+}
+
+/**
+ * Enhanced Pot Display with contribution breakdown
+ * Shows total pot with parenthetical for how much comes from other players
+ */
+function PotDisplayWithContribution({ totalPot, playerContribution, size = 'lg' }) {
+  if (totalPot <= 0) return null;
+
+  const othersContribution = Math.max(0, totalPot - playerContribution);
+
+  return (
+    <div className="flex flex-col items-center">
+      <ChipStack amount={totalPot} size={size} showAmount={false} />
+      <motion.div
+        className="bg-amber-900/95 px-4 py-2 rounded-lg shadow-lg mt-2 border border-amber-700/50"
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.2 }}
+        style={{
+          boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+        }}
+      >
+        <div className="flex items-center gap-2">
+          <span className="text-amber-100 font-bold text-lg">
+            ${totalPot.toLocaleString()}
+          </span>
+          {othersContribution > 0 && (
+            <span className="text-amber-300/80 text-sm">
+              (+${othersContribution.toLocaleString()})
+            </span>
+          )}
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+/**
+ * Showdown Result Display - Shows the winner announcement prominently
+ */
+function ShowdownResultDisplay({ showdownResult, isDesktop }) {
+  if (!showdownResult || !showdownResult.winners || showdownResult.winners.length === 0) {
+    return null;
+  }
+
+  const winner = showdownResult.winners[0];
+  const isSplit = showdownResult.winners.length > 1;
+
+  return (
+    <motion.div
+      className={`
+        bg-gradient-to-r from-amber-600 via-yellow-500 to-amber-600
+        rounded-xl shadow-2xl border-2 border-yellow-300
+        ${isDesktop ? 'px-6 py-4' : 'px-4 py-3'}
+      `}
+      initial={{ scale: 0, opacity: 0, y: -20 }}
+      animate={{ scale: 1, opacity: 1, y: 0 }}
+      transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+      style={{
+        boxShadow: '0 0 40px rgba(251,191,36,0.5), 0 8px 30px rgba(0,0,0,0.4)',
+      }}
+    >
+      {/* Winner crown icon */}
+      <div className="flex justify-center mb-2">
+        <span className="text-3xl">👑</span>
+      </div>
+      
+      {/* Winner name */}
+      <div className="text-center">
+        <p className={`font-bold text-gray-900 ${isDesktop ? 'text-xl' : 'text-lg'}`}>
+          {isSplit 
+            ? showdownResult.winners.map(w => w.displayName).join(' & ')
+            : winner.displayName}
+        </p>
+        <p className={`text-gray-800 ${isDesktop ? 'text-sm' : 'text-xs'} mt-1`}>
+          {isSplit ? 'split the pot' : 'wins'}
+        </p>
+      </div>
+
+      {/* Winning hand description */}
+      <div className="text-center mt-2">
+        <span className="inline-block bg-gray-900/20 px-3 py-1 rounded-full">
+          <span className={`font-semibold text-gray-900 ${isDesktop ? 'text-base' : 'text-sm'}`}>
+            {winner.handDescription || formatHandName(winner.handResult?.categoryName)}
+          </span>
+        </span>
+      </div>
+
+      {/* Amount won */}
+      <div className="text-center mt-3">
+        <span className={`font-bold text-gray-900 ${isDesktop ? 'text-2xl' : 'text-xl'}`}>
+          ${winner.amount.toLocaleString()}
+        </span>
+      </div>
+    </motion.div>
+  );
 }
 
 function PhaseIndicator({ phase }) {
@@ -731,15 +828,15 @@ function GameView() {
     .filter((p) => p.uid !== currentUser?.uid)
     .sort((a, b) => a.relativeIndex - b.relativeIndex);
 
-  // Calculate dealer, small blind, and big blind positions
-  const dealerIndex = tableData?.dealerIndex ?? 0;
-  const smallBlindIndex = (dealerIndex + 1) % totalPlayers;
-  const bigBlindIndex = (dealerIndex + 2) % totalPlayers;
+  // Use actual seat indices stored in table data for dealer/blinds
+  const dealerSeatIndex = tableData?.dealerSeatIndex;
+  const smallBlindSeatIndex = tableData?.smallBlindSeatIndex;
+  const bigBlindSeatIndex = tableData?.bigBlindSeatIndex;
 
   // Helper to check if a player is at a specific position
-  const isDealer = (seatIndex) => seatIndex === dealerIndex;
-  const isSmallBlind = (seatIndex) => seatIndex === smallBlindIndex && totalPlayers > 2;
-  const isBigBlind = (seatIndex) => seatIndex === bigBlindIndex || (totalPlayers === 2 && seatIndex === smallBlindIndex);
+  const isDealer = (seatIndex) => dealerSeatIndex !== null && dealerSeatIndex !== undefined && seatIndex === dealerSeatIndex;
+  const isSmallBlind = (seatIndex) => smallBlindSeatIndex !== null && smallBlindSeatIndex !== undefined && seatIndex === smallBlindSeatIndex && totalPlayers > 2;
+  const isBigBlind = (seatIndex) => bigBlindSeatIndex !== null && bigBlindSeatIndex !== undefined && seatIndex === bigBlindSeatIndex;
 
   // Detect desktop mode
   const [isDesktop, setIsDesktop] = useState(false);
@@ -892,7 +989,14 @@ function GameView() {
         </div>
         <div className="bg-amber-900/40 rounded-lg p-2.5 text-center border border-amber-700/30">
           <span className="text-amber-300/80 text-[10px] block uppercase tracking-wider">Pot</span>
-          <span className="text-amber-400 font-bold text-xl">${(tableData?.pot || 0).toLocaleString()}</span>
+          <div className="flex items-center justify-center gap-1">
+            <span className="text-amber-400 font-bold text-xl">${(tableData?.pot || 0).toLocaleString()}</span>
+            {tableData?.pot > 0 && (currentPlayer?.totalContribution || 0) < tableData?.pot && (
+              <span className="text-amber-300/60 text-sm">
+                (+${Math.max(0, (tableData?.pot || 0) - (currentPlayer?.totalContribution || 0)).toLocaleString()})
+              </span>
+            )}
+          </div>
         </div>
         {tableData?.currentBet > 0 && (
           <div className="bg-blue-900/40 rounded-lg p-2.5 text-center border border-blue-700/30">
@@ -1195,17 +1299,30 @@ function GameView() {
                   </div>
                 )}
 
-                {/* Pot display in center with enhanced ChipStack */}
-                {tableData?.pot > 0 && (
+                {/* Pot display or Showdown Result in center */}
+                {isShowdown && tableData?.showdownResult ? (
                   <motion.div 
                     className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 z-30"
                     initial={{ scale: 0, opacity: 0 }}
                     animate={{ scale: 1, opacity: 1 }}
                     transition={{ type: 'spring', stiffness: 200, damping: 20 }}
                   >
-                    <ChipStack amount={tableData.pot} size="lg" showAmount={true} />
+                    <ShowdownResultDisplay showdownResult={tableData.showdownResult} isDesktop={true} />
                   </motion.div>
-                )}
+                ) : tableData?.pot > 0 ? (
+                  <motion.div 
+                    className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 z-30"
+                    initial={{ scale: 0, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ type: 'spring', stiffness: 200, damping: 20 }}
+                  >
+                    <PotDisplayWithContribution 
+                      totalPot={tableData.pot} 
+                      playerContribution={currentPlayer?.totalContribution || 0}
+                      size="lg"
+                    />
+                  </motion.div>
+                ) : null}
               </div>
 
               {/* Hero's Hand Area - Premium styling */}
@@ -1508,17 +1625,30 @@ function GameView() {
           </div>
         )}
 
-        {/* Pot display in center of table with 3D chip stack */}
-        {tableData?.pot > 0 && (
+        {/* Pot display or Showdown Result in center of table */}
+        {isShowdown && tableData?.showdownResult ? (
           <motion.div
             className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 flex flex-col items-center z-30"
             initial={{ scale: 0, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ type: 'spring', stiffness: 300, damping: 25 }}
           >
-            <PotDisplay amount={tableData.pot} isWinning={isShowdown} />
+            <ShowdownResultDisplay showdownResult={tableData.showdownResult} isDesktop={false} />
           </motion.div>
-        )}
+        ) : tableData?.pot > 0 ? (
+          <motion.div
+            className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 flex flex-col items-center z-30"
+            initial={{ scale: 0, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+          >
+            <PotDisplayWithContribution 
+              totalPot={tableData.pot} 
+              playerContribution={currentPlayer?.totalContribution || 0}
+              size="md"
+            />
+          </motion.div>
+        ) : null}
       </div>
 
       {/* Game Table - Current Player's Hand */}
