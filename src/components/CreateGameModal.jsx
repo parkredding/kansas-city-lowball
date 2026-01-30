@@ -73,9 +73,11 @@ function CreateGameModal({ isOpen, onClose, onCreate, loading }) {
 
     try {
       const result = await onCreate(config);
-      // Don't close modal here - let the parent handle it based on the result
+      // Close modal if table was successfully created (result is truthy)
+      if (result) {
+        onClose();
+      }
       // If result is null/undefined, error is already set in context, modal will stay open
-      // If result is truthy, parent will close the modal
     } catch (err) {
       setError(err.message || 'Failed to create table');
       // Don't close modal on error

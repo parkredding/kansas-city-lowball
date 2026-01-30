@@ -85,44 +85,93 @@ function getRelativeSeatIndex(playerSeatIndex, heroSeatIndex, totalPlayers) {
   return (playerSeatIndex - heroSeatIndex + totalPlayers) % totalPlayers;
 }
 
-function Card({ card, isSelected, onClick, isSelectable, faceDown = false }) {
+function Card({ card, isSelected, onClick, isSelectable, faceDown = false, index = 0, isDealing = false }) {
   if (faceDown) {
     return (
-      <div className="bg-blue-800 rounded-lg shadow-lg w-16 h-24 flex flex-col items-center justify-center border-2 border-blue-900">
-        <div className="w-12 h-18 bg-blue-700 rounded border border-blue-600 flex items-center justify-center">
-          <span className="text-blue-500 text-2xl">?</span>
+      <motion.div
+        className="bg-gradient-to-br from-blue-800 to-blue-900 rounded-xl shadow-2xl w-16 h-24 flex flex-col items-center justify-center border-2 border-blue-700"
+        initial={{ y: -100, opacity: 0, scale: 0.5, rotateY: 180 }}
+        animate={{ 
+          y: 0, 
+          opacity: 1, 
+          scale: 1, 
+          rotateY: 0,
+          transition: {
+            type: 'spring',
+            stiffness: 300,
+            damping: 25,
+            delay: isDealing ? index * 0.1 : 0,
+          }
+        }}
+        style={{
+          boxShadow: '0 8px 16px rgba(0,0,0,0.4), inset 0 1px 2px rgba(255,255,255,0.1)',
+        }}
+      >
+        <div className="w-12 h-18 bg-gradient-to-br from-blue-600 to-blue-800 rounded-lg border-2 border-blue-500 flex items-center justify-center">
+          <div className="w-10 h-14 rounded bg-gradient-to-br from-blue-500 to-blue-700 border border-blue-400" />
         </div>
-      </div>
+      </motion.div>
     );
   }
 
   const suit = SUIT_SYMBOLS[card.suit];
 
   return (
-    <button
+    <motion.button
       type="button"
       onClick={onClick}
       disabled={!isSelectable}
       className={`
-        bg-white rounded-lg shadow-lg w-16 h-24 flex flex-col items-center justify-center border-2
-        transition-all duration-150
+        bg-gradient-to-br from-white to-gray-50 rounded-xl shadow-2xl w-16 h-24 flex flex-col items-center justify-center border-2
         ${isSelected
-          ? 'border-yellow-400 ring-2 ring-yellow-400 -translate-y-2'
-          : 'border-gray-300'
+          ? 'border-yellow-400 ring-4 ring-yellow-400 ring-opacity-50'
+          : 'border-gray-200'
         }
         ${isSelectable
-          ? 'cursor-pointer hover:border-yellow-300 hover:-translate-y-1'
+          ? 'cursor-pointer'
           : 'cursor-default'
         }
       `}
+      initial={{ y: -100, opacity: 0, scale: 0.5, rotateY: 180 }}
+      animate={{ 
+        y: isSelected ? -8 : 0, 
+        opacity: 1, 
+        scale: 1, 
+        rotateY: 0,
+        transition: {
+          type: 'spring',
+          stiffness: 300,
+          damping: 25,
+          delay: isDealing ? index * 0.1 : 0,
+        }
+      }}
+      whileHover={isSelectable ? { 
+        y: isSelected ? -10 : -4, 
+        scale: 1.05,
+        transition: { duration: 0.2 }
+      } : {}}
+      whileTap={isSelectable ? { scale: 0.95 } : {}}
+      style={{
+        boxShadow: isSelected
+          ? '0 12px 24px rgba(234,179,8,0.5), 0 4px 8px rgba(0,0,0,0.3)'
+          : '0 4px 12px rgba(0,0,0,0.2), 0 2px 4px rgba(0,0,0,0.1)',
+      }}
     >
-      <span className={`text-xl font-bold ${suit.color}`}>
+      <motion.span 
+        className={`text-xl font-bold ${suit.color}`}
+        animate={isSelected ? { scale: [1, 1.1, 1] } : {}}
+        transition={{ duration: 0.3 }}
+      >
         {card.rank}
-      </span>
-      <span className={`text-2xl ${suit.color}`}>
+      </motion.span>
+      <motion.span 
+        className={`text-2xl ${suit.color}`}
+        animate={isSelected ? { scale: [1, 1.1, 1] } : {}}
+        transition={{ duration: 0.3, delay: 0.1 }}
+      >
         {suit.symbol}
-      </span>
-    </button>
+      </motion.span>
+    </motion.button>
   );
 }
 
@@ -150,18 +199,23 @@ function PhaseIndicator({ phase }) {
   const isShowdown = phase === 'SHOWDOWN';
   const isIdle = phase === 'IDLE';
 
-  let bgColor = 'bg-gray-600';
-  if (isBetting) bgColor = 'bg-blue-600';
-  if (isDraw) bgColor = 'bg-purple-600';
-  if (isShowdown) bgColor = 'bg-yellow-600';
-  if (isIdle) bgColor = 'bg-gray-600';
+  let bgGradient = 'from-gray-600 to-gray-700';
+  if (isBetting) bgGradient = 'from-blue-600 to-blue-700';
+  if (isDraw) bgGradient = 'from-purple-600 to-purple-700';
+  if (isShowdown) bgGradient = 'from-yellow-500 to-yellow-600';
+  if (isIdle) bgGradient = 'from-gray-600 to-gray-700';
 
   return (
-    <div className={`${bgColor} px-6 py-2 rounded-full shadow-lg`}>
-      <span className="text-white font-semibold text-lg">
+    <motion.div 
+      className={`bg-gradient-to-r ${bgGradient} px-6 py-2.5 rounded-full shadow-xl`}
+      initial={{ scale: 0.8, opacity: 0 }}
+      animate={{ scale: 1, opacity: 1 }}
+      transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+    >
+      <span className="text-white font-bold text-sm tracking-wide">
         {displayName}
       </span>
-    </div>
+    </motion.div>
   );
 }
 
@@ -250,12 +304,21 @@ function PlayerSlot({ player, isCurrentUser, isActive, showCards, handResult, tu
   };
 
   return (
-    <div
+    <motion.div
       className={`
-        relative bg-gray-800 rounded-xl p-4 border-2
-        ${isActive ? 'ring-2 ring-yellow-400' : ''}
+        relative bg-gradient-to-br from-gray-800 to-gray-900 rounded-xl p-4 border-2
+        ${isActive ? 'ring-4 ring-yellow-400 ring-opacity-60' : ''}
         ${statusColors[player.status] || 'border-gray-600'}
       `}
+      animate={isActive ? {
+        boxShadow: '0 0 20px rgba(234,179,8,0.5)',
+      } : {}}
+      transition={{ duration: 0.3 }}
+      style={{
+        boxShadow: isActive 
+          ? '0 8px 24px rgba(234,179,8,0.4), 0 4px 8px rgba(0,0,0,0.3)'
+          : '0 4px 12px rgba(0,0,0,0.2)',
+      }}
     >
       {/* Position badges (Dealer/SB/BB) */}
       <div className="absolute -top-2 -right-2 flex gap-1 z-20">
@@ -359,7 +422,7 @@ function PlayerSlot({ player, isCurrentUser, isActive, showCards, handResult, tu
           </p>
         </div>
       )}
-    </div>
+    </motion.div>
   );
 }
 
@@ -407,11 +470,8 @@ function LobbyView() {
 
   const handleCreateTableWithConfig = async (config) => {
     const tableId = await createTable(config);
-    // Only close modal if table was successfully created
-    if (tableId) {
-      setShowCreateGameModal(false);
-    }
-    // If tableId is null, error is already set in context, modal will stay open
+    // Return tableId so modal can check if creation was successful
+    return tableId;
   };
 
   const handleJoinTable = () => {
@@ -848,17 +908,25 @@ function GameView() {
         )}
 
         {isDrawPhase && myTurn && (
-          <button
+          <motion.button
             type="button"
             onClick={handleSubmitDraw}
             disabled={loading}
-            className="w-full bg-purple-600 hover:bg-purple-500 disabled:bg-purple-800 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition-colors"
+            className="w-full bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-500 hover:to-purple-600 disabled:from-purple-800 disabled:to-purple-900 text-white font-bold py-3 px-6 rounded-xl shadow-xl transition-all duration-200"
+            whileHover={{ scale: 1.02, boxShadow: '0 10px 25px rgba(147,51,234,0.4)' }}
+            whileTap={{ scale: 0.98 }}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3 }}
+            style={{
+              boxShadow: '0 4px 12px rgba(147,51,234,0.3)',
+            }}
           >
             {selectedCardIndices.size > 0
               ? `Discard ${selectedCardIndices.size} Card${selectedCardIndices.size > 1 ? 's' : ''}`
               : 'Stand Pat'
             }
-          </button>
+          </motion.button>
         )}
 
         {isShowdown && (
@@ -942,14 +1010,21 @@ function GameView() {
       {isDesktop ? (
         <div className="h-screen flex flex-col">
           {/* Header */}
-          <div className="flex items-center justify-between p-3 bg-gray-900/50 border-b border-gray-700 flex-shrink-0">
-            <button
+          <motion.div 
+            className="flex items-center justify-between p-3 bg-gradient-to-r from-gray-900/90 to-gray-800/90 border-b border-gray-700/50 flex-shrink-0 backdrop-blur-sm"
+            initial={{ y: -20, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ duration: 0.3 }}
+          >
+            <motion.button
               type="button"
               onClick={leaveTable}
-              className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm"
+              className="bg-gradient-to-r from-gray-700 to-gray-600 hover:from-gray-600 hover:to-gray-500 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-lg transition-all duration-200"
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
             >
               Leave Table
-            </button>
+            </motion.button>
             <div className="flex items-center gap-4">
               <div className="bg-gray-800 px-4 py-2 rounded-lg">
                 <span className="text-gray-400 text-sm">Table: </span>
@@ -963,7 +1038,7 @@ function GameView() {
               </div>
               <WalletDisplay balance={userWallet?.balance} loading={walletLoading} />
             </div>
-          </div>
+          </motion.div>
 
           {/* Main Content - 3 Column Layout */}
           <div className="flex-1 flex overflow-hidden min-h-0">
@@ -984,26 +1059,30 @@ function GameView() {
             </div>
 
             {/* Center: Poker Table */}
-            <div className="flex-1 flex flex-col items-center min-h-0 overflow-y-auto overflow-x-visible py-4">
+            <div className="flex-1 flex flex-col items-center min-h-0 overflow-hidden">
               {/* Error display */}
               {error && (
-                <div className="bg-red-500/20 border border-red-500 text-red-200 px-4 py-2 rounded text-sm mb-4 flex-shrink-0">
+                <div className="bg-red-500/20 border border-red-500 text-red-200 px-4 py-2 rounded text-sm my-2 flex-shrink-0">
                   {error}
                 </div>
               )}
 
               {/* Poker Table with Radial Player Positioning */}
-              <div className="w-full max-w-4xl relative flex-shrink-0 px-4 overflow-visible" style={{ minHeight: '500px', height: '500px' }}>
+              <div className="w-full max-w-4xl relative flex-1 flex-shrink-0 overflow-visible px-4" style={{ minHeight: '400px', maxHeight: '450px' }}>
                 {/* Oval table background */}
-                <div
-                  className="absolute bg-green-700/30 border-4 border-green-600/50"
+                <motion.div
+                  className="absolute bg-gradient-to-br from-green-700/40 via-green-600/30 to-green-700/40 border-4 border-green-500/60"
                   style={{
                     left: '10%',
                     right: '10%',
                     top: '5%',
                     bottom: '15%',
                     borderRadius: '50%',
+                    boxShadow: 'inset 0 4px 20px rgba(0,0,0,0.3), 0 0 40px rgba(34,197,94,0.2)',
                   }}
+                  initial={{ scale: 0.9, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ duration: 0.6, ease: 'easeOut' }}
                 />
 
                 {/* Opponents positioned radially around the table */}
@@ -1054,7 +1133,15 @@ function GameView() {
               </div>
 
               {/* Hero's Hand Area */}
-              <div className="mt-8 mb-4 bg-green-700 rounded-3xl px-12 py-6 border-8 border-yellow-700 shadow-2xl flex-shrink-0 w-full max-w-4xl mx-4">
+              <motion.div 
+                className="bg-gradient-to-br from-green-700 via-green-600 to-green-700 rounded-3xl px-12 py-6 border-4 border-yellow-500 shadow-2xl flex-shrink-0 w-full max-w-4xl mx-4 mb-4"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5 }}
+                style={{
+                  boxShadow: '0 20px 40px rgba(0,0,0,0.4), inset 0 2px 4px rgba(255,255,255,0.1)',
+                }}
+              >
                 {/* Position indicators for hero */}
                 <div className="flex justify-center mb-2">
                   <PositionIndicators
@@ -1065,17 +1152,39 @@ function GameView() {
                 </div>
 
                 {currentPlayer?.hand && currentPlayer.hand.length > 0 ? (
-                  <div className="flex flex-col items-center gap-4">
+                  <motion.div 
+                    className="flex flex-col items-center gap-4"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.4 }}
+                  >
                     <div className="flex gap-3">
-                      {currentPlayer.hand.map((card, index) => (
-                        <Card
-                          key={`${index}-${card.rank}-${card.suit}`}
-                          card={card}
-                          isSelected={selectedCardIndices.has(index)}
-                          isSelectable={isDrawPhase && myTurn}
-                          onClick={() => toggleCardSelection(index)}
-                        />
-                      ))}
+                      <AnimatePresence mode="popLayout">
+                        {currentPlayer.hand.map((card, index) => (
+                          <motion.div
+                            key={`${index}-${card.rank}-${card.suit}`}
+                            layout
+                            initial={{ opacity: 0, scale: 0.8 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.8, y: -50 }}
+                            transition={{ 
+                              type: 'spring',
+                              stiffness: 300,
+                              damping: 25,
+                              delay: index * 0.05
+                            }}
+                          >
+                            <Card
+                              card={card}
+                              isSelected={selectedCardIndices.has(index)}
+                              isSelectable={isDrawPhase && myTurn}
+                              onClick={() => toggleCardSelection(index)}
+                              index={index}
+                              isDealing={isIdle && currentPlayer.hand.length === 5}
+                            />
+                          </motion.div>
+                        ))}
+                      </AnimatePresence>
                     </div>
 
                     {isDrawPhase && myTurn && (
@@ -1091,15 +1200,20 @@ function GameView() {
                         </p>
                       </div>
                     )}
-                  </div>
+                  </motion.div>
                 ) : (
-                  <div className="text-center py-4">
+                  <motion.div 
+                    className="text-center py-4"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ duration: 0.3 }}
+                  >
                     <p className="text-white text-xl font-semibold">
                       {needsBuyIn ? 'Buy in to play!' : isIdle ? (canStartGame ? 'Ready to deal!' : 'Waiting for players...') : 'Waiting for cards...'}
                     </p>
-                  </div>
+                  </motion.div>
                 )}
-              </div>
+              </motion.div>
             </div>
 
             {/* Right Sidebar: Action Controls */}
