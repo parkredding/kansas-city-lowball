@@ -13,7 +13,7 @@ import { BetAction, GameService } from '../GameService';
  */
 export function useBotOrchestrator(tableData, currentTableId, currentUserId, creatorId) {
   const processingRef = useRef(false);
-  const lastActivePlayerIndexRef = useRef(-1);
+  const lastProcessedRef = useRef({ phase: null, activePlayerIndex: -1 });
   const tableDataRef = useRef(tableData);
 
   // Keep ref updated with latest tableData
@@ -34,24 +34,28 @@ export function useBotOrchestrator(tableData, currentTableId, currentUserId, cre
 
     const activePlayerIndex = tableData.activePlayerIndex;
     const activePlayer = tableData.players?.[activePlayerIndex];
+    const phase = tableData.phase;
 
-    // Check if we've already processed this turn
-    if (activePlayerIndex === lastActivePlayerIndexRef.current) {
+    // Check if we've already processed this exact turn (same phase + same player)
+    if (phase === lastProcessedRef.current.phase && 
+        activePlayerIndex === lastProcessedRef.current.activePlayerIndex) {
+      return;
+    }
+
+    // Check if game is in a valid phase for bot action
+    const isBettingPhase = phase?.startsWith('BETTING_');
+    const isDrawPhase = phase?.startsWith('DRAW_');
+
+    if (!isBettingPhase && !isDrawPhase) {
+      // Not a valid phase for bot action, update tracking
+      lastProcessedRef.current = { phase, activePlayerIndex };
       return;
     }
 
     // Check if active player is a bot
     if (!activePlayer || !activePlayer.isBot) {
-      lastActivePlayerIndexRef.current = activePlayerIndex;
-      return;
-    }
-
-    // Check if game is in a valid phase for bot action
-    const phase = tableData.phase;
-    const isBettingPhase = phase?.startsWith('BETTING_');
-    const isDrawPhase = phase?.startsWith('DRAW_');
-
-    if (!isBettingPhase && !isDrawPhase) {
+      // Not a bot, update tracking
+      lastProcessedRef.current = { phase, activePlayerIndex };
       return;
     }
 
@@ -63,7 +67,7 @@ export function useBotOrchestrator(tableData, currentTableId, currentUserId, cre
 
     // Mark as processing
     processingRef.current = true;
-    lastActivePlayerIndexRef.current = activePlayerIndex;
+    lastProcessedRef.current = { phase, activePlayerIndex };
 
     // Add a small delay to make bot actions feel more natural
     const delay = Math.random() * 1000 + 500; // 500-1500ms
@@ -135,7 +139,8 @@ export function useBotOrchestrator(tableData, currentTableId, currentUserId, cre
               legalActions.push(BetAction.BET);
             }
 
-            if (playerChips <= callAmount && playerChips > 0) {
+            // ALL_IN is always available if player has chips (regardless of call amount)
+            if (playerChips > 0) {
               legalActions.push(BetAction.ALL_IN);
             }
           }

@@ -406,7 +406,12 @@ function LobbyView() {
   };
 
   const handleCreateTableWithConfig = async (config) => {
-    await createTable(config);
+    const tableId = await createTable(config);
+    // Only close modal if table was successfully created
+    if (tableId) {
+      setShowCreateGameModal(false);
+    }
+    // If tableId is null, error is already set in context, modal will stay open
   };
 
   const handleJoinTable = () => {
