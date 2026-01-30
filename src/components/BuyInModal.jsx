@@ -63,6 +63,7 @@ function BuyInModal({ isOpen, onClose, onBuyIn, maxAmount, minBet, loading }) {
           <div className="grid grid-cols-4 gap-2 mb-4">
             {PRESET_AMOUNTS.map((preset) => (
               <button
+                type="button"
                 key={preset}
                 onClick={() => handlePresetClick(preset)}
                 disabled={preset > maxBuyIn}
@@ -122,12 +123,14 @@ function BuyInModal({ isOpen, onClose, onBuyIn, maxAmount, minBet, loading }) {
         {/* Action Buttons */}
         <div className="flex gap-3">
           <button
+            type="button"
             onClick={onClose}
             className="flex-1 bg-gray-700 hover:bg-gray-600 text-white font-medium py-3 rounded-lg transition-colors"
           >
             Cancel
           </button>
           <button
+            type="button"
             onClick={handleSubmit}
             disabled={loading || amount < minBuyIn || amount > maxBuyIn}
             className="flex-1 bg-yellow-600 hover:bg-yellow-500 disabled:bg-yellow-800 disabled:cursor-not-allowed text-white font-bold py-3 rounded-lg transition-colors"

@@ -97,6 +97,7 @@ function Card({ card, isSelected, onClick, isSelectable, faceDown = false }) {
 
   return (
     <button
+      type="button"
       onClick={onClick}
       disabled={!isSelectable}
       className={`
@@ -435,6 +436,7 @@ function LobbyView() {
             <span className="text-gray-300 text-sm">Playing as:</span>
             <span className="text-yellow-400 font-medium">{userWallet.username}</span>
             <button
+              type="button"
               onClick={() => setShowUsernameModal(true)}
               className="text-gray-400 hover:text-white ml-1"
               title="Edit username"
@@ -461,6 +463,7 @@ function LobbyView() {
         {/* Create Table */}
         <div className="mb-6">
           <button
+            type="button"
             onClick={handleCreateTable}
             disabled={loading || needsUsername}
             className="w-full bg-yellow-600 hover:bg-yellow-500 disabled:bg-yellow-800 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition-colors"
@@ -489,6 +492,7 @@ function LobbyView() {
             className="w-full bg-gray-700 border border-gray-600 text-white px-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500 text-center text-xl tracking-widest uppercase"
           />
           <button
+            type="button"
             onClick={handleJoinTable}
             disabled={loading || !tableIdInput.trim() || needsUsername}
             className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition-colors"
@@ -505,6 +509,7 @@ function LobbyView() {
       </div>
 
       <button
+        type="button"
         onClick={logout}
         className="text-gray-400 hover:text-white text-sm underline"
       >
@@ -638,13 +643,17 @@ function GameView() {
     });
   };
 
-  const handleSubmitDraw = async () => {
+  const handleSubmitDraw = async (e) => {
+    e?.preventDefault();
+    e?.stopPropagation();
     const indices = Array.from(selectedCardIndices);
     await submitDraw(indices);
     setSelectedCardIndices(new Set());
   };
 
-  const handleDeal = async () => {
+  const handleDeal = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
     await dealCards();
   };
 
@@ -667,35 +676,45 @@ function GameView() {
   };
 
   // Betting action handlers with toast feedback on error
-  const handleFold = async () => {
+  const handleFold = async (e) => {
+    e?.preventDefault();
+    e?.stopPropagation();
     const result = await performBetAction(BetAction.FOLD);
     if (!result.success) {
       showToast(result.error);
     }
   };
 
-  const handleCheck = async () => {
+  const handleCheck = async (e) => {
+    e?.preventDefault();
+    e?.stopPropagation();
     const result = await performBetAction(BetAction.CHECK);
     if (!result.success) {
       showToast(result.error);
     }
   };
 
-  const handleCall = async () => {
+  const handleCall = async (e) => {
+    e?.preventDefault();
+    e?.stopPropagation();
     const result = await performBetAction(BetAction.CALL);
     if (!result.success) {
       showToast(result.error);
     }
   };
 
-  const handleRaise = async (amount) => {
+  const handleRaise = async (amount, e) => {
+    e?.preventDefault();
+    e?.stopPropagation();
     const result = await performBetAction(BetAction.RAISE, amount);
     if (!result.success) {
       showToast(result.error);
     }
   };
 
-  const handleAllIn = async () => {
+  const handleAllIn = async (e) => {
+    e?.preventDefault();
+    e?.stopPropagation();
     const result = await performBetAction(BetAction.ALL_IN);
     if (!result.success) {
       showToast(result.error);
@@ -747,6 +766,7 @@ function GameView() {
       <div className="flex-1 flex flex-col justify-center">
         {isIdle && canStartGame && !needsBuyIn && (
           <button
+            type="button"
             onClick={handleDeal}
             disabled={loading}
             className="w-full bg-yellow-600 hover:bg-yellow-500 disabled:bg-yellow-800 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition-colors"
@@ -775,6 +795,7 @@ function GameView() {
 
         {isDrawPhase && myTurn && (
           <button
+            type="button"
             onClick={handleSubmitDraw}
             disabled={loading}
             className="w-full bg-purple-600 hover:bg-purple-500 disabled:bg-purple-800 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition-colors"
@@ -788,6 +809,7 @@ function GameView() {
 
         {isShowdown && (
           <button
+            type="button"
             onClick={startNextHand}
             disabled={loading}
             className="w-full bg-yellow-600 hover:bg-yellow-500 disabled:bg-yellow-800 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition-colors"
@@ -798,6 +820,7 @@ function GameView() {
 
         {needsBuyIn && isIdle && (
           <button
+            type="button"
             onClick={() => setShowBuyInModal(true)}
             className="w-full bg-green-600 hover:bg-green-500 text-white py-3 px-6 rounded-lg font-medium"
           >
@@ -849,6 +872,7 @@ function GameView() {
             )}
             <span className="font-medium">{toast.message}</span>
             <button
+              type="button"
               onClick={() => setToast(null)}
               className="ml-2 text-white/80 hover:text-white"
             >
@@ -866,6 +890,7 @@ function GameView() {
           {/* Header */}
           <div className="flex items-center justify-between p-3 bg-gray-900/50 border-b border-gray-700">
             <button
+              type="button"
               onClick={leaveTable}
               className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm"
             >
@@ -1024,7 +1049,7 @@ function GameView() {
             </div>
 
             {/* Right Sidebar: Action Controls */}
-            <div className="w-72 bg-gray-900/30 border-l border-gray-700">
+            <div className="w-72 bg-gray-900/30 border-l border-gray-700 relative z-50">
               <ActionControlsSidebar />
             </div>
           </div>
@@ -1035,6 +1060,7 @@ function GameView() {
           {/* Header */}
           <div className="w-full max-w-4xl flex items-center justify-between flex-wrap gap-2">
         <button
+          type="button"
           onClick={leaveTable}
           className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm"
         >
@@ -1050,6 +1076,7 @@ function GameView() {
         <div className="bg-gray-700 px-3 py-2 rounded-lg flex items-center gap-2">
           <span className="text-yellow-400 font-medium text-sm">{getDisplayName()}</span>
           <button
+            type="button"
             onClick={() => setShowUsernameModal(true)}
             className="text-gray-400 hover:text-white"
             title="Edit username"
@@ -1115,6 +1142,7 @@ function GameView() {
         {/* Buy More Chips Button */}
         {needsBuyIn && isIdle && (
           <motion.button
+            type="button"
             onClick={() => setShowBuyInModal(true)}
             className="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-lg font-medium shadow-lg"
             whileHover={{ scale: 1.05 }}
@@ -1313,11 +1341,12 @@ function GameView() {
       </div>
 
       {/* Action Buttons / Betting Controls */}
-      <div className="w-full max-w-lg">
+      <div className="w-full max-w-lg relative z-50">
         {/* IDLE: Show Deal button */}
         {isIdle && canStartGame && !needsBuyIn && (
           <div className="flex justify-center">
             <button
+              type="button"
               onClick={handleDeal}
               disabled={loading}
               className="bg-yellow-600 hover:bg-yellow-500 disabled:bg-yellow-800 text-white font-bold py-3 px-8 rounded-lg shadow-lg transition-colors text-lg"
@@ -1350,6 +1379,7 @@ function GameView() {
         {isDrawPhase && myTurn && (
           <div className="flex justify-center">
             <button
+              type="button"
               onClick={handleSubmitDraw}
               disabled={loading}
               className="bg-purple-600 hover:bg-purple-500 disabled:bg-purple-800 text-white font-bold py-3 px-8 rounded-lg shadow-lg transition-colors text-lg"
@@ -1369,6 +1399,7 @@ function GameView() {
             {isShowdown && (
               <div className="flex justify-center">
                 <motion.button
+                  type="button"
                   onClick={startNextHand}
                   disabled={loading}
                   className="bg-yellow-600 hover:bg-yellow-500 disabled:bg-yellow-800 text-white font-bold py-3 px-8 rounded-lg shadow-lg text-lg"

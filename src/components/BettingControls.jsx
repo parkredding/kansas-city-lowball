@@ -39,7 +39,9 @@ function BettingControls({
     setRaiseAmount(Math.min(Math.max(value, minRaise), trueMaxRaise));
   };
 
-  const handleRaiseSubmit = () => {
+  const handleRaiseSubmit = (e) => {
+    e?.preventDefault();
+    e?.stopPropagation();
     onRaise(raiseAmount);
     setShowRaiseSlider(false);
   };
@@ -98,6 +100,7 @@ function BettingControls({
           {/* Slider with Min/Max labels */}
           <div className="flex items-center gap-2 mb-3">
             <button
+              type="button"
               onClick={() => setRaiseAmount(minRaise)}
               disabled={disabled}
               className="text-xs text-gray-400 hover:text-white px-2 py-1 bg-gray-700 rounded"
@@ -115,6 +118,7 @@ function BettingControls({
               className="flex-1 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-yellow-500"
             />
             <button
+              type="button"
               onClick={() => setRaiseAmount(trueMaxRaise)}
               disabled={disabled}
               className="text-xs text-gray-400 hover:text-white px-2 py-1 bg-gray-700 rounded"
@@ -127,6 +131,7 @@ function BettingControls({
           <div className="flex gap-2 mb-3">
             {presets.map((preset) => (
               <button
+                type="button"
                 key={preset.label}
                 onClick={() => setRaiseAmount(preset.value)}
                 disabled={disabled}
@@ -147,12 +152,14 @@ function BettingControls({
           {/* Confirm / Cancel */}
           <div className="flex gap-2">
             <button
+              type="button"
               onClick={() => setShowRaiseSlider(false)}
               className="flex-1 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm font-medium transition-colors"
             >
               Cancel
             </button>
             <button
+              type="button"
               onClick={handleRaiseSubmit}
               disabled={disabled || raiseAmount < minRaise || raiseAmount > trueMaxRaise}
               className="flex-1 py-2 bg-yellow-600 hover:bg-yellow-500 disabled:bg-yellow-800 text-white rounded-lg text-sm font-bold transition-colors"
@@ -167,6 +174,7 @@ function BettingControls({
       <div className="flex gap-2">
         {/* Fold Button */}
         <button
+          type="button"
           onClick={onFold}
           disabled={disabled}
           className="flex-1 py-3 bg-red-600 hover:bg-red-500 disabled:bg-red-900 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-colors"
@@ -177,6 +185,7 @@ function BettingControls({
         {/* Check, Call, or All-In Button */}
         {canCheck ? (
           <button
+            type="button"
             onClick={onCheck}
             disabled={disabled}
             className="flex-1 py-3 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-900 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-colors"
@@ -186,6 +195,7 @@ function BettingControls({
         ) : mustAllInToCall ? (
           // Show All-In button when player can't afford to call but has chips
           <button
+            type="button"
             onClick={onAllIn || (() => onRaise(maxRaise))}
             disabled={disabled}
             className="flex-1 py-3 bg-purple-600 hover:bg-purple-500 disabled:bg-purple-900 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-colors animate-pulse"
@@ -195,6 +205,7 @@ function BettingControls({
           </button>
         ) : (
           <button
+            type="button"
             onClick={onCall}
             disabled={disabled}
             className="flex-1 py-3 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-900 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-colors"
@@ -207,6 +218,7 @@ function BettingControls({
         {/* Raise Button - only show if player can raise */}
         {canRaise && (
           <button
+            type="button"
             onClick={() => setShowRaiseSlider(!showRaiseSlider)}
             disabled={disabled}
             className={`
@@ -227,6 +239,7 @@ function BettingControls({
         {/* All-In Button (quick access) - show if player can afford to raise */}
         {canRaise && maxRaise > minRaise && (
           <button
+            type="button"
             onClick={onAllIn || (() => onRaise(maxRaise))}
             disabled={disabled}
             className="py-3 px-4 bg-purple-600 hover:bg-purple-500 disabled:bg-purple-900 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-colors"
