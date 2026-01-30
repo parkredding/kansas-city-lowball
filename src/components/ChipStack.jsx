@@ -154,7 +154,6 @@ function ChipStack({ amount, size = 'md', showAmount = true, animate = false }) 
       }
       if (chips.length >= 8) break;
     }
-  }
 
     return { chips, type: 'medium' };
   }, [amount]);
@@ -213,7 +212,7 @@ function ChipStack({ amount, size = 'md', showAmount = true, animate = false }) 
           }}
         >
           ${amount.toLocaleString()}
-        </span>
+        </div>
       )}
     </div>
   );
