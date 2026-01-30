@@ -1041,7 +1041,7 @@ function GameView() {
           </motion.div>
 
           {/* Main Content - 3 Column Layout */}
-          <div className="flex-1 flex overflow-hidden min-h-0">
+          <div className="flex-1 flex overflow-visible min-h-0">
             {/* Left Sidebar: Chat & Game Log */}
             <div className="w-80 bg-gray-900/30 border-r border-gray-700 flex flex-col flex-shrink-0">
               <div className="p-3 border-b border-gray-700 flex-shrink-0">
@@ -1059,24 +1059,24 @@ function GameView() {
             </div>
 
             {/* Center: Poker Table */}
-            <div className="flex-1 flex flex-col items-center min-h-0 overflow-hidden">
+            <div className="flex-1 flex flex-col items-center justify-between min-h-0 overflow-visible py-3">
               {/* Error display */}
               {error && (
-                <div className="bg-red-500/20 border border-red-500 text-red-200 px-4 py-2 rounded text-sm my-2 flex-shrink-0">
+                <div className="bg-red-500/20 border border-red-500 text-red-200 px-4 py-2 rounded text-sm mb-2 flex-shrink-0">
                   {error}
                 </div>
               )}
 
               {/* Poker Table with Radial Player Positioning */}
-              <div className="w-full max-w-4xl relative flex-1 flex-shrink-0 overflow-visible px-4" style={{ minHeight: '400px', maxHeight: '450px' }}>
+              <div className="w-full max-w-4xl relative flex-1 flex-shrink-0 overflow-visible px-4" style={{ minHeight: '0', height: '100%' }}>
                 {/* Oval table background */}
                 <motion.div
                   className="absolute bg-gradient-to-br from-green-700/40 via-green-600/30 to-green-700/40 border-4 border-green-500/60"
                   style={{
-                    left: '10%',
-                    right: '10%',
-                    top: '5%',
-                    bottom: '15%',
+                    left: '5%',
+                    right: '5%',
+                    top: '0%',
+                    bottom: '10%',
                     borderRadius: '50%',
                     boxShadow: 'inset 0 4px 20px rgba(0,0,0,0.3), 0 0 40px rgba(34,197,94,0.2)',
                   }}
@@ -1089,12 +1089,20 @@ function GameView() {
                 {opponentsWithPositions.map((player) => {
                   const position = getRadialPosition(player.relativeIndex, totalPlayers);
                   return (
-                    <div
+                    <motion.div
                       key={player.uid}
                       className="absolute transform -translate-x-1/2 -translate-y-1/2 z-20"
                       style={{
                         left: position.left,
                         top: position.top,
+                      }}
+                      initial={{ scale: 0, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      transition={{
+                        type: 'spring',
+                        stiffness: 200,
+                        damping: 20,
+                        delay: player.relativeIndex * 0.1,
                       }}
                     >
                       <PlayerSlot
@@ -1108,7 +1116,7 @@ function GameView() {
                         isSmallBlind={isSmallBlind(player.seatIndex)}
                         isBigBlind={isBigBlind(player.seatIndex)}
                       />
-                    </div>
+                    </motion.div>
                   );
                 })}
 
@@ -1126,15 +1134,20 @@ function GameView() {
 
                 {/* Pot display in center with enhanced ChipStack */}
                 {tableData?.pot > 0 && (
-                  <div className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 z-30">
+                  <motion.div 
+                    className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 z-30"
+                    initial={{ scale: 0, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ type: 'spring', stiffness: 200, damping: 20 }}
+                  >
                     <ChipStack amount={tableData.pot} size="lg" showAmount={true} />
-                  </div>
+                  </motion.div>
                 )}
               </div>
 
               {/* Hero's Hand Area */}
               <motion.div 
-                className="bg-gradient-to-br from-green-700 via-green-600 to-green-700 rounded-3xl px-12 py-6 border-4 border-yellow-500 shadow-2xl flex-shrink-0 w-full max-w-4xl mx-4 mb-4"
+                className="bg-gradient-to-br from-green-700 via-green-600 to-green-700 rounded-3xl px-8 py-4 border-4 border-yellow-500 shadow-2xl flex-shrink-0 w-full max-w-4xl mx-4 mt-2"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.5 }}
