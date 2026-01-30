@@ -4,6 +4,10 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Prevent browser caching of this HTML file -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
     <title>Kansas City Lowball</title>
   </head>
   <body>
@@ -19,6 +23,60 @@
             window.location.pathname.replace(/\/$/, '') + '/' + redirect
           );
         }
+      })();
+    </script>
+    <script>
+      // Version checker for cache busting
+      (function() {
+        var VERSION_KEY = 'kcl-app-version';
+        var BASE_PATH = '/kansas-city-lowball/';
+        
+        function checkVersion() {
+          fetch(BASE_PATH + 'version.json?t=' + Date.now(), { cache: 'no-store' })
+            .then(function(res) { return res.json(); })
+            .then(function(data) {
+              var currentVersion = localStorage.getItem(VERSION_KEY);
+              if (currentVersion && currentVersion !== data.version) {
+                console.log('New version detected, clearing cache and reloading...');
+                localStorage.setItem(VERSION_KEY, data.version);
+                
+                // Clear all caches, then reload after completion
+                if ('caches' in window) {
+                  caches.keys()
+                    .then(function(names) {
+                      return Promise.all(names.map(function(name) {
+                        return caches.delete(name);
+                      }));
+                    })
+                    .then(function() {
+                      window.location.reload(true);
+                    })
+                    .catch(function() {
+                      // Reload anyway if cache clearing fails
+                      window.location.reload(true);
+                    });
+                } else {
+                  // No cache API available, just reload
+                  window.location.reload(true);
+                }
+              } else if (!currentVersion) {
+                localStorage.setItem(VERSION_KEY, data.version);
+              }
+            })
+            .catch(function(err) {
+              console.log('Version check failed:', err);
+            });
+        }
+        
+        // Check version on page load
+        checkVersion();
+        
+        // Also check when page becomes visible (user returns to tab)
+        document.addEventListener('visibilitychange', function() {
+          if (document.visibilityState === 'visible') {
+            checkVersion();
+          }
+        });
       })();
     </script>
     <script type="module" src="/src/main.jsx"></script>
