@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useGame, BetAction } from '../context/GameContext';
 import { useAuth } from '../context/AuthContext';
 import { PHASE_DISPLAY_NAMES } from '../game/usePokerGame';
+import { MAX_PLAYERS } from '../game/constants';
 import BuyInModal from '../components/BuyInModal';
 import BettingControls from '../components/BettingControls';
 import TurnTimer, { CircularTimer } from '../components/TurnTimer';
@@ -14,6 +15,69 @@ const SUIT_SYMBOLS = {
   c: { symbol: '\u2663', color: 'text-gray-900' },
   s: { symbol: '\u2660', color: 'text-gray-900' },
 };
+
+/**
+ * Calculate radial position for a player seat around an oval table
+ * Hero (current player) is always at position 0 (bottom center, 6 o'clock)
+ * Other players are distributed clockwise around the table
+ *
+ * @param {number} relativeIndex - Position relative to hero (0 = hero, 1-5 = opponents clockwise)
+ * @param {number} totalPlayers - Total number of players at the table
+ * @returns {Object} - { left: string, top: string } as CSS percentage values
+ */
+function getRadialPosition(relativeIndex, totalPlayers) {
+  // Hero is always at position 0 (bottom center) - handled separately
+  if (relativeIndex === 0) {
+    return { left: '50%', top: '85%' };
+  }
+
+  // For opponents, distribute them around the top portion of the oval
+  // We use positions 1 through (totalPlayers - 1) for opponents
+  const numOpponents = totalPlayers - 1;
+
+  // Oval table dimensions (as percentages)
+  // Center of oval
+  const centerX = 50;
+  const centerY = 45;
+
+  // Radii for the oval (horizontal is wider than vertical for poker table shape)
+  const radiusX = 42; // Horizontal radius
+  const radiusY = 35; // Vertical radius
+
+  // Calculate angle for this opponent
+  // Start from left side and go clockwise to right side (covering top arc)
+  // The arc goes from about 200 degrees (left) to -20 degrees (right), covering the top
+  const startAngle = 200; // Left side (in degrees)
+  const endAngle = -20;   // Right side (in degrees)
+
+  // Distribute opponents evenly along this arc
+  const angleRange = startAngle - endAngle;
+  const angleStep = angleRange / (numOpponents + 1);
+  const angle = startAngle - (angleStep * relativeIndex);
+
+  // Convert to radians
+  const radians = (angle * Math.PI) / 180;
+
+  // Calculate position on the oval
+  const left = centerX + radiusX * Math.cos(radians);
+  const top = centerY - radiusY * Math.sin(radians);
+
+  return {
+    left: `${left}%`,
+    top: `${top}%`,
+  };
+}
+
+/**
+ * Get the relative seat index for a player, with hero at position 0
+ * @param {number} playerSeatIndex - The player's actual seat index in the players array
+ * @param {number} heroSeatIndex - The hero's seat index in the players array
+ * @param {number} totalPlayers - Total number of players
+ * @returns {number} - Relative index (0 = hero, 1-5 = opponents going clockwise)
+ */
+function getRelativeSeatIndex(playerSeatIndex, heroSeatIndex, totalPlayers) {
+  return (playerSeatIndex - heroSeatIndex + totalPlayers) % totalPlayers;
+}
 
 function Card({ card, isSelected, onClick, isSelectable, faceDown = false }) {
   if (faceDown) {
@@ -408,8 +472,19 @@ function GameView() {
   const minRaise = getMinRaise();
   const playerCanCheck = canCheck();
 
-  // Get opponents (other players)
-  const opponents = tableData?.players?.filter((p) => p.uid !== currentUser?.uid) || [];
+  // Get hero's seat index and total players for radial positioning
+  const heroSeatIndex = tableData?.players?.findIndex((p) => p.uid === currentUser?.uid) ?? 0;
+  const totalPlayers = tableData?.players?.length || 1;
+
+  // Get opponents with their relative seat positions for radial layout
+  const opponentsWithPositions = (tableData?.players || [])
+    .map((player, seatIndex) => ({
+      ...player,
+      seatIndex,
+      relativeIndex: getRelativeSeatIndex(seatIndex, heroSeatIndex, totalPlayers),
+    }))
+    .filter((p) => p.uid !== currentUser?.uid)
+    .sort((a, b) => a.relativeIndex - b.relativeIndex);
 
   // Check if player needs to buy in
   const needsBuyIn = currentPlayer?.chips === 0;
@@ -575,29 +650,64 @@ function GameView() {
         )}
       </div>
 
-      {/* Opponents */}
-      <div className="w-full max-w-4xl">
-        <div className="flex flex-wrap justify-center gap-4">
-          {opponents.map((player) => (
-            <PlayerSlot
+      {/* Poker Table with Radial Player Positioning */}
+      <div className="w-full max-w-4xl relative" style={{ minHeight: '280px' }}>
+        {/* Oval table background */}
+        <div
+          className="absolute inset-0 bg-green-700/30 border-4 border-green-600/50 rounded-full"
+          style={{
+            left: '10%',
+            right: '10%',
+            top: '5%',
+            bottom: '15%',
+            borderRadius: '50%',
+          }}
+        />
+
+        {/* Opponents positioned radially around the table */}
+        {opponentsWithPositions.map((player) => {
+          const position = getRadialPosition(player.relativeIndex, totalPlayers);
+          return (
+            <div
               key={player.uid}
-              player={player}
-              isCurrentUser={false}
-              isActive={player.uid === activePlayer?.uid}
-              showCards={isShowdown}
-              handResult={isShowdown ? evaluateHand(player.hand) : null}
-              turnDeadline={tableData?.turnDeadline}
-            />
-          ))}
-          {opponents.length === 0 && isIdle && (
+              className="absolute transform -translate-x-1/2 -translate-y-1/2 z-10"
+              style={{
+                left: position.left,
+                top: position.top,
+              }}
+            >
+              <PlayerSlot
+                player={player}
+                isCurrentUser={false}
+                isActive={player.uid === activePlayer?.uid}
+                showCards={isShowdown}
+                handResult={isShowdown ? evaluateHand(player.hand) : null}
+                turnDeadline={tableData?.turnDeadline}
+              />
+            </div>
+          );
+        })}
+
+        {/* Empty table message when no opponents */}
+        {opponentsWithPositions.length === 0 && isIdle && (
+          <div className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2">
             <div className="bg-gray-800/50 border-2 border-dashed border-gray-600 rounded-xl p-8 text-center">
               <p className="text-gray-400">Waiting for players to join...</p>
               <p className="text-gray-500 text-sm mt-2">
                 Share table code: <span className="font-mono font-bold text-white">{currentTableId}</span>
               </p>
             </div>
-          )}
-        </div>
+          </div>
+        )}
+
+        {/* Pot display in center of table */}
+        {tableData?.pot > 0 && (
+          <div className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2">
+            <div className="bg-yellow-600/90 px-4 py-2 rounded-lg shadow-lg">
+              <span className="text-white font-bold text-lg">Pot: ${tableData.pot}</span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Game Table - Current Player's Hand */}
