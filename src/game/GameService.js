@@ -62,7 +62,7 @@ export class GameService {
   /**
    * Get or create a user's wallet document
    * @param {string} uid - User's Firebase UID
-   * @param {string} displayName - User's display name
+   * @param {string} displayName - User's display name (Google display name, used as fallback)
    * @returns {Promise<Object>} - User data with balance
    */
   static async getOrCreateUser(uid, displayName) {
@@ -78,15 +78,51 @@ export class GameService {
     }
 
     // Create new user with starting balance
+    // Note: username is null initially - user must set it before playing
     const userData = {
       uid,
-      displayName: displayName || 'Anonymous',
+      displayName: displayName || 'Anonymous', // Keep Google name for reference
+      username: null, // Custom username - must be set before playing
       balance: DEFAULT_STARTING_BALANCE,
       createdAt: serverTimestamp(),
     };
 
     await setDoc(userRef, userData);
     return userData;
+  }
+
+  /**
+   * Update a user's custom username
+   * @param {string} uid - User's Firebase UID
+   * @param {string} username - New custom username
+   * @returns {Promise<void>}
+   */
+  static async updateUsername(uid, username) {
+    if (!db) {
+      throw new Error('Firestore not initialized');
+    }
+
+    if (!username || username.trim().length < 2) {
+      throw new Error('Username must be at least 2 characters');
+    }
+
+    if (username.trim().length > 20) {
+      throw new Error('Username must be 20 characters or less');
+    }
+
+    const userRef = doc(db, USERS_COLLECTION, uid);
+    await updateDoc(userRef, {
+      username: username.trim(),
+    });
+  }
+
+  /**
+   * Get user's display name (custom username or fallback to displayName)
+   * @param {Object} userData - User data object
+   * @returns {string} - Display name to show in game
+   */
+  static getDisplayName(userData) {
+    return userData?.username || userData?.displayName || 'Anonymous';
   }
 
   /**
@@ -282,16 +318,20 @@ export class GameService {
   /**
    * Creates a new table with the user as the first player
    * @param {Object} user - Firebase user object with uid, displayName, photoURL
+   * @param {Object} userWallet - User wallet data with username
    * @param {number} minBet - Minimum bet for the table
    * @returns {Promise<string>} - The created table ID
    */
-  static async createTable(user, minBet = DEFAULT_MIN_BET) {
+  static async createTable(user, userWallet, minBet = DEFAULT_MIN_BET) {
     if (!db) {
       throw new Error('Firestore not initialized');
     }
 
     const tableId = GameService.generateTableId();
     const tableRef = doc(db, TABLES_COLLECTION, tableId);
+
+    // Use custom username if available, otherwise fall back to Google displayName
+    const displayName = GameService.getDisplayName(userWallet) || user.displayName || 'Anonymous';
 
     const tableData = {
       id: tableId,
@@ -306,7 +346,7 @@ export class GameService {
       players: [
         {
           uid: user.uid,
-          displayName: user.displayName || 'Anonymous',
+          displayName: displayName,
           photoURL: user.photoURL || null,
           chips: 0, // Start with 0, must buy in
           hand: [],
@@ -314,8 +354,10 @@ export class GameService {
           cardsToDiscard: [],
           currentRoundBet: 0,
           hasActedThisRound: false,
+          lastAction: null, // Track last draw action for display
         },
       ],
+      chatLog: [], // Chat messages array
       createdBy: user.uid,
       lastUpdated: serverTimestamp(),
     };
@@ -328,9 +370,10 @@ export class GameService {
    * Join an existing table
    * @param {string} tableId - The table ID to join
    * @param {Object} user - Firebase user object
+   * @param {Object} userWallet - User wallet data with username
    * @returns {Promise<void>}
    */
-  static async joinTable(tableId, user) {
+  static async joinTable(tableId, user, userWallet) {
     if (!db) {
       throw new Error('Firestore not initialized');
     }
@@ -361,9 +404,12 @@ export class GameService {
       throw new Error('Game already in progress');
     }
 
+    // Use custom username if available, otherwise fall back to Google displayName
+    const displayName = GameService.getDisplayName(userWallet) || user.displayName || 'Anonymous';
+
     const newPlayer = {
       uid: user.uid,
-      displayName: user.displayName || 'Anonymous',
+      displayName: displayName,
       photoURL: user.photoURL || null,
       chips: 0, // Start with 0, must buy in
       hand: [],
@@ -371,6 +417,7 @@ export class GameService {
       cardsToDiscard: [],
       currentRoundBet: 0,
       hasActedThisRound: false,
+      lastAction: null, // Track last draw action for display
     };
 
     await updateDoc(tableRef, {
@@ -486,6 +533,7 @@ export class GameService {
       cardsToDiscard: [],
       currentRoundBet: 0,
       hasActedThisRound: false,
+      lastAction: null, // Clear any previous action text
     }));
 
     // Deal 5 cards to each active player
@@ -900,6 +948,10 @@ export class GameService {
     player.hand = hand;
     player.cardsToDiscard = [];
     player.hasActedThisRound = true;
+
+    // Set lastAction to show what the player did
+    player.lastAction = numToDraw === 0 ? 'Stood Pat' : `Drew ${numToDraw}`;
+
     players[playerIndex] = player;
 
     // Find next active player who can still draw
@@ -931,9 +983,10 @@ export class GameService {
     };
 
     if (roundComplete) {
-      // Reset for next phase
+      // Reset for next phase - clear lastAction when moving to betting
       players.forEach((p) => {
         p.hasActedThisRound = false;
+        p.lastAction = null; // Clear action text when phase changes
       });
       updates.players = players;
       updates.phase = phaseAfterDraw[tableData.phase];
@@ -962,6 +1015,7 @@ export class GameService {
       cardsToDiscard: [],
       currentRoundBet: 0,
       hasActedThisRound: false,
+      lastAction: null, // Clear action text for new hand
     }));
 
     // Move dealer button
@@ -1046,5 +1100,63 @@ export class GameService {
         });
       }
     }
+  }
+
+  // ============================================
+  // CHAT OPERATIONS
+  // ============================================
+
+  /**
+   * Maximum number of chat messages to keep in the log
+   */
+  static MAX_CHAT_MESSAGES = 20;
+
+  /**
+   * Send a chat message to a table
+   * @param {string} tableId - The table ID
+   * @param {string} senderName - Display name of the sender
+   * @param {string} text - Message text
+   * @returns {Promise<void>}
+   */
+  static async sendChatMessage(tableId, senderName, text) {
+    if (!db) {
+      throw new Error('Firestore not initialized');
+    }
+
+    if (!text || text.trim().length === 0) {
+      return; // Don't send empty messages
+    }
+
+    // Limit message length
+    const trimmedText = text.trim().slice(0, 200);
+
+    const tableRef = doc(db, TABLES_COLLECTION, tableId);
+    const tableSnap = await getDoc(tableRef);
+
+    if (!tableSnap.exists()) {
+      throw new Error('Table not found');
+    }
+
+    const tableData = tableSnap.data();
+    let chatLog = tableData.chatLog || [];
+
+    // Add new message
+    const newMessage = {
+      sender: senderName,
+      text: trimmedText,
+      timestamp: Date.now(),
+    };
+
+    chatLog.push(newMessage);
+
+    // Keep only the last MAX_CHAT_MESSAGES messages
+    if (chatLog.length > GameService.MAX_CHAT_MESSAGES) {
+      chatLog = chatLog.slice(-GameService.MAX_CHAT_MESSAGES);
+    }
+
+    await updateDoc(tableRef, {
+      chatLog,
+      lastUpdated: serverTimestamp(),
+    });
   }
 }

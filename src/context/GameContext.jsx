@@ -5,6 +5,15 @@ import { HandEvaluator } from '../game/HandEvaluator';
 
 const GameContext = createContext();
 
+/**
+ * Check if a user needs to set their username
+ * @param {Object} userWallet - User wallet data
+ * @returns {boolean} - True if username is not set
+ */
+const needsUsernameSetup = (userWallet) => {
+  return !userWallet?.username || userWallet.username.trim().length === 0;
+};
+
 export function useGame() {
   const context = useContext(GameContext);
   if (!context) {
@@ -92,11 +101,16 @@ export function GameProvider({ children }) {
       return null;
     }
 
+    if (needsUsernameSetup(userWallet)) {
+      setError('Please set your username before creating a table');
+      return null;
+    }
+
     setLoading(true);
     setError(null);
 
     try {
-      const tableId = await GameService.createTable(currentUser);
+      const tableId = await GameService.createTable(currentUser, userWallet);
       setCurrentTableId(tableId);
       return tableId;
     } catch (err) {
@@ -105,7 +119,7 @@ export function GameProvider({ children }) {
     } finally {
       setLoading(false);
     }
-  }, [currentUser]);
+  }, [currentUser, userWallet]);
 
   // Join an existing table
   const joinTable = useCallback(async (tableId) => {
@@ -119,11 +133,16 @@ export function GameProvider({ children }) {
       return false;
     }
 
+    if (needsUsernameSetup(userWallet)) {
+      setError('Please set your username before joining a table');
+      return false;
+    }
+
     setLoading(true);
     setError(null);
 
     try {
-      await GameService.joinTable(tableId.toUpperCase(), currentUser);
+      await GameService.joinTable(tableId.toUpperCase(), currentUser, userWallet);
       setCurrentTableId(tableId.toUpperCase());
       return true;
     } catch (err) {
@@ -132,7 +151,7 @@ export function GameProvider({ children }) {
     } finally {
       setLoading(false);
     }
-  }, [currentUser]);
+  }, [currentUser, userWallet]);
 
   // Buy in to current table
   const buyIn = useCallback(async (amount) => {
@@ -304,6 +323,47 @@ export function GameProvider({ children }) {
   const isShowdown = tableData?.phase === 'SHOWDOWN';
   const isIdle = tableData?.phase === 'IDLE';
 
+  // Check if user needs to set username
+  const needsUsername = needsUsernameSetup(userWallet);
+
+  // Update username
+  const updateUsername = useCallback(async (newUsername) => {
+    if (!currentUser) {
+      throw new Error('Must be logged in to update username');
+    }
+
+    setLoading(true);
+    try {
+      await GameService.updateUsername(currentUser.uid, newUsername);
+      // The subscription will update userWallet automatically
+    } catch (err) {
+      setError(err.message);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, [currentUser]);
+
+  // Send chat message
+  const sendChatMessage = useCallback(async (text) => {
+    if (!currentTableId || !userWallet) {
+      return;
+    }
+
+    const senderName = GameService.getDisplayName(userWallet);
+    try {
+      await GameService.sendChatMessage(currentTableId, senderName, text);
+    } catch (err) {
+      console.error('Failed to send chat message:', err);
+      setError('Failed to send message');
+    }
+  }, [currentTableId, userWallet]);
+
+  // Get current user's display name (username or fallback)
+  const getDisplayName = useCallback(() => {
+    return GameService.getDisplayName(userWallet);
+  }, [userWallet]);
+
   const value = {
     // State
     currentTableId,
@@ -314,6 +374,9 @@ export function GameProvider({ children }) {
     // Wallet state
     userWallet,
     walletLoading,
+
+    // Username state
+    needsUsername,
 
     // Phase helpers
     isBettingPhase,
@@ -332,6 +395,8 @@ export function GameProvider({ children }) {
     submitDraw,
     startNextHand,
     handleTimeout,
+    updateUsername,
+    sendChatMessage,
 
     // Utilities
     getCurrentPlayer,
@@ -341,6 +406,7 @@ export function GameProvider({ children }) {
     getCallAmount,
     getMinRaise,
     canCheck,
+    getDisplayName,
     setError,
 
     // Export BetAction for use in components
