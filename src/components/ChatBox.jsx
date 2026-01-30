@@ -1,4 +1,44 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
+
+/**
+ * Generate a consistent color from a string (UID or username)
+ * Uses a simple hash function to map strings to HSL colors
+ * @param {string} str - The string to hash (typically UID or username)
+ * @returns {string} - HSL color string
+ */
+function generateColorFromString(str) {
+  if (!str) return 'hsl(200, 70%, 60%)';
+
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32bit integer
+  }
+
+  // Generate hue from 0-360 (full color wheel)
+  // Avoid very dark or very light colors by constraining saturation and lightness
+  const hue = Math.abs(hash) % 360;
+  const saturation = 60 + (Math.abs(hash >> 8) % 20); // 60-80%
+  const lightness = 55 + (Math.abs(hash >> 16) % 15); // 55-70%
+
+  return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+}
+
+/**
+ * Colored dot indicator for a user
+ */
+function UserColorDot({ username, size = 'sm' }) {
+  const color = useMemo(() => generateColorFromString(username), [username]);
+  const sizeClasses = size === 'sm' ? 'w-2 h-2' : 'w-3 h-3';
+
+  return (
+    <span
+      className={`${sizeClasses} rounded-full inline-block flex-shrink-0`}
+      style={{ backgroundColor: color }}
+    />
+  );
+}
 
 /**
  * Chat component for table communication and game activity log
@@ -106,13 +146,18 @@ function ChatBox({ messages = [], onSendMessage, currentUsername, disabled }) {
 
             // Render chat messages
             const isOwnMessage = msg.sender === currentUsername;
+            const senderColor = generateColorFromString(msg.sender);
             return (
               <div
                 key={`${msg.timestamp}-${index}`}
                 className={`flex flex-col ${isOwnMessage ? 'items-end' : 'items-start'}`}
               >
-                <div className="flex items-baseline gap-2 mb-0.5">
-                  <span className={`text-xs font-medium ${isOwnMessage ? 'text-yellow-400' : 'text-blue-400'}`}>
+                <div className="flex items-center gap-1.5 mb-0.5">
+                  <UserColorDot username={msg.sender} />
+                  <span
+                    className="text-xs font-medium"
+                    style={{ color: senderColor }}
+                  >
                     {msg.sender}
                   </span>
                   <span className="text-gray-500 text-xs">
