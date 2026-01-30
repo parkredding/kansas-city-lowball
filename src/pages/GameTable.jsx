@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, Component } from 'react';
 import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
 import { useGame, BetAction } from '../context/GameContext';
 import { useAuth } from '../context/AuthContext';
@@ -14,6 +14,50 @@ import ChatBox from '../components/ChatBox';
 import ChipStack, { MiniChipStack, BetChip, PotDisplay } from '../components/ChipStack';
 import { PositionIndicators } from '../components/PositionButtons';
 import { useBotOrchestrator } from '../game/ai/useBotOrchestrator';
+
+/**
+ * Error Boundary component to catch rendering errors and prevent white screens
+ */
+class GameErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error('GameTable Error:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-green-800 flex items-center justify-center">
+          <div className="bg-gray-800 rounded-xl p-8 max-w-md text-center">
+            <h2 className="text-xl font-bold text-red-400 mb-4">Something went wrong</h2>
+            <p className="text-gray-300 mb-4">
+              An error occurred while rendering the game. Please try refreshing the page.
+            </p>
+            <button
+              onClick={() => {
+                this.setState({ hasError: false, error: null });
+                window.location.reload();
+              }}
+              className="bg-yellow-600 hover:bg-yellow-500 text-white font-bold py-2 px-6 rounded-lg"
+            >
+              Refresh Page
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 const SUIT_SYMBOLS = {
   h: { symbol: '\u2665', color: 'text-red-500' },
@@ -153,6 +197,11 @@ function ProfessionalCardBack({ size = 'normal', index = 0, isDealing = false })
 
 function Card({ card, isSelected, onClick, isSelectable, faceDown = false, index = 0, isDealing = false, size = 'normal' }) {
   if (faceDown) {
+    return <ProfessionalCardBack size={size} index={index} isDealing={isDealing} />;
+  }
+
+  // Safety check for invalid card data - prevents white screen crashes
+  if (!card || !card.suit || !card.rank) {
     return <ProfessionalCardBack size={size} index={index} isDealing={isDealing} />;
   }
 
@@ -524,12 +573,12 @@ function PlayerSlot({ player, isCurrentUser, isActive, showCards, handResult, tu
         )}
       </div>
 
-      {/* Player's cards - clean display */}
-      {player.hand && player.hand.length > 0 && (
+      {/* Player's cards - clean display with safety checks */}
+      {player.hand && Array.isArray(player.hand) && player.hand.length > 0 && (
         <div className="flex gap-0.5 justify-center">
           {player.hand.map((card, index) => (
-            showCards ? (
-              <Card key={index} card={card} isSelectable={false} size="mini" />
+            showCards && card && card.rank && card.suit ? (
+              <Card key={`${index}-${card.rank}-${card.suit}`} card={card} isSelectable={false} size="mini" />
             ) : (
               <ProfessionalCardBack key={index} size="mini" index={index} />
             )
@@ -1362,7 +1411,7 @@ function GameView() {
                   />
                 </div>
 
-                {currentPlayer?.hand && currentPlayer.hand.length > 0 ? (
+                {currentPlayer?.hand && Array.isArray(currentPlayer.hand) && currentPlayer.hand.length > 0 ? (
                   <motion.div 
                     className="flex flex-col items-center gap-2 relative z-10"
                     initial={{ opacity: 0, y: 15 }}
@@ -1373,7 +1422,7 @@ function GameView() {
                       <AnimatePresence mode="popLayout">
                         {currentPlayer.hand.map((card, index) => (
                           <motion.div
-                            key={`${index}-${card.rank}-${card.suit}`}
+                            key={`${index}-${card?.rank || 'unknown'}-${card?.suit || 'unknown'}`}
                             layout
                             initial={{ opacity: 0, scale: 0.85 }}
                             animate={{ opacity: 1, scale: 1 }}
@@ -1489,20 +1538,41 @@ function GameView() {
         </div>
       )}
 
-      {/* Hero Chip Stack Display */}
-      <div className="flex gap-6 flex-wrap justify-center items-end">
-        {/* Your Chips with 3D stack */}
+      {/* Hero Chip Stack Display - Harmonized with desktop */}
+      <div className="flex gap-4 flex-wrap justify-center items-end">
+        {/* Your Chips */}
         <motion.div
           className="flex flex-col items-center"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
         >
-          <span className="text-gray-400 text-xs mb-1">Your Stack</span>
-          <div className="bg-gray-800/80 rounded-xl p-3 border border-gray-700">
-            <MiniChipStack amount={currentPlayer?.chips || 0} showAmount />
+          <div className="bg-slate-800/80 rounded-lg p-2.5 text-center border border-slate-700/50">
+            <span className="text-slate-400 text-[10px] block uppercase tracking-wider">Your Chips</span>
+            <span className="text-emerald-400 font-bold text-lg">${(currentPlayer?.chips || 0).toLocaleString()}</span>
           </div>
         </motion.div>
+
+        {/* Pot Display */}
+        {tableData?.pot > 0 && (
+          <motion.div
+            className="flex flex-col items-center"
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+          >
+            <div className="bg-amber-900/40 rounded-lg p-2.5 text-center border border-amber-700/30">
+              <span className="text-amber-300/80 text-[10px] block uppercase tracking-wider">Pot</span>
+              <div className="flex items-center justify-center gap-1">
+                <span className="text-amber-400 font-bold text-lg">${(tableData?.pot || 0).toLocaleString()}</span>
+                {(currentPlayer?.totalContribution || 0) < tableData?.pot && (
+                  <span className="text-amber-300/60 text-xs">
+                    (+${Math.max(0, (tableData?.pot || 0) - (currentPlayer?.totalContribution || 0)).toLocaleString()})
+                  </span>
+                )}
+              </div>
+            </div>
+          </motion.div>
+        )}
 
         {/* Current Bet Info */}
         {tableData?.currentBet > 0 && (
@@ -1511,9 +1581,9 @@ function GameView() {
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
           >
-            <span className="text-gray-400 text-xs mb-1">To Call</span>
-            <div className="bg-red-600/80 px-4 py-2 rounded-lg">
-              <span className="text-white font-bold text-lg">${callAmount}</span>
+            <div className="bg-blue-900/40 rounded-lg p-2.5 text-center border border-blue-700/30">
+              <span className="text-blue-300/80 text-[10px] block uppercase tracking-wider">To Call</span>
+              <span className="text-blue-400 font-bold text-lg">${callAmount.toLocaleString()}</span>
             </div>
           </motion.div>
         )}
@@ -1523,7 +1593,7 @@ function GameView() {
           <motion.button
             type="button"
             onClick={() => setShowBuyInModal(true)}
-            className="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-lg font-medium shadow-lg"
+            className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg font-medium shadow-lg"
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
           >
@@ -1534,17 +1604,48 @@ function GameView() {
 
       {/* Poker Table with Radial Player Positioning */}
       <div className="w-full max-w-4xl relative" style={{ minHeight: '280px' }}>
-        {/* Oval table background */}
-        <div
-          className="absolute inset-0 bg-green-700/30 border-4 border-green-600/50 rounded-full"
+        {/* Premium oval table background - Harmonized with desktop */}
+        <motion.div
+          className="absolute"
           style={{
-            left: '10%',
-            right: '10%',
+            left: '8%',
+            right: '8%',
             top: '5%',
             bottom: '15%',
             borderRadius: '50%',
+            background: `
+              radial-gradient(ellipse at 50% 40%, rgba(34,197,94,0.25) 0%, transparent 60%),
+              linear-gradient(180deg, 
+                rgba(21,128,61,0.6) 0%, 
+                rgba(22,101,52,0.7) 30%, 
+                rgba(20,83,45,0.8) 70%, 
+                rgba(21,128,61,0.6) 100%
+              )
+            `,
+            boxShadow: `
+              inset 0 0 40px rgba(0,0,0,0.4),
+              inset 0 0 15px rgba(0,0,0,0.2),
+              0 0 40px rgba(34,197,94,0.15),
+              0 6px 24px rgba(0,0,0,0.4)
+            `,
+            border: '3px solid rgba(74,222,128,0.4)',
           }}
-        />
+          initial={{ scale: 0.95, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ duration: 0.5, ease: 'easeOut' }}
+        >
+          {/* Inner felt texture line */}
+          <div 
+            className="absolute rounded-[50%]"
+            style={{
+              left: '4%',
+              right: '4%',
+              top: '6%',
+              bottom: '6%',
+              border: '2px solid rgba(74,222,128,0.2)',
+            }}
+          />
+        </motion.div>
 
         {/* Opponents positioned radially around the table */}
         {opponentsWithPositions.map((player) => {
@@ -1651,68 +1752,120 @@ function GameView() {
         ) : null}
       </div>
 
-      {/* Game Table - Current Player's Hand */}
-      <div className="bg-green-700 rounded-3xl px-12 py-8 border-8 border-yellow-700 shadow-2xl">
+      {/* Game Table - Current Player's Hand - Harmonized with desktop styling */}
+      <motion.div 
+        className="rounded-2xl px-6 py-4 w-full max-w-lg mx-auto relative overflow-hidden"
+        initial={{ opacity: 0, y: 15 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4 }}
+        style={{
+          background: `
+            linear-gradient(180deg, 
+              rgba(22,101,52,0.95) 0%, 
+              rgba(21,128,61,0.9) 50%, 
+              rgba(22,101,52,0.95) 100%
+            )
+          `,
+          boxShadow: '0 -4px 30px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.1), 0 4px 20px rgba(0,0,0,0.4)',
+          border: '2px solid rgba(251,191,36,0.6)',
+          borderRadius: '16px',
+        }}
+      >
+        {/* Subtle pattern overlay */}
+        <div 
+          className="absolute inset-0 opacity-5"
+          style={{
+            backgroundImage: `radial-gradient(circle at 2px 2px, white 1px, transparent 0)`,
+            backgroundSize: '16px 16px',
+          }}
+        />
+
+        {/* Position indicators for hero */}
+        <div className="flex justify-center mb-1 relative z-10">
+          <PositionIndicators
+            isDealer={isDealer(heroSeatIndex)}
+            isSmallBlind={isSmallBlind(heroSeatIndex)}
+            isBigBlind={isBigBlind(heroSeatIndex)}
+          />
+        </div>
+
         {currentPlayer?.hand && currentPlayer.hand.length > 0 ? (
-          <div className="flex flex-col items-center gap-6">
-            {/* Cards */}
-            <div className="flex gap-3">
-              {currentPlayer.hand.map((card, index) => (
-                <Card
-                  key={`${index}-${card.rank}-${card.suit}`}
-                  card={card}
-                  isSelected={selectedCardIndices.has(index)}
-                  isSelectable={isDrawPhase && myTurn}
-                  onClick={() => toggleCardSelection(index)}
-                />
-              ))}
+          <motion.div 
+            className="flex flex-col items-center gap-3 relative z-10"
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35 }}
+          >
+            {/* Cards - with AnimatePresence matching desktop */}
+            <div className="flex gap-2">
+              <AnimatePresence mode="popLayout">
+                {currentPlayer.hand.map((card, index) => (
+                  <motion.div
+                    key={`${index}-${card?.rank || 'unknown'}-${card?.suit || 'unknown'}`}
+                    layout
+                    initial={{ opacity: 0, scale: 0.85 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.85, y: -40 }}
+                    transition={{ 
+                      type: 'spring',
+                      stiffness: 350,
+                      damping: 28,
+                      delay: index * 0.04
+                    }}
+                  >
+                    <Card
+                      card={card}
+                      isSelected={selectedCardIndices.has(index)}
+                      isSelectable={isDrawPhase && myTurn}
+                      onClick={() => toggleCardSelection(index)}
+                      index={index}
+                      isDealing={isIdle && currentPlayer.hand.length === 5}
+                    />
+                  </motion.div>
+                ))}
+              </AnimatePresence>
             </div>
 
             {/* Draw phase hint */}
             {isDrawPhase && myTurn && (
-              <p className="text-gray-300 text-sm">
-                Click cards to select them for discard ({selectedCardIndices.size} selected)
+              <p className="text-emerald-200/80 text-xs">
+                Click cards to discard ({selectedCardIndices.size} selected)
               </p>
             )}
 
             {/* Turn indicator */}
             {!isIdle && !isShowdown && (
-              <p className={`text-sm ${myTurn ? 'text-yellow-400 font-bold' : 'text-gray-400'}`}>
+              <p className={`text-sm ${myTurn ? 'text-amber-400 font-bold' : 'text-slate-300'}`}>
                 {myTurn ? "It's your turn!" : `Waiting for ${activePlayer?.displayName || 'opponent'}...`}
               </p>
             )}
 
             {/* Hand Result (shown at showdown) */}
             {playerHandResult && isShowdown && (
-              <div className="text-center">
-                <p className="text-2xl font-bold text-yellow-400">
+              <div className="text-center bg-amber-500/20 rounded-lg px-4 py-1">
+                <p className="text-xl font-bold text-amber-400">
                   {formatHandName(playerHandResult.categoryName)}
-                </p>
-                <p className="text-sm text-gray-300 mt-1">
-                  {playerHandResult.display}
                 </p>
               </div>
             )}
-          </div>
+          </motion.div>
         ) : (
-          <div className="text-center">
-            <p className="text-white text-xl font-semibold px-8 py-4">
-              {needsBuyIn
-                ? 'Buy in to play!'
-                : isIdle
-                  ? canStartGame
-                    ? 'Ready to deal!'
-                    : 'Waiting for more players with chips...'
-                  : 'Waiting for cards...'
-              }
+          <motion.div 
+            className="text-center py-3 relative z-10"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.25 }}
+          >
+            <p className="text-white text-lg font-medium">
+              {needsBuyIn ? 'Buy in to play!' : isIdle ? (canStartGame ? 'Ready to deal!' : 'Waiting for players...') : 'Waiting for cards...'}
             </p>
-            <p className="text-gray-400 text-sm">
+            <p className="text-slate-300 text-xs mt-1">
               {tableData?.players?.length || 0} player(s) at table
               {canStartGame ? '' : ` (${playersWithChips} with chips)`}
             </p>
-          </div>
+          </motion.div>
         )}
-      </div>
+      </motion.div>
 
       {/* Current Player Info */}
       <div className="text-center">
@@ -1831,7 +1984,14 @@ function GameTable() {
   }
 
   // Show lobby if no table selected, otherwise show game
-  return currentTableId ? <GameView /> : <LobbyView />;
+  // Wrap GameView in error boundary to catch rendering errors
+  return currentTableId ? (
+    <GameErrorBoundary>
+      <GameView />
+    </GameErrorBoundary>
+  ) : (
+    <LobbyView />
+  );
 }
 
 export default GameTable;

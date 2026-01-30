@@ -84,7 +84,8 @@ export function AnimatedCard({
     },
   };
 
-  if (faceDown) {
+  // Safety check for invalid card data - show card back if card is invalid
+  if (faceDown || !card || !card.suit || !card.rank) {
     return (
       <motion.div
         className="w-14 h-20 rounded-lg relative overflow-hidden"
@@ -134,7 +135,7 @@ export function AnimatedCard({
     );
   }
 
-  const suit = SUIT_SYMBOLS[card?.suit] || SUIT_SYMBOLS.s;
+  const suit = SUIT_SYMBOLS[card.suit] || SUIT_SYMBOLS.s;
 
   return (
     <motion.button
@@ -245,12 +246,17 @@ export function AnimatedHand({
   showCards = true,
   isDealing = false,
 }) {
+  // Safety check for invalid cards array
+  if (!cards || !Array.isArray(cards)) {
+    return null;
+  }
+
   return (
     <div className="flex gap-3 justify-center">
       <AnimatePresence mode="popLayout">
         {cards.map((card, index) => (
           <AnimatedCard
-            key={`${card.rank}-${card.suit}-${index}`}
+            key={`${card?.rank || 'unknown'}-${card?.suit || 'unknown'}-${index}`}
             card={card}
             isSelected={selectedIndices.has(index)}
             isSelectable={isSelectable}
