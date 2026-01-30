@@ -8,9 +8,11 @@ import BuyInModal from '../components/BuyInModal';
 import BettingControls from '../components/BettingControls';
 import TurnTimer, { CircularTimer } from '../components/TurnTimer';
 import UsernameModal from '../components/UsernameModal';
+import CreateGameModal from '../components/CreateGameModal';
 import ChatBox from '../components/ChatBox';
 import ChipStack, { MiniChipStack } from '../components/ChipStack';
 import { PositionIndicators } from '../components/PositionButtons';
+import { useBotOrchestrator } from '../game/ai/useBotOrchestrator';
 
 const SUIT_SYMBOLS = {
   h: { symbol: '\u2665', color: 'text-red-500' },
@@ -578,6 +580,14 @@ function GameView() {
   const callAmount = getCallAmount();
   const minRaise = getMinRaise();
   const playerCanCheck = canCheck();
+
+  // Bot orchestrator - runs in table creator's browser
+  useBotOrchestrator(
+    tableData,
+    currentTableId,
+    currentUser?.uid,
+    tableData?.createdBy
+  );
 
   // Get hero's seat index and total players for radial positioning
   const heroSeatIndex = tableData?.players?.findIndex((p) => p.uid === currentUser?.uid) ?? 0;

@@ -204,6 +204,47 @@ export class GameService {
   }
 
   /**
+   * Generate a unique bot UID
+   */
+  static generateBotUid() {
+    return `bot_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  /**
+   * Generate a bot display name
+   */
+  static generateBotName(index) {
+    const names = [
+      'Ace', 'Bluff', 'Chip', 'Dealer', 'Edge', 'Flush', 'Gambit', 'Hustler',
+      'Ivy', 'Jack', 'King', 'Lucky', 'Maverick', 'Nova', 'Omega', 'Poker',
+      'Queen', 'River', 'Shark', 'Titan', 'Uncle', 'Vegas', 'Wild', 'X-Ray',
+      'Yankee', 'Zorro'
+    ];
+    return names[index % names.length] + Math.floor(Math.random() * 100);
+  }
+
+  /**
+   * Create a bot player object
+   */
+  static createBotPlayer(botDifficulty = 'medium', index = 0) {
+    return {
+      uid: GameService.generateBotUid(),
+      displayName: GameService.generateBotName(index),
+      photoURL: null,
+      chips: 0, // Start with 0, must buy in
+      hand: [],
+      status: 'active',
+      cardsToDiscard: [],
+      currentRoundBet: 0,
+      totalContribution: 0,
+      hasActedThisRound: false,
+      lastAction: null,
+      isBot: true,
+      botDifficulty: botDifficulty,
+    };
+  }
+
+  /**
    * Shuffle an array in place using Fisher-Yates algorithm
    * @param {Array} array - Array to shuffle
    * @returns {Array} - The shuffled array (same reference)
@@ -523,6 +564,47 @@ export class GameService {
     // Use custom username if available, otherwise fall back to Google displayName
     const displayName = GameService.getDisplayName(userWallet) || user.displayName || 'Anonymous';
 
+    // Default config if not provided
+    const defaultConfig = {
+      gameType: 'lowball_27',
+      bettingType: 'no_limit',
+      maxPlayers: 6,
+      turnTimeLimit: TURN_TIME_SECONDS,
+      passwordHash: null,
+      bots: {
+        count: 0,
+        difficulty: 'medium',
+        fillStrategy: 'fixed',
+      },
+    };
+
+    const finalConfig = config ? { ...defaultConfig, ...config } : defaultConfig;
+
+    // Create initial players array with human player
+    const players = [
+      {
+        uid: user.uid,
+        displayName: displayName,
+        photoURL: user.photoURL || null,
+        chips: 0, // Start with 0, must buy in
+        hand: [],
+        status: 'active',
+        cardsToDiscard: [],
+        currentRoundBet: 0,
+        totalContribution: 0, // Total contributed to pot this hand
+        hasActedThisRound: false,
+        lastAction: null, // Track last draw action for display
+      },
+    ];
+
+    // Add bot players if configured
+    const botConfig = finalConfig.bots || defaultConfig.bots;
+    if (botConfig.count > 0) {
+      for (let i = 0; i < botConfig.count && players.length < finalConfig.maxPlayers; i++) {
+        players.push(GameService.createBotPlayer(botConfig.difficulty, i));
+      }
+    }
+
     const tableData = {
       id: tableId,
       phase: 'IDLE',
@@ -535,23 +617,10 @@ export class GameService {
       activePlayerIndex: 0,
       turnDeadline: null,
       dealerIndex: 0,
-      players: [
-        {
-          uid: user.uid,
-          displayName: displayName,
-          photoURL: user.photoURL || null,
-          chips: 0, // Start with 0, must buy in
-          hand: [],
-          status: 'active',
-          cardsToDiscard: [],
-          currentRoundBet: 0,
-          totalContribution: 0, // Total contributed to pot this hand
-          hasActedThisRound: false,
-          lastAction: null, // Track last draw action for display
-        },
-      ],
+      players: players,
       chatLog: [], // Chat messages array
       createdBy: user.uid,
+      config: finalConfig, // Store configuration
       lastUpdated: serverTimestamp(),
     };
 
