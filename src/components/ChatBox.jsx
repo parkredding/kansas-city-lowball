@@ -86,6 +86,7 @@ function ChatBox({ messages = [], onSendMessage, currentUsername, disabled }) {
   if (!isExpanded) {
     return (
       <button
+        type="button"
         onClick={() => setIsExpanded(true)}
         className="fixed bottom-4 left-4 bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-lg shadow-lg border border-gray-600 flex items-center gap-2 transition-colors z-40"
       >
@@ -109,6 +110,7 @@ function ChatBox({ messages = [], onSendMessage, currentUsername, disabled }) {
       <div className="flex items-center justify-between px-4 py-2 border-b border-gray-700">
         <h3 className="text-white font-medium text-sm">Activity Log</h3>
         <button
+          type="button"
           onClick={() => setIsExpanded(false)}
           className="text-gray-400 hover:text-white transition-colors"
         >
