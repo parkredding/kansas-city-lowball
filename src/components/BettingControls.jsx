@@ -71,16 +71,16 @@ function BettingControls({
 
   // Desktop vs mobile layout classes
   const containerClass = isDesktop
-    ? 'bg-gray-900/95 backdrop-blur-sm rounded-xl p-4 w-full'
+    ? 'bg-gray-900/95 backdrop-blur-sm rounded-xl p-3 w-full'
     : 'bg-gray-900/90 backdrop-blur-sm rounded-xl p-4 w-full max-w-lg';
 
   return (
     <div className={containerClass}>
       {/* Raise Slider (shown when expanding) */}
       {showRaiseSlider && (
-        <div className="mb-4 p-4 bg-gray-800 rounded-lg">
+        <div className="mb-3 p-3 bg-gray-800 rounded-lg">
           {/* Amount display with editable input */}
-          <div className="flex justify-between items-center mb-3">
+          <div className="flex justify-between items-center mb-2">
             <span className="text-gray-400 text-sm">Raise to</span>
             <div className="flex items-center gap-2">
               <span className="text-gray-400">$</span>
@@ -92,13 +92,13 @@ function BettingControls({
                 min={minRaise}
                 max={trueMaxRaise}
                 disabled={disabled}
-                className="w-24 bg-gray-700 text-yellow-400 font-bold text-lg px-2 py-1 rounded text-right border border-gray-600 focus:border-yellow-500 focus:outline-none"
+                className="w-20 bg-gray-700 text-yellow-400 font-bold text-base px-2 py-1 rounded text-right border border-gray-600 focus:border-yellow-500 focus:outline-none"
               />
             </div>
           </div>
 
           {/* Slider with Min/Max labels */}
-          <div className="flex items-center gap-2 mb-3">
+          <div className="flex items-center gap-2 mb-2">
             <button
               type="button"
               onClick={() => setRaiseAmount(minRaise)}
@@ -128,7 +128,7 @@ function BettingControls({
           </div>
 
           {/* Preset Buttons */}
-          <div className="flex gap-2 mb-3">
+          <div className="flex gap-1.5 mb-2">
             {presets.map((preset) => (
               <button
                 type="button"
@@ -171,13 +171,13 @@ function BettingControls({
       )}
 
       {/* Main Action Buttons */}
-      <div className="flex gap-2">
+      <div className="flex gap-1.5">
         {/* Fold Button */}
         <button
           type="button"
           onClick={onFold}
           disabled={disabled}
-          className="flex-1 py-3 bg-red-600 hover:bg-red-500 disabled:bg-red-900 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-colors"
+          className="flex-1 py-2.5 bg-red-600 hover:bg-red-500 disabled:bg-red-900 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-colors text-sm"
         >
           Fold
         </button>
@@ -188,7 +188,7 @@ function BettingControls({
             type="button"
             onClick={onCheck}
             disabled={disabled}
-            className="flex-1 py-3 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-900 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-colors"
+            className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-900 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-colors text-sm"
           >
             Check
           </button>
@@ -198,20 +198,20 @@ function BettingControls({
             type="button"
             onClick={onAllIn || (() => onRaise(maxRaise))}
             disabled={disabled}
-            className="flex-1 py-3 bg-purple-600 hover:bg-purple-500 disabled:bg-purple-900 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-colors animate-pulse"
+            className="flex-1 py-2.5 bg-purple-600 hover:bg-purple-500 disabled:bg-purple-900 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-colors animate-pulse text-sm"
           >
             <span className="block">All-In</span>
-            <span className="text-xs opacity-80">${maxRaise}</span>
+            <span className="text-[10px] opacity-80">${maxRaise}</span>
           </button>
         ) : (
           <button
             type="button"
             onClick={onCall}
             disabled={disabled}
-            className="flex-1 py-3 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-900 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-colors"
+            className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-900 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-colors text-sm"
           >
             <span className="block">Call</span>
-            <span className="text-xs opacity-80">${callAmount}</span>
+            <span className="text-[10px] opacity-80">${callAmount}</span>
           </button>
         )}
 
@@ -222,7 +222,7 @@ function BettingControls({
             onClick={() => setShowRaiseSlider(!showRaiseSlider)}
             disabled={disabled}
             className={`
-              flex-1 py-3 font-bold rounded-lg transition-colors
+              flex-1 py-2.5 font-bold rounded-lg transition-colors text-sm
               ${showRaiseSlider
                 ? 'bg-yellow-700 text-white'
                 : 'bg-yellow-600 hover:bg-yellow-500 disabled:bg-yellow-900 disabled:cursor-not-allowed text-white'
@@ -231,7 +231,7 @@ function BettingControls({
           >
             <span className="block">{currentBet > 0 ? 'Raise' : 'Bet'}</span>
             {!showRaiseSlider && (
-              <span className="text-xs opacity-80">${minRaise}+</span>
+              <span className="text-[10px] opacity-80">${minRaise}+</span>
             )}
           </button>
         )}
@@ -242,10 +242,10 @@ function BettingControls({
             type="button"
             onClick={onAllIn || (() => onRaise(maxRaise))}
             disabled={disabled}
-            className="py-3 px-4 bg-purple-600 hover:bg-purple-500 disabled:bg-purple-900 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-colors"
+            className="py-2.5 px-3 bg-purple-600 hover:bg-purple-500 disabled:bg-purple-900 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-colors text-xs"
           >
-            <span className="block text-xs">All</span>
-            <span className="block text-xs">In</span>
+            <span className="block">All</span>
+            <span className="block">In</span>
           </button>
         )}
       </div>

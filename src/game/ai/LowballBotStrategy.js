@@ -24,10 +24,55 @@ export class LowballBotStrategy extends BotStrategy {
     // Check for pat hands (7, 8, 9, or T-high)
     const highCard = values[4];
     if (handResult.isGoodLowballHand && highCard <= 10) {
-      // Stand pat on 7, 8, 9, or T-high hands
+      // Stand pat on 7, 8, 9, or T-high hands (all difficulties)
       return [];
     }
 
+    // Easy difficulty: More conservative/random decisions
+    if (difficulty === 'easy') {
+      // Sometimes stand pat even on marginal hands (20% chance)
+      if (handResult.isGoodLowballHand && highCard <= 11 && Math.random() < 0.2) {
+        return [];
+      }
+
+      // Randomly decide how many cards to discard (1-3)
+      const numToDiscard = Math.floor(Math.random() * 3) + 1;
+      
+      // Find high cards (9 or higher)
+      const highCards = hand
+        .map((c, i) => ({ card: c, index: i, value: RANKS[c.rank] }))
+        .filter(({ value }) => value >= 9)
+        .sort((a, b) => b.value - a.value);
+
+      // If we have pairs, sometimes discard them randomly
+      const counts = this.getCounts(values);
+      const hasPair = Object.values(counts).some(c => c >= 2);
+      
+      if (hasPair && Math.random() < 0.5) {
+        // Discard from pairs randomly
+        const pairCards = Object.entries(counts)
+          .filter(([val, count]) => count >= 2)
+          .map(([val]) => parseInt(val))
+          .sort((a, b) => b - a);
+
+        if (pairCards.length > 0) {
+          const pairRank = Object.keys(RANKS).find(k => RANKS[k] === pairCards[0]);
+          const pairIndices = hand
+            .map((c, i) => c.rank === pairRank ? i : -1)
+            .filter(i => i !== -1);
+          return pairIndices.slice(0, Math.min(numToDiscard, pairIndices.length));
+        }
+      }
+
+      // Otherwise, discard random high cards
+      const allCards = hand
+        .map((c, i) => ({ card: c, index: i, value: RANKS[c.rank] }))
+        .sort((a, b) => b.value - a.value);
+      
+      return allCards.slice(0, numToDiscard).map(({ index }) => index);
+    }
+
+    // Medium/Hard difficulty: Optimal strategy
     // 1-Card Draw: If holding 4 cards to a 9-low or better, discard the high card
     if (handResult.isGoodLowballHand && highCard > 10) {
       // Find the highest card index

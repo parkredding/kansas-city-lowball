@@ -784,20 +784,22 @@ function GameView() {
 
   // Desktop layout component for action controls
   const ActionControlsSidebar = () => (
-    <div className="flex flex-col gap-4 p-4 bg-gray-900/50 rounded-xl h-full overflow-y-auto min-h-0">
-      <h3 className="text-white font-semibold text-center border-b border-gray-700 pb-2">Actions</h3>
+    <div className="flex flex-col gap-3 p-4 bg-gray-900/50 rounded-xl h-full overflow-y-auto min-h-0">
+      <h3 className="text-white font-semibold text-center border-b border-gray-700 pb-2 flex-shrink-0">Actions</h3>
 
       {/* Turn Timer */}
       {tableData?.turnDeadline && (isBettingPhase || isDrawPhase) && (
-        <TurnTimer
-          turnDeadline={tableData.turnDeadline}
-          onTimeout={handleTimeout}
-          isMyTurn={myTurn}
-        />
+        <div className="flex-shrink-0">
+          <TurnTimer
+            turnDeadline={tableData.turnDeadline}
+            onTimeout={handleTimeout}
+            isMyTurn={myTurn}
+          />
+        </div>
       )}
 
       {/* Chip Displays */}
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-2 flex-shrink-0">
         <div className="bg-gray-800 rounded-lg p-3 text-center">
           <span className="text-gray-400 text-xs block">Your Chips</span>
           <span className="text-white font-bold text-lg">${currentPlayer?.chips || 0}</span>
@@ -815,7 +817,7 @@ function GameView() {
       </div>
 
       {/* Action Buttons */}
-      <div className="flex-1 flex flex-col justify-center">
+      <div className="flex flex-col gap-3 flex-shrink-0 mt-auto">
         {isIdle && canStartGame && !needsBuyIn && (
           <button
             type="button"
@@ -982,7 +984,7 @@ function GameView() {
             </div>
 
             {/* Center: Poker Table */}
-            <div className="flex-1 flex flex-col items-center min-h-0 overflow-y-auto overflow-x-hidden py-4">
+            <div className="flex-1 flex flex-col items-center min-h-0 overflow-y-auto overflow-x-visible py-4">
               {/* Error display */}
               {error && (
                 <div className="bg-red-500/20 border border-red-500 text-red-200 px-4 py-2 rounded text-sm mb-4 flex-shrink-0">
@@ -991,10 +993,10 @@ function GameView() {
               )}
 
               {/* Poker Table with Radial Player Positioning */}
-              <div className="w-full max-w-4xl relative flex-shrink-0 px-4" style={{ minHeight: '400px', maxHeight: '500px' }}>
+              <div className="w-full max-w-4xl relative flex-shrink-0 px-4 overflow-visible" style={{ minHeight: '500px', height: '500px' }}>
                 {/* Oval table background */}
                 <div
-                  className="absolute inset-0 bg-green-700/30 border-4 border-green-600/50"
+                  className="absolute bg-green-700/30 border-4 border-green-600/50"
                   style={{
                     left: '10%',
                     right: '10%',

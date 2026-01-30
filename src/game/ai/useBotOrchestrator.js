@@ -91,15 +91,16 @@ export function useBotOrchestrator(tableData, currentTableId, currentUserId, cre
           return;
         }
 
-        // Skip if bot is all-in (can't act)
-        if (currentActivePlayer.status === 'all-in' || currentActivePlayer.chips === 0) {
-          return;
-        }
-
         // Re-check phase from latest tableData
         const currentPhase = latestTableData.phase;
         const currentIsBettingPhase = currentPhase?.startsWith('BETTING_');
         const currentIsDrawPhase = currentPhase?.startsWith('DRAW_');
+
+        // Skip if bot is all-in or has zero chips (can't act in betting phases)
+        // But allow all-in players to act in draw phases (they stand pat)
+        if (currentIsBettingPhase && (currentActivePlayer.status === 'all-in' || currentActivePlayer.chips === 0)) {
+          return;
+        }
 
         if (currentIsDrawPhase) {
           // Handle draw phase
