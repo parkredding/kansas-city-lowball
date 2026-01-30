@@ -9,7 +9,7 @@ import BettingControls from '../components/BettingControls';
 import TurnTimer, { CircularTimer } from '../components/TurnTimer';
 import UsernameModal from '../components/UsernameModal';
 import ChatBox from '../components/ChatBox';
-import ChipStack from '../components/ChipStack';
+import ChipStack, { MiniChipStack } from '../components/ChipStack';
 import { PositionIndicators } from '../components/PositionButtons';
 
 const SUIT_SYMBOLS = {

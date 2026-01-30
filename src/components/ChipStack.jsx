@@ -295,6 +295,13 @@ export function BetChip({ amount, playerId, animate = true }) {
 }
 
 /**
+ * Mini chip stack for compact displays (player info, etc.)
+ */
+export function MiniChipStack({ amount, showAmount = false }) {
+  return <ChipStack amount={amount} size="sm" showAmount={showAmount} />;
+}
+
+/**
  * Pot display with large animated chips
  */
 export function PotDisplay({ amount, animate = true, isWinning = false }) {
