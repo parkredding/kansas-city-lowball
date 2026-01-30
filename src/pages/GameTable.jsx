@@ -784,7 +784,7 @@ function GameView() {
 
   // Desktop layout component for action controls
   const ActionControlsSidebar = () => (
-    <div className="flex flex-col gap-4 p-4 bg-gray-900/50 rounded-xl h-full">
+    <div className="flex flex-col gap-4 p-4 bg-gray-900/50 rounded-xl h-full overflow-y-auto min-h-0">
       <h3 className="text-white font-semibold text-center border-b border-gray-700 pb-2">Actions</h3>
 
       {/* Turn Timer */}
@@ -940,7 +940,7 @@ function GameView() {
       {isDesktop ? (
         <div className="h-screen flex flex-col">
           {/* Header */}
-          <div className="flex items-center justify-between p-3 bg-gray-900/50 border-b border-gray-700">
+          <div className="flex items-center justify-between p-3 bg-gray-900/50 border-b border-gray-700 flex-shrink-0">
             <button
               type="button"
               onClick={leaveTable}
@@ -964,13 +964,13 @@ function GameView() {
           </div>
 
           {/* Main Content - 3 Column Layout */}
-          <div className="flex-1 flex overflow-hidden">
+          <div className="flex-1 flex overflow-hidden min-h-0">
             {/* Left Sidebar: Chat & Game Log */}
-            <div className="w-80 bg-gray-900/30 border-r border-gray-700 flex flex-col">
-              <div className="p-3 border-b border-gray-700">
+            <div className="w-80 bg-gray-900/30 border-r border-gray-700 flex flex-col flex-shrink-0">
+              <div className="p-3 border-b border-gray-700 flex-shrink-0">
                 <h3 className="text-white font-semibold">Chat & Activity</h3>
               </div>
-              <div className="flex-1 overflow-hidden">
+              <div className="flex-1 overflow-hidden min-h-0">
                 <ChatBox
                   messages={tableData?.chatLog || []}
                   onSendMessage={sendChatMessage}
@@ -982,16 +982,16 @@ function GameView() {
             </div>
 
             {/* Center: Poker Table */}
-            <div className="flex-1 flex flex-col items-center justify-center p-4 overflow-hidden">
+            <div className="flex-1 flex flex-col items-center min-h-0 overflow-y-auto overflow-x-hidden py-4">
               {/* Error display */}
               {error && (
-                <div className="bg-red-500/20 border border-red-500 text-red-200 px-4 py-2 rounded text-sm mb-4">
+                <div className="bg-red-500/20 border border-red-500 text-red-200 px-4 py-2 rounded text-sm mb-4 flex-shrink-0">
                   {error}
                 </div>
               )}
 
               {/* Poker Table with Radial Player Positioning */}
-              <div className="w-full max-w-4xl relative" style={{ minHeight: '350px' }}>
+              <div className="w-full max-w-4xl relative flex-shrink-0 px-4" style={{ minHeight: '400px', maxHeight: '500px' }}>
                 {/* Oval table background */}
                 <div
                   className="absolute inset-0 bg-green-700/30 border-4 border-green-600/50"
@@ -1010,7 +1010,7 @@ function GameView() {
                   return (
                     <div
                       key={player.uid}
-                      className="absolute transform -translate-x-1/2 -translate-y-1/2 z-10"
+                      className="absolute transform -translate-x-1/2 -translate-y-1/2 z-20"
                       style={{
                         left: position.left,
                         top: position.top,
@@ -1045,14 +1045,14 @@ function GameView() {
 
                 {/* Pot display in center with enhanced ChipStack */}
                 {tableData?.pot > 0 && (
-                  <div className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2">
+                  <div className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 z-30">
                     <ChipStack amount={tableData.pot} size="lg" showAmount={true} />
                   </div>
                 )}
               </div>
 
               {/* Hero's Hand Area */}
-              <div className="mt-4 bg-green-700 rounded-3xl px-12 py-6 border-8 border-yellow-700 shadow-2xl">
+              <div className="mt-8 mb-4 bg-green-700 rounded-3xl px-12 py-6 border-8 border-yellow-700 shadow-2xl flex-shrink-0 w-full max-w-4xl mx-4">
                 {/* Position indicators for hero */}
                 <div className="flex justify-center mb-2">
                   <PositionIndicators
@@ -1101,7 +1101,7 @@ function GameView() {
             </div>
 
             {/* Right Sidebar: Action Controls */}
-            <div className="w-72 bg-gray-900/30 border-l border-gray-700 relative z-50">
+            <div className="w-72 bg-gray-900/30 border-l border-gray-700 flex flex-col flex-shrink-0">
               <ActionControlsSidebar />
             </div>
           </div>
