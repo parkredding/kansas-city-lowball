@@ -1,4 +1,6 @@
 import { useMemo } from 'react';
+import { motion, LayoutGroup } from 'framer-motion';
+import PokerChip, { CHIP_DENOMINATIONS } from './PokerChip';
 
 /**
  * 3D Chip component with realistic stacking effect using CSS box-shadow
@@ -152,6 +154,7 @@ function ChipStack({ amount, size = 'md', showAmount = true, animate = false }) 
       }
       if (chips.length >= 8) break;
     }
+  }
 
     return { chips, type: 'medium' };
   }, [amount]);
@@ -159,6 +162,31 @@ function ChipStack({ amount, size = 'md', showAmount = true, animate = false }) 
   if (amount <= 0) {
     return null;
   }
+
+  const stackVariants = {
+    hidden: { opacity: 0 },
+    visible: {
+      opacity: 1,
+      transition: {
+        staggerChildren: 0.03,
+        delayChildren: 0.1,
+      },
+    },
+  };
+
+  const chipVariants = {
+    hidden: { opacity: 0, y: -20, scale: 0.8 },
+    visible: {
+      opacity: 1,
+      y: 0,
+      scale: 1,
+      transition: {
+        type: 'spring',
+        stiffness: 500,
+        damping: 25,
+      },
+    },
+  };
 
   return (
     <div className={`flex flex-col items-center ${animate ? 'animate-pulse' : ''}`}>
@@ -173,8 +201,6 @@ function ChipStack({ amount, size = 'md', showAmount = true, animate = false }) 
           />
         ))}
       </div>
-
-      {/* Amount label */}
       {showAmount && (
         <div
           className={`
@@ -187,41 +213,213 @@ function ChipStack({ amount, size = 'md', showAmount = true, animate = false }) 
           }}
         >
           ${amount.toLocaleString()}
-        </div>
+        </span>
       )}
     </div>
   );
 }
 
 /**
- * Animated bet chip that moves to the pot
+ * Bet chip display for current round bets near player seats
  */
-export function BetChip({ amount, playerPosition }) {
+export function BetChip({ amount, playerId, animate = true }) {
   if (amount <= 0) return null;
 
+  const breakdown = useMemo(() => calculateChipBreakdown(amount), [amount]);
+
+  // Show at most 3 chips for bet display
+  const chips = useMemo(() => {
+    const result = [];
+    let count = 0;
+    for (const { denomination, count: denomCount } of breakdown) {
+      const toAdd = Math.min(denomCount, 3 - count);
+      for (let i = 0; i < toAdd; i++) {
+        result.push({
+          id: `bet-${denomination}-${count}`,
+          denomination,
+          // Deterministic rotation
+          rotation: getDeterministicRotation(count, denomination, 4),
+        });
+        count++;
+      }
+      if (count >= 3) break;
+    }
+    return result;
+  }, [breakdown]);
+
+  // Calculate overlap margin dynamically for xs chips
+  const overlapMargin = getOverlapMargin('xs');
+
   return (
-    <div className="flex flex-col items-center">
-      <ChipStack amount={amount} size="sm" showAmount={false} />
-      <span className="text-xs font-bold text-yellow-300 mt-0.5">
-        ${amount}
-      </span>
-    </div>
+    <motion.div
+      className="flex flex-col items-center"
+      initial={animate ? { scale: 0, opacity: 0 } : false}
+      animate={{ scale: 1, opacity: 1 }}
+      transition={{ type: 'spring', stiffness: 400, damping: 20 }}
+    >
+      <div className="flex flex-col-reverse items-center">
+        {chips.map((chip, index) => (
+          <motion.div
+            key={chip.id}
+            layoutId={playerId ? `${playerId}-${chip.id}` : undefined}
+            style={{
+              marginTop: index > 0 ? overlapMargin : 0,
+              zIndex: index,
+            }}
+            initial={animate ? { y: -30, opacity: 0 } : false}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{
+              type: 'spring',
+              stiffness: 300,
+              damping: 20,
+              delay: index * 0.05,
+            }}
+          >
+            <PokerChip
+              denomination={chip.denomination}
+              size="xs"
+              rotation={chip.rotation}
+            />
+          </motion.div>
+        ))}
+      </div>
+      <motion.span
+        className="text-xs font-bold text-yellow-300 mt-1 bg-black/50 px-2 py-0.5 rounded"
+        initial={animate ? { opacity: 0 } : false}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.15 }}
+      >
+        ${amount.toLocaleString()}
+      </motion.span>
+    </motion.div>
   );
 }
 
 /**
- * Pot visualization with stacked chips
+ * Pot display with large animated chips
  */
-export function PotDisplay({ amount, animate = false }) {
+export function PotDisplay({ amount, animate = true, isWinning = false }) {
   if (amount <= 0) return null;
 
+  const breakdown = useMemo(() => calculateChipBreakdown(amount), [amount]);
+
+  // Show more chips for pot display (up to 12)
+  const chips = useMemo(() => {
+    const result = [];
+    let count = 0;
+    for (const { denomination, count: denomCount } of breakdown) {
+      const toAdd = Math.min(denomCount, 12 - count);
+      for (let i = 0; i < toAdd; i++) {
+        result.push({
+          id: `pot-${denomination}-${count}`,
+          denomination,
+          // Deterministic rotation
+          rotation: getDeterministicRotation(count, denomination, 3),
+        });
+        count++;
+      }
+      if (count >= 12) break;
+    }
+    return result;
+  }, [breakdown]);
+
+  // Split into 2 stacks if more than 6 chips
+  const stack1 = chips.slice(0, 6);
+  const stack2 = chips.slice(6);
+
+  // Calculate overlap margin dynamically for sm chips
+  const overlapMargin = getOverlapMargin('sm');
+
   return (
-    <div className={`flex flex-col items-center ${animate ? 'animate-pulse' : ''}`}>
-      <ChipStack amount={amount} size="lg" showAmount={false} />
-      <div className="bg-yellow-600/90 px-3 py-1 rounded-lg mt-1 shadow-lg">
-        <span className="text-white font-bold">${amount.toLocaleString()}</span>
+    <motion.div
+      className="flex flex-col items-center"
+      initial={animate ? { scale: 0.8, opacity: 0 } : false}
+      animate={isWinning ? {
+        scale: [1, 1.1, 0.5],
+        opacity: [1, 1, 0],
+        y: [0, -10, 50],
+      } : { scale: 1, opacity: 1 }}
+      transition={isWinning ? {
+        duration: 0.8,
+        times: [0, 0.3, 1],
+      } : {
+        type: 'spring',
+        stiffness: 300,
+        damping: 25,
+      }}
+    >
+      <div className="flex items-end gap-2">
+        {/* First stack */}
+        <div className="flex flex-col-reverse items-center">
+          {stack1.map((chip, index) => (
+            <motion.div
+              key={chip.id}
+              layoutId={chip.id}
+              style={{
+                marginTop: index > 0 ? overlapMargin : 0,
+                zIndex: index,
+              }}
+              initial={animate ? { y: -20, opacity: 0 } : false}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{
+                type: 'spring',
+                stiffness: 400,
+                damping: 25,
+                delay: index * 0.03,
+              }}
+            >
+              <PokerChip
+                denomination={chip.denomination}
+                size="sm"
+                rotation={chip.rotation}
+              />
+            </motion.div>
+          ))}
+        </div>
+
+        {/* Second stack if needed */}
+        {stack2.length > 0 && (
+          <div className="flex flex-col-reverse items-center">
+            {stack2.map((chip, index) => (
+              <motion.div
+                key={chip.id}
+                layoutId={chip.id}
+                style={{
+                  marginTop: index > 0 ? overlapMargin : 0,
+                  zIndex: index,
+                }}
+                initial={animate ? { y: -20, opacity: 0 } : false}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{
+                  type: 'spring',
+                  stiffness: 400,
+                  damping: 25,
+                  delay: 0.1 + index * 0.03,
+                }}
+              >
+                <PokerChip
+                  denomination={chip.denomination}
+                  size="sm"
+                  rotation={chip.rotation}
+                />
+              </motion.div>
+            ))}
+          </div>
+        )}
       </div>
-    </div>
+
+      {/* Pot amount label */}
+      <motion.div
+        className="bg-yellow-600/95 px-4 py-2 rounded-lg mt-2 shadow-xl border border-yellow-500"
+        initial={animate ? { opacity: 0, y: 10 } : false}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.2 }}
+      >
+        <span className="text-white font-bold text-lg drop-shadow-md">
+          ${amount.toLocaleString()}
+        </span>
+      </motion.div>
+    </motion.div>
   );
 }
 
