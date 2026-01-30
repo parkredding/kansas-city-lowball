@@ -101,10 +101,10 @@ function TurnTimer({ turnDeadline, onTimeout, isMyTurn, canTriggerTimeout = fals
 
 // Circular timer variant for player avatars
 export function CircularTimer({ turnDeadline, size = 48, isActive }) {
-  const [secondsLeft, setSecondsLeft] = useState(45);
+  const [secondsLeft, setSecondsLeft] = useState(TOTAL_TIME);
 
   const calculateSecondsLeft = useCallback(() => {
-    if (!turnDeadline) return 45;
+    if (!turnDeadline) return TOTAL_TIME;
 
     let deadlineMs;
     if (turnDeadline.toDate) {
@@ -134,8 +134,7 @@ export function CircularTimer({ turnDeadline, size = 48, isActive }) {
 
   if (!isActive || !turnDeadline) return null;
 
-  const percentage = (secondsLeft / 45) * 100;
-  const strokeDasharray = `${percentage * 3.14159 * size / 100} ${3.14159 * size}`;
+  const percentage = (secondsLeft / TOTAL_TIME) * 100;
 
   // Color based on time
   let strokeColor = '#22c55e'; // green

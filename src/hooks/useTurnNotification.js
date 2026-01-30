@@ -1,5 +1,24 @@
 import { useEffect, useRef, useCallback } from 'react';
 
+// Singleton AudioContext for reuse across all sound functions
+// This prevents hitting browser limits on AudioContext instances
+let sharedAudioContext = null;
+
+/**
+ * Get or create the shared AudioContext
+ * @returns {AudioContext} The shared audio context
+ */
+function getSharedAudioContext() {
+  if (!sharedAudioContext) {
+    sharedAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  // Resume if suspended (browser autoplay policy)
+  if (sharedAudioContext.state === 'suspended') {
+    sharedAudioContext.resume();
+  }
+  return sharedAudioContext;
+}
+
 /**
  * Audio notification hook for turn-based games.
  * Uses Web Audio API to generate pleasant notification sounds.
@@ -165,10 +184,11 @@ export function useTurnNotification(isMyTurn, gamePhase, enabled = true) {
 /**
  * Standalone function to play a generic notification sound
  * Can be used for other game events (win, card dealt, etc.)
+ * Uses the shared AudioContext to avoid browser limits
  */
 export function playNotificationSound(type = 'turn') {
   try {
-    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    const audioContext = getSharedAudioContext();
     const now = audioContext.currentTime;
 
     if (type === 'turn') {

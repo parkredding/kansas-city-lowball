@@ -12,6 +12,7 @@ function BettingControls({
   playerCurrentRoundBet = 0, // player's current bet this round
   canCheck,
   currentBet,
+  pot = 0, // total pot for half-pot calculations
   disabled,
   isDesktop = false, // For desktop layout mode
 }) {
@@ -64,10 +65,17 @@ function BettingControls({
   };
 
   // Quick raise presets
+  // Half-pot bet = (pot + call amount) / 2 + current bet to match
+  // This is the standard poker formula for a half-pot sized bet
+  const halfPotBet = Math.max(
+    minRaise,
+    Math.floor((pot + callAmount) / 2) + currentBet
+  );
+
   const presets = [
     { label: 'Min', value: minRaise },
     { label: '2x', value: Math.min(minRaise * 2, trueMaxRaise) },
-    { label: '½ Pot', value: Math.min(Math.floor(currentBet * 1.5) || minRaise, trueMaxRaise) },
+    { label: '½ Pot', value: Math.min(halfPotBet, trueMaxRaise) },
     { label: 'Max', value: trueMaxRaise },
   ].filter((p, i, arr) => {
     // Filter duplicates and invalid values

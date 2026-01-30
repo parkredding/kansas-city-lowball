@@ -17,6 +17,7 @@ export function useBotOrchestrator(tableData, currentTableId, currentUserId, cre
   const tableDataRef = useRef(tableData);
   const botTimeoutRef = useRef(null);
   const botActionTimeoutRef = useRef(null);
+  const mountedRef = useRef(true);
   const [retryCounter, setRetryCounter] = useState(0);
 
   // Keep ref updated with latest tableData
@@ -24,9 +25,11 @@ export function useBotOrchestrator(tableData, currentTableId, currentUserId, cre
     tableDataRef.current = tableData;
   }, [tableData]);
 
-  // Cleanup timeouts on unmount
+  // Cleanup timeouts on unmount and track mounted state
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
+      mountedRef.current = false;
       if (botTimeoutRef.current) {
         clearTimeout(botTimeoutRef.current);
       }
@@ -61,6 +64,7 @@ export function useBotOrchestrator(tableData, currentTableId, currentUserId, cre
     if (processingRef.current) {
       // Schedule a retry in case we're stuck
       botActionTimeoutRef.current = setTimeout(() => {
+        if (!mountedRef.current) return; // Skip if unmounted
         if (processingRef.current) {
           console.warn('Bot orchestrator appears stuck - forcing reset');
           processingRef.current = false;
@@ -116,6 +120,8 @@ export function useBotOrchestrator(tableData, currentTableId, currentUserId, cre
     // This will trigger a default action (check/fold for betting, stand pat for draw)
     const fallbackTimeout = 10000; // 10 seconds
     botTimeoutRef.current = setTimeout(async () => {
+      if (!mountedRef.current) return; // Skip if unmounted
+      
       try {
         const latestTableData = tableDataRef.current;
         if (!latestTableData || !currentTableId) return;
@@ -138,7 +144,9 @@ export function useBotOrchestrator(tableData, currentTableId, currentUserId, cre
       } catch (err) {
         console.error('Error in bot fallback timeout:', err);
       } finally {
-        processingRef.current = false;
+        if (mountedRef.current) {
+          processingRef.current = false;
+        }
       }
     }, fallbackTimeout);
 
@@ -146,6 +154,8 @@ export function useBotOrchestrator(tableData, currentTableId, currentUserId, cre
     const delay = Math.random() * 1000 + 500; // 500-1500ms
 
     setTimeout(async () => {
+      if (!mountedRef.current) return; // Skip if unmounted
+      
       try {
         // Re-check phase and active player from latest tableData
         const latestTableData = tableDataRef.current;
@@ -262,6 +272,7 @@ export function useBotOrchestrator(tableData, currentTableId, currentUserId, cre
         // Reset processing flag with a shorter delay
         // This allows the next bot action to be processed quickly
         setTimeout(() => {
+          if (!mountedRef.current) return; // Skip if unmounted
           processingRef.current = false;
           // Trigger a retry to ensure we don't miss the next bot's turn
           triggerRetry();

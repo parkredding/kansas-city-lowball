@@ -42,6 +42,9 @@ export function AuthProvider({ children }) {
   }
 
   function logout() {
+    if (!auth) {
+      return Promise.resolve();
+    }
     return signOut(auth);
   }
 
