@@ -12,12 +12,16 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Deck } from './Deck';
+import {
+  MAX_PLAYERS,
+  CARDS_PER_HAND,
+  DEFAULT_STARTING_BALANCE,
+  DEFAULT_MIN_BET,
+  TURN_TIME_SECONDS,
+} from './constants';
 
 const TABLES_COLLECTION = 'tables';
 const USERS_COLLECTION = 'users';
-const DEFAULT_STARTING_BALANCE = 10000;
-const DEFAULT_MIN_BET = 50;
-const TURN_TIME_SECONDS = 45;
 
 /**
  * Betting action types
@@ -53,6 +57,48 @@ export class GameService {
     const deck = new Deck();
     deck.shuffle();
     return deck.cards;
+  }
+
+  /**
+   * Shuffle an array in place using Fisher-Yates algorithm
+   * @param {Array} array - Array to shuffle
+   * @returns {Array} - The shuffled array (same reference)
+   */
+  static shuffleArray(array) {
+    for (let i = array.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [array[i], array[j]] = [array[j], array[i]];
+    }
+    return array;
+  }
+
+  /**
+   * Reshuffle muck into deck if deck is running low
+   * @param {Array} deck - Current deck array
+   * @param {Array} muck - Discard pile array
+   * @param {number} neededCards - Number of cards needed
+   * @returns {Object} - { deck: Array, muck: Array } with updated arrays
+   */
+  static reshuffleMuckIfNeeded(deck, muck, neededCards) {
+    if (deck.length >= neededCards) {
+      return { deck, muck };
+    }
+
+    // Not enough cards in deck - shuffle muck and add to deck
+    if (muck.length === 0) {
+      // No cards to reshuffle, return what we have
+      return { deck, muck };
+    }
+
+    console.log(`Reshuffling ${muck.length} cards from muck into deck (needed: ${neededCards}, had: ${deck.length})`);
+
+    // Shuffle the muck
+    const shuffledMuck = GameService.shuffleArray([...muck]);
+
+    // Append shuffled muck to bottom of deck
+    const newDeck = [...deck, ...shuffledMuck];
+
+    return { deck: newDeck, muck: [] };
   }
 
   // ============================================
@@ -337,6 +383,7 @@ export class GameService {
       id: tableId,
       phase: 'IDLE',
       deck: GameService.createShuffledDeck(),
+      muck: [], // Discard pile for reshuffling when deck runs low
       pot: 0,
       minBet: minBet,
       currentBet: 0,
@@ -394,8 +441,8 @@ export class GameService {
       return;
     }
 
-    // Check if table is full (max 6 players for now)
-    if (tableData.players.length >= 6) {
+    // Check if table is full
+    if (tableData.players.length >= MAX_PLAYERS) {
       throw new Error('Table is full');
     }
 
@@ -515,7 +562,8 @@ export class GameService {
    * @returns {Promise<void>}
    */
   static async dealCards(tableId, tableData) {
-    const deck = [...tableData.deck];
+    let deck = [...tableData.deck];
+    let muck = [...(tableData.muck || [])];
     const minBet = tableData.minBet || DEFAULT_MIN_BET;
     const smallBlind = Math.floor(minBet / 2);
     const bigBlind = minBet;
@@ -536,8 +584,16 @@ export class GameService {
       lastAction: null, // Clear any previous action text
     }));
 
+    // Calculate cards needed for initial deal
+    const cardsNeeded = CARDS_PER_HAND * activePlayers.length;
+
+    // Reshuffle muck into deck if needed
+    const reshuffled = GameService.reshuffleMuckIfNeeded(deck, muck, cardsNeeded);
+    deck = reshuffled.deck;
+    muck = reshuffled.muck;
+
     // Deal 5 cards to each active player
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < CARDS_PER_HAND; i++) {
       for (let j = 0; j < players.length; j++) {
         if (players[j].status === 'active' && deck.length > 0) {
           players[j].hand.push(deck.shift());
@@ -580,6 +636,7 @@ export class GameService {
 
     await GameService.updateTable(tableId, {
       deck,
+      muck, // Include muck in update (cleared or updated from reshuffle)
       players,
       pot,
       currentBet: bigBlind,
@@ -924,7 +981,8 @@ export class GameService {
       throw new Error('Not your turn');
     }
 
-    const deck = [...tableData.deck];
+    let deck = [...tableData.deck];
+    let muck = [...(tableData.muck || [])];
     const players = [...tableData.players];
     const player = { ...players[playerIndex] };
     let hand = [...player.hand];
@@ -932,15 +990,29 @@ export class GameService {
     // Sort indices in descending order to remove from end first
     const sortedIndices = [...cardIndices].sort((a, b) => b - a);
 
-    // Remove discarded cards
+    // Remove discarded cards and add them to the muck
+    const discardedCards = [];
     for (const index of sortedIndices) {
       if (index >= 0 && index < hand.length) {
-        hand.splice(index, 1);
+        const discarded = hand.splice(index, 1)[0];
+        discardedCards.push(discarded);
       }
     }
 
-    // Deal replacement cards
+    // Add discarded cards to muck
+    muck = [...muck, ...discardedCards];
+
+    // Deal replacement cards (reshuffle muck if needed)
     const numToDraw = cardIndices.length;
+
+    // Check if we need to reshuffle the muck
+    if (numToDraw > 0) {
+      const reshuffled = GameService.reshuffleMuckIfNeeded(deck, muck, numToDraw);
+      deck = reshuffled.deck;
+      muck = reshuffled.muck;
+    }
+
+    // Draw replacement cards
     for (let i = 0; i < numToDraw && deck.length > 0; i++) {
       hand.push(deck.shift());
     }
@@ -979,6 +1051,7 @@ export class GameService {
 
     const updates = {
       deck,
+      muck, // Include updated muck pile
       players,
     };
 
@@ -1025,6 +1098,7 @@ export class GameService {
     await GameService.updateTable(tableId, {
       phase: 'IDLE',
       deck: GameService.createShuffledDeck(),
+      muck: [], // Clear muck for new hand
       pot: 0,
       currentBet: 0,
       players,
