@@ -5,29 +5,38 @@ function BettingControls({
   onCheck,
   onCall,
   onRaise,
-  onAllIn, // New: explicit all-in handler
+  onAllIn,
   callAmount,
   minRaise,
   maxRaise, // player's chips
+  playerCurrentRoundBet = 0, // player's current bet this round
   canCheck,
   currentBet,
   disabled,
+  isDesktop = false, // For desktop layout mode
 }) {
   const [raiseAmount, setRaiseAmount] = useState(minRaise);
   const [showRaiseSlider, setShowRaiseSlider] = useState(false);
 
+  // Calculate true max bet (player's chips + what they've already bet this round)
+  // This is the total amount the player can raise TO
+  const trueMaxRaise = Math.floor(maxRaise + playerCurrentRoundBet);
+
   // Determine if player must go all-in to call (chips < callAmount)
   const mustAllInToCall = callAmount > 0 && maxRaise < callAmount && maxRaise > 0;
   // Check if player can raise (has more chips than needed to call)
-  const canRaise = maxRaise > callAmount && maxRaise >= minRaise;
+  const canRaise = maxRaise > callAmount && trueMaxRaise >= minRaise;
 
-  // Update raise amount when minRaise changes
+  // Update raise amount when minRaise changes, clamped to valid range
   useEffect(() => {
-    setRaiseAmount(minRaise);
-  }, [minRaise]);
+    const clampedMin = Math.max(minRaise, currentBet + 1);
+    const clampedValue = Math.min(Math.max(clampedMin, minRaise), trueMaxRaise);
+    setRaiseAmount(clampedValue);
+  }, [minRaise, currentBet, trueMaxRaise]);
 
   const handleRaiseChange = (e) => {
-    setRaiseAmount(parseInt(e.target.value));
+    const value = parseInt(e.target.value) || minRaise;
+    setRaiseAmount(Math.min(Math.max(value, minRaise), trueMaxRaise));
   };
 
   const handleRaiseSubmit = () => {
@@ -35,42 +44,84 @@ function BettingControls({
     setShowRaiseSlider(false);
   };
 
-  // Quick raise presets (pot-sized bets, etc.)
-  const potSizedRaise = Math.min(currentBet * 2 || minRaise, maxRaise);
-  const halfPotRaise = Math.min(Math.floor((currentBet || minRaise) * 1.5), maxRaise);
+  // Handle direct input
+  const handleInputChange = (e) => {
+    const value = parseInt(e.target.value) || 0;
+    setRaiseAmount(value);
+  };
 
+  const handleInputBlur = () => {
+    // Clamp value on blur
+    setRaiseAmount(Math.min(Math.max(raiseAmount, minRaise), trueMaxRaise));
+  };
+
+  // Quick raise presets
   const presets = [
     { label: 'Min', value: minRaise },
-    { label: '2x', value: Math.min(minRaise * 2, maxRaise) },
-    { label: '3x', value: Math.min(minRaise * 3, maxRaise) },
-    { label: 'All-In', value: maxRaise },
+    { label: '2x', value: Math.min(minRaise * 2, trueMaxRaise) },
+    { label: '1/2 Pot', value: Math.min(Math.floor(currentBet * 1.5) || minRaise, trueMaxRaise) },
+    { label: 'Max', value: trueMaxRaise },
   ].filter((p, i, arr) => {
     // Filter duplicates and invalid values
-    if (p.value > maxRaise || p.value < minRaise) return false;
+    if (p.value > trueMaxRaise || p.value < minRaise) return false;
     return arr.findIndex((x) => x.value === p.value) === i;
   });
 
+  // Desktop vs mobile layout classes
+  const containerClass = isDesktop
+    ? 'bg-gray-900/95 backdrop-blur-sm rounded-xl p-4 w-full'
+    : 'bg-gray-900/90 backdrop-blur-sm rounded-xl p-4 w-full max-w-lg';
+
   return (
-    <div className="bg-gray-900/90 backdrop-blur-sm rounded-xl p-4 w-full max-w-lg">
+    <div className={containerClass}>
       {/* Raise Slider (shown when expanding) */}
       {showRaiseSlider && (
         <div className="mb-4 p-4 bg-gray-800 rounded-lg">
-          <div className="flex justify-between items-center mb-2">
+          {/* Amount display with editable input */}
+          <div className="flex justify-between items-center mb-3">
             <span className="text-gray-400 text-sm">Raise to</span>
-            <span className="text-yellow-400 font-bold text-lg">${raiseAmount}</span>
+            <div className="flex items-center gap-2">
+              <span className="text-gray-400">$</span>
+              <input
+                type="number"
+                value={raiseAmount}
+                onChange={handleInputChange}
+                onBlur={handleInputBlur}
+                min={minRaise}
+                max={trueMaxRaise}
+                disabled={disabled}
+                className="w-24 bg-gray-700 text-yellow-400 font-bold text-lg px-2 py-1 rounded text-right border border-gray-600 focus:border-yellow-500 focus:outline-none"
+              />
+            </div>
           </div>
 
-          {/* Slider */}
-          <input
-            type="range"
-            min={minRaise}
-            max={maxRaise}
-            step={Math.max(1, Math.floor((maxRaise - minRaise) / 100))}
-            value={raiseAmount}
-            onChange={handleRaiseChange}
-            disabled={disabled}
-            className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-yellow-500 mb-3"
-          />
+          {/* Slider with Min/Max labels */}
+          <div className="flex items-center gap-2 mb-3">
+            <button
+              onClick={() => setRaiseAmount(minRaise)}
+              disabled={disabled}
+              className="text-xs text-gray-400 hover:text-white px-2 py-1 bg-gray-700 rounded"
+            >
+              Min ${minRaise}
+            </button>
+            <input
+              type="range"
+              min={minRaise}
+              max={trueMaxRaise}
+              step={Math.max(1, Math.floor((trueMaxRaise - minRaise) / 100))}
+              value={raiseAmount}
+              onChange={handleRaiseChange}
+              disabled={disabled}
+              className="flex-1 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-yellow-500"
+            />
+            <button
+              onClick={() => setRaiseAmount(trueMaxRaise)}
+              disabled={disabled}
+              className="text-xs text-gray-400 hover:text-white px-2 py-1 bg-gray-700 rounded"
+            >
+              Max ${trueMaxRaise}
+            </button>
+          </div>
 
           {/* Preset Buttons */}
           <div className="flex gap-2 mb-3">
@@ -103,7 +154,7 @@ function BettingControls({
             </button>
             <button
               onClick={handleRaiseSubmit}
-              disabled={disabled}
+              disabled={disabled || raiseAmount < minRaise || raiseAmount > trueMaxRaise}
               className="flex-1 py-2 bg-yellow-600 hover:bg-yellow-500 disabled:bg-yellow-800 text-white rounded-lg text-sm font-bold transition-colors"
             >
               Raise ${raiseAmount}

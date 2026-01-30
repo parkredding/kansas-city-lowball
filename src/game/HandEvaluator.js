@@ -48,8 +48,8 @@ export class HandEvaluator {
 
     // Build score string for comparison
     // Lower score = better hand in 2-7 Lowball
-    // Format: category (1 digit) + card values from high to low (2 digits each)
-    const sortedForScore = this.sortForLowball(values, counts);
+    // Format: category (1 digit) + card values sorted for tie-breaking (2 digits each)
+    const sortedForScore = this.sortForTieBreak(values, counts, category);
     let scoreString = `${category}`;
     sortedForScore.forEach(val => {
       scoreString += val.toString().padStart(2, '0');
@@ -59,7 +59,9 @@ export class HandEvaluator {
       score: scoreString,
       categoryName: this.getCategoryName(category),
       display: this.getHandDisplay(values),
-      isGoodLowballHand: category === HAND_TYPES.HIGH_CARD
+      isGoodLowballHand: category === HAND_TYPES.HIGH_CARD,
+      values: sortedForScore,
+      category
     };
   }
 
@@ -70,9 +72,7 @@ export class HandEvaluator {
     // Check for regular straight (5 consecutive values)
     if (sortedValues[4] - sortedValues[0] === 4) return true;
 
-    // Check for A-2-3-4-5 wheel straight (Ace plays high in 2-7, so this is A-5-4-3-2)
     // In 2-7 Lowball, A-2-3-4-5 is NOT a straight because Ace is always high
-    // So we only check for regular consecutive straights
     return false;
   }
 
@@ -83,16 +83,88 @@ export class HandEvaluator {
     }, {});
   }
 
-  // Sort for 2-7 Lowball scoring
-  // For pairs/trips/etc: put paired cards first (bad), then remaining cards low to high
-  // For high card hands: sort high to low (we want lowest high card)
-  static sortForLowball(values, counts) {
-    return [...values].sort((a, b) => {
-      const countDiff = counts[b] - counts[a];
-      if (countDiff !== 0) return countDiff;
-      // For same count, higher value is worse in lowball
-      return b - a;
-    });
+  /**
+   * Sort cards for tie-breaking in 2-7 Lowball
+   *
+   * KEY PRINCIPLE: In lowball, LOWER values are BETTER.
+   * When comparing score strings, we want the hand with lower cards to produce
+   * a lower (better) score string.
+   *
+   * For HIGH_CARD: Sort from highest to lowest card. The hand with the lower
+   * high card wins. If tied, compare next highest, etc.
+   * Example: 8-7-5-3-2 beats 9-6-4-3-2 because 8 < 9
+   *
+   * For PAIR: The lower pair wins. Put pair value first, then kickers high to low.
+   * Example: Pair of 3s (33-8-6-4) beats Pair of 7s (77-6-5-2)
+   * Score: "2_03_08_06_04" < "2_07_06_05_02" (lower pair = lower score = better)
+   *
+   * For TWO_PAIR: Lower high pair wins, then lower low pair, then kicker.
+   * Put pairs in order (higher pair first for comparison), then kicker.
+   *
+   * For TRIPS/QUADS: Lower trips value wins.
+   *
+   * For STRAIGHTS/FLUSHES: Lower high card wins (but these are bad hands anyway).
+   */
+  static sortForTieBreak(values, counts, category) {
+    const result = [];
+
+    // Group values by their count
+    const grouped = {};
+    for (const [val, count] of Object.entries(counts)) {
+      if (!grouped[count]) grouped[count] = [];
+      grouped[count].push(parseInt(val));
+    }
+
+    // Sort each group (lower values are better in lowball, but we still
+    // need to compare properly - higher values first for proper string comparison)
+    for (const count in grouped) {
+      grouped[count].sort((a, b) => b - a); // Sort descending within each group
+    }
+
+    switch (category) {
+      case HAND_TYPES.HIGH_CARD:
+      case HAND_TYPES.FLUSH:
+      case HAND_TYPES.STRAIGHT:
+      case HAND_TYPES.STRAIGHT_FLUSH:
+        // Sort all cards from highest to lowest
+        // Lower high card = lower score = better
+        return [...values].sort((a, b) => b - a);
+
+      case HAND_TYPES.PAIR:
+        // Pair value first (lower pair = better), then kickers high to low
+        result.push(...grouped[2]); // The pair value
+        result.push(...(grouped[1] || []).sort((a, b) => b - a)); // Kickers
+        return result;
+
+      case HAND_TYPES.TWO_PAIR:
+        // Higher pair first, lower pair second, then kicker
+        // (In comparison, lower higher-pair wins)
+        const pairs = grouped[2].sort((a, b) => b - a);
+        result.push(...pairs);
+        result.push(...(grouped[1] || []));
+        return result;
+
+      case HAND_TYPES.TRIPS:
+        // Trips value first, then kickers high to low
+        result.push(...grouped[3]);
+        result.push(...(grouped[1] || []).sort((a, b) => b - a));
+        return result;
+
+      case HAND_TYPES.FULL_HOUSE:
+        // Trips value first, then pair value
+        result.push(...grouped[3]);
+        result.push(...grouped[2]);
+        return result;
+
+      case HAND_TYPES.QUADS:
+        // Quads value first, then kicker
+        result.push(...grouped[4]);
+        result.push(...(grouped[1] || []));
+        return result;
+
+      default:
+        return [...values].sort((a, b) => b - a);
+    }
   }
 
   static getCategoryName(catVal) {
@@ -126,5 +198,34 @@ export class HandEvaluator {
            values[2] === 4 &&
            values[3] === 5 &&
            values[4] === 7;
+  }
+
+  // Get a descriptive name for the hand
+  static getHandDescription(result) {
+    const map = { 10: 'T', 11: 'J', 12: 'Q', 13: 'K', 14: 'A' };
+    const rankName = (v) => map[v] || v.toString();
+
+    switch (result.category) {
+      case HAND_TYPES.HIGH_CARD:
+        return `${rankName(result.values[0])} high`;
+      case HAND_TYPES.PAIR:
+        return `Pair of ${rankName(result.values[0])}s`;
+      case HAND_TYPES.TWO_PAIR:
+        return `Two pair: ${rankName(result.values[0])}s and ${rankName(result.values[1])}s`;
+      case HAND_TYPES.TRIPS:
+        return `Three ${rankName(result.values[0])}s`;
+      case HAND_TYPES.STRAIGHT:
+        return `Straight to ${rankName(result.values[0])}`;
+      case HAND_TYPES.FLUSH:
+        return `Flush, ${rankName(result.values[0])} high`;
+      case HAND_TYPES.FULL_HOUSE:
+        return `Full house: ${rankName(result.values[0])}s over ${rankName(result.values[1])}s`;
+      case HAND_TYPES.QUADS:
+        return `Four ${rankName(result.values[0])}s`;
+      case HAND_TYPES.STRAIGHT_FLUSH:
+        return `Straight flush to ${rankName(result.values[0])}`;
+      default:
+        return result.display;
+    }
   }
 }

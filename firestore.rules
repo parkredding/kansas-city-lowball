@@ -1,0 +1,59 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Helper function to check if the table is stale (more than 3 hours old)
+    function isStaleTable() {
+      // Check if lastUpdated is more than 3 hours ago
+      // Note: duration.value() is in seconds, so 3 hours = 10800 seconds
+      return resource.data.lastUpdated < request.time - duration.value(10800, 's');
+    }
+
+    // Users collection - each user can only read/write their own document
+    match /users/{userId} {
+      // Users can read their own data
+      allow read: if isAuthenticated() && request.auth.uid == userId;
+
+      // Users can create their own document
+      allow create: if isAuthenticated() && request.auth.uid == userId;
+
+      // Users can update their own document
+      // Also allow updates for chip refunds during stale table cleanup
+      allow update: if isAuthenticated() && (
+        request.auth.uid == userId ||
+        // Allow balance increases from any authenticated user (for refunds)
+        (request.resource.data.balance >= resource.data.balance)
+      );
+    }
+
+    // Tables collection
+    match /tables/{tableId} {
+      // Any authenticated user can read tables (to join them)
+      allow read: if isAuthenticated();
+
+      // Any authenticated user can create a table
+      allow create: if isAuthenticated();
+
+      // Players at the table can update it (game actions)
+      // Check if the user is in the players array
+      allow update: if isAuthenticated() && (
+        // User is a player at the table
+        request.auth.uid in resource.data.players[*].uid ||
+        // Or the table creator
+        request.auth.uid == resource.data.createdBy
+      );
+
+      // Allow delete if:
+      // 1. The user created the table, OR
+      // 2. The table is stale (older than 3 hours) and user is authenticated
+      allow delete: if isAuthenticated() && (
+        request.auth.uid == resource.data.createdBy ||
+        isStaleTable()
+      );
+    }
+  }
+}
