@@ -57,11 +57,17 @@ function BettingControls({
     setRaiseAmount(Math.min(Math.max(raiseAmount, minRaise), trueMaxRaise));
   };
 
+  // Format number for display (truncate if too long)
+  const formatAmount = (amount) => {
+    if (amount >= 10000) return `${Math.floor(amount / 1000)}k`;
+    return amount.toLocaleString();
+  };
+
   // Quick raise presets
   const presets = [
     { label: 'Min', value: minRaise },
     { label: '2x', value: Math.min(minRaise * 2, trueMaxRaise) },
-    { label: '1/2 Pot', value: Math.min(Math.floor(currentBet * 1.5) || minRaise, trueMaxRaise) },
+    { label: '½ Pot', value: Math.min(Math.floor(currentBet * 1.5) || minRaise, trueMaxRaise) },
     { label: 'Max', value: trueMaxRaise },
   ].filter((p, i, arr) => {
     // Filter duplicates and invalid values
@@ -71,19 +77,19 @@ function BettingControls({
 
   // Desktop vs mobile layout classes
   const containerClass = isDesktop
-    ? 'bg-gray-900/95 backdrop-blur-sm rounded-xl p-3 w-full'
-    : 'bg-gray-900/90 backdrop-blur-sm rounded-xl p-4 w-full max-w-lg';
+    ? 'bg-slate-800/60 backdrop-blur-sm rounded-xl p-3 w-full border border-slate-700/50'
+    : 'bg-slate-900/95 backdrop-blur-sm rounded-xl p-3 w-full max-w-lg border border-slate-700/50';
 
   return (
     <div className={containerClass}>
       {/* Raise Slider (shown when expanding) */}
       {showRaiseSlider && (
-        <div className="mb-3 p-3 bg-gray-800 rounded-lg">
+        <div className="mb-3 p-2.5 bg-slate-900/80 rounded-lg border border-slate-700/50">
           {/* Amount display with editable input */}
           <div className="flex justify-between items-center mb-2">
-            <span className="text-gray-400 text-sm">Raise to</span>
-            <div className="flex items-center gap-2">
-              <span className="text-gray-400">$</span>
+            <span className="text-slate-400 text-xs">Raise to</span>
+            <div className="flex items-center gap-1">
+              <span className="text-slate-400 text-sm">$</span>
               <input
                 type="number"
                 value={raiseAmount}
@@ -92,21 +98,13 @@ function BettingControls({
                 min={minRaise}
                 max={trueMaxRaise}
                 disabled={disabled}
-                className="w-20 bg-gray-700 text-yellow-400 font-bold text-base px-2 py-1 rounded text-right border border-gray-600 focus:border-yellow-500 focus:outline-none"
+                className="w-20 bg-slate-800 text-amber-400 font-bold text-sm px-2 py-1 rounded text-right border border-slate-600 focus:border-amber-500 focus:outline-none"
               />
             </div>
           </div>
 
-          {/* Slider with Min/Max labels */}
-          <div className="flex items-center gap-2 mb-2">
-            <button
-              type="button"
-              onClick={() => setRaiseAmount(minRaise)}
-              disabled={disabled}
-              className="text-xs text-gray-400 hover:text-white px-2 py-1 bg-gray-700 rounded"
-            >
-              Min ${minRaise}
-            </button>
+          {/* Slider */}
+          <div className="mb-2">
             <input
               type="range"
               min={minRaise}
@@ -115,20 +113,16 @@ function BettingControls({
               value={raiseAmount}
               onChange={handleRaiseChange}
               disabled={disabled}
-              className="flex-1 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-yellow-500"
+              className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-500"
             />
-            <button
-              type="button"
-              onClick={() => setRaiseAmount(trueMaxRaise)}
-              disabled={disabled}
-              className="text-xs text-gray-400 hover:text-white px-2 py-1 bg-gray-700 rounded"
-            >
-              Max ${trueMaxRaise}
-            </button>
+            <div className="flex justify-between text-[10px] text-slate-500 mt-0.5">
+              <span>${formatAmount(minRaise)}</span>
+              <span>${formatAmount(trueMaxRaise)}</span>
+            </div>
           </div>
 
-          {/* Preset Buttons */}
-          <div className="flex gap-1.5 mb-2">
+          {/* Preset Buttons - compact */}
+          <div className="grid grid-cols-4 gap-1 mb-2">
             {presets.map((preset) => (
               <button
                 type="button"
@@ -136,15 +130,14 @@ function BettingControls({
                 onClick={() => setRaiseAmount(preset.value)}
                 disabled={disabled}
                 className={`
-                  flex-1 py-1.5 px-2 rounded text-xs font-medium transition-colors
+                  py-1.5 px-1 rounded text-[10px] font-medium transition-colors whitespace-nowrap
                   ${raiseAmount === preset.value
-                    ? 'bg-yellow-600 text-white'
-                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                    ? 'bg-amber-600 text-white'
+                    : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
                   }
                 `}
               >
                 {preset.label}
-                <span className="block text-[10px] opacity-70">${preset.value}</span>
               </button>
             ))}
           </div>
@@ -154,7 +147,7 @@ function BettingControls({
             <button
               type="button"
               onClick={() => setShowRaiseSlider(false)}
-              className="flex-1 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm font-medium transition-colors"
+              className="flex-1 py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg text-xs font-medium transition-colors"
             >
               Cancel
             </button>
@@ -162,22 +155,22 @@ function BettingControls({
               type="button"
               onClick={handleRaiseSubmit}
               disabled={disabled || raiseAmount < minRaise || raiseAmount > trueMaxRaise}
-              className="flex-1 py-2 bg-yellow-600 hover:bg-yellow-500 disabled:bg-yellow-800 text-white rounded-lg text-sm font-bold transition-colors"
+              className="flex-1 py-2 bg-amber-600 hover:bg-amber-500 disabled:bg-amber-900 text-white rounded-lg text-xs font-bold transition-colors"
             >
-              Raise ${raiseAmount}
+              Raise ${formatAmount(raiseAmount)}
             </button>
           </div>
         </div>
       )}
 
-      {/* Main Action Buttons */}
-      <div className="flex gap-1.5">
+      {/* Main Action Buttons - Grid layout for better spacing */}
+      <div className="grid grid-cols-4 gap-1.5">
         {/* Fold Button */}
         <button
           type="button"
           onClick={onFold}
           disabled={disabled}
-          className="flex-1 py-2.5 bg-red-600 hover:bg-red-500 disabled:bg-red-900 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-colors text-sm"
+          className="py-2.5 bg-red-600 hover:bg-red-500 disabled:bg-red-900/50 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-colors text-xs"
         >
           Fold
         </button>
@@ -188,72 +181,75 @@ function BettingControls({
             type="button"
             onClick={onCheck}
             disabled={disabled}
-            className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-900 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-colors text-sm"
+            className="py-2.5 bg-sky-600 hover:bg-sky-500 disabled:bg-sky-900/50 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-colors text-xs"
           >
             Check
           </button>
         ) : mustAllInToCall ? (
-          // Show All-In button when player can't afford to call but has chips
           <button
             type="button"
             onClick={onAllIn || (() => onRaise(maxRaise))}
             disabled={disabled}
-            className="flex-1 py-2.5 bg-purple-600 hover:bg-purple-500 disabled:bg-purple-900 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-colors animate-pulse text-sm"
+            className="py-2.5 bg-violet-600 hover:bg-violet-500 disabled:bg-violet-900/50 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-colors text-xs col-span-1"
           >
-            <span className="block">All-In</span>
-            <span className="text-[10px] opacity-80">${maxRaise}</span>
+            <span className="block text-[10px]">All-In</span>
+            <span className="block text-[9px] opacity-80">${formatAmount(maxRaise)}</span>
           </button>
         ) : (
           <button
             type="button"
             onClick={onCall}
             disabled={disabled}
-            className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-900 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-colors text-sm"
+            className="py-2.5 bg-sky-600 hover:bg-sky-500 disabled:bg-sky-900/50 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-colors text-xs"
           >
-            <span className="block">Call</span>
-            <span className="text-[10px] opacity-80">${callAmount}</span>
+            <span className="block text-[10px]">Call</span>
+            <span className="block text-[9px] opacity-80">${formatAmount(callAmount)}</span>
           </button>
         )}
 
         {/* Raise Button - only show if player can raise */}
-        {canRaise && (
+        {canRaise ? (
           <button
             type="button"
             onClick={() => setShowRaiseSlider(!showRaiseSlider)}
             disabled={disabled}
             className={`
-              flex-1 py-2.5 font-bold rounded-lg transition-colors text-sm
+              py-2.5 font-bold rounded-lg transition-colors text-xs
               ${showRaiseSlider
-                ? 'bg-yellow-700 text-white'
-                : 'bg-yellow-600 hover:bg-yellow-500 disabled:bg-yellow-900 disabled:cursor-not-allowed text-white'
+                ? 'bg-amber-700 text-white'
+                : 'bg-amber-600 hover:bg-amber-500 disabled:bg-amber-900/50 disabled:cursor-not-allowed text-white'
               }
             `}
           >
-            <span className="block">{currentBet > 0 ? 'Raise' : 'Bet'}</span>
+            <span className="block text-[10px]">{currentBet > 0 ? 'Raise' : 'Bet'}</span>
             {!showRaiseSlider && (
-              <span className="text-[10px] opacity-80">${minRaise}+</span>
+              <span className="block text-[9px] opacity-80">${formatAmount(minRaise)}+</span>
             )}
           </button>
+        ) : (
+          <div /> 
         )}
 
         {/* All-In Button (quick access) - show if player can afford to raise */}
-        {canRaise && maxRaise > minRaise && (
+        {canRaise && maxRaise > minRaise ? (
           <button
             type="button"
             onClick={onAllIn || (() => onRaise(maxRaise))}
             disabled={disabled}
-            className="py-2.5 px-3 bg-purple-600 hover:bg-purple-500 disabled:bg-purple-900 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-colors text-xs"
+            className="py-2.5 bg-violet-600 hover:bg-violet-500 disabled:bg-violet-900/50 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-colors text-xs"
           >
-            <span className="block">All</span>
-            <span className="block">In</span>
+            <span className="block text-[10px]">All-In</span>
+            <span className="block text-[9px] opacity-80">${formatAmount(maxRaise)}</span>
           </button>
+        ) : (
+          <div />
         )}
       </div>
 
-      {/* Info Bar */}
-      <div className="mt-2 flex justify-between text-xs text-gray-500">
-        <span>Current bet: ${currentBet}</span>
-        <span>Your chips: ${maxRaise}</span>
+      {/* Info Bar - more compact */}
+      <div className="mt-2 flex justify-between text-[10px] text-slate-500">
+        <span>Bet: ${formatAmount(currentBet)}</span>
+        <span>Chips: ${formatAmount(maxRaise)}</span>
       </div>
     </div>
   );

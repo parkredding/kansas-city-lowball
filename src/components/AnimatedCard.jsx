@@ -87,17 +87,49 @@ export function AnimatedCard({
   if (faceDown) {
     return (
       <motion.div
-        className="bg-blue-800 rounded-lg shadow-lg w-16 h-24 flex flex-col items-center justify-center border-2 border-blue-900"
+        className="w-14 h-20 rounded-lg relative overflow-hidden"
         initial="dealing"
         animate="idle"
         variants={cardVariants}
         style={{
-          boxShadow: '0 4px 12px rgba(0,0,0,0.3), inset 0 1px 1px rgba(255,255,255,0.1)',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.5), 0 2px 4px rgba(0,0,0,0.3)',
+          background: 'linear-gradient(135deg, #1e3a5f 0%, #0d1f33 50%, #1e3a5f 100%)',
         }}
       >
-        <div className="w-12 h-18 bg-blue-700 rounded border border-blue-600 flex items-center justify-center">
-          <div className="w-8 h-12 rounded bg-gradient-to-br from-blue-600 to-blue-800 border border-blue-500" />
+        {/* Card border */}
+        <div className="absolute inset-0.5 rounded-md border border-amber-600/30" />
+        
+        {/* Diamond pattern overlay */}
+        <div 
+          className="absolute inset-1 rounded opacity-40"
+          style={{
+            backgroundImage: `
+              linear-gradient(45deg, transparent 40%, rgba(212,175,55,0.15) 40%, rgba(212,175,55,0.15) 60%, transparent 60%),
+              linear-gradient(-45deg, transparent 40%, rgba(212,175,55,0.15) 40%, rgba(212,175,55,0.15) 60%, transparent 60%)
+            `,
+            backgroundSize: '8px 8px',
+          }}
+        />
+        
+        {/* Center emblem */}
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div 
+            className="w-3/5 h-3/5 rounded-full border border-amber-500/40 flex items-center justify-center"
+            style={{
+              background: 'radial-gradient(circle, rgba(212,175,55,0.15) 0%, transparent 70%)',
+            }}
+          >
+            <span className="text-amber-500/50 text-xs">♠</span>
+          </div>
         </div>
+        
+        {/* Glossy highlight */}
+        <div 
+          className="absolute inset-0 rounded-lg"
+          style={{
+            background: 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, transparent 50%, rgba(0,0,0,0.1) 100%)',
+          }}
+        />
       </motion.div>
     );
   }
@@ -109,16 +141,9 @@ export function AnimatedCard({
       onClick={onClick}
       disabled={!isSelectable}
       className={`
-        bg-white rounded-lg shadow-lg w-16 h-24 flex flex-col items-center justify-center border-2
-        transition-colors duration-150
-        ${isSelected
-          ? 'border-yellow-400 ring-2 ring-yellow-400 ring-opacity-50'
-          : 'border-gray-300'
-        }
-        ${isSelectable
-          ? 'cursor-pointer hover:border-yellow-300'
-          : 'cursor-default'
-        }
+        w-14 h-20 rounded-lg flex flex-col items-center justify-center relative overflow-hidden
+        ${isSelected ? 'ring-2 ring-amber-400 ring-offset-1 ring-offset-green-800' : ''}
+        ${isSelectable ? 'cursor-pointer hover:scale-105' : 'cursor-default'}
       `}
       initial="dealing"
       animate="idle"
@@ -126,50 +151,85 @@ export function AnimatedCard({
       whileHover={isSelectable ? 'hover' : undefined}
       variants={cardVariants}
       style={{
+        background: 'linear-gradient(145deg, #ffffff 0%, #f8f8f8 50%, #f0f0f0 100%)',
         boxShadow: isSelected
-          ? '0 8px 20px rgba(234,179,8,0.4), 0 4px 8px rgba(0,0,0,0.2)'
-          : '0 4px 12px rgba(0,0,0,0.15)',
+          ? '0 8px 20px rgba(217,164,6,0.4), 0 4px 8px rgba(0,0,0,0.25)'
+          : '0 3px 10px rgba(0,0,0,0.25), 0 1px 3px rgba(0,0,0,0.15)',
       }}
     >
-      <span className={`text-xl font-bold ${suit.color}`}>
+      <span className={`text-xl font-bold ${suit.color} leading-none`}>
         {card?.rank || '?'}
       </span>
-      <span className={`text-2xl ${suit.color}`}>
+      <span className={`text-2xl ${suit.color} leading-none -mt-0.5`}>
         {suit.symbol}
       </span>
+      
+      {/* Subtle inner border */}
+      <div className="absolute inset-0.5 rounded-md border border-gray-200/50 pointer-events-none" />
     </motion.button>
   );
 }
 
 /**
- * AnimatedCardBack for opponent cards
+ * AnimatedCardBack for opponent cards - Professional casino design
  */
 export function AnimatedCardBack({ delay = 0, small = false }) {
-  const sizeClasses = small ? 'w-12 h-16' : 'w-16 h-24';
-  const innerSizeClasses = small ? 'w-8 h-10' : 'w-12 h-18';
+  const sizeClasses = small ? 'w-10 h-14' : 'w-14 h-20';
 
   return (
     <motion.div
-      className={`bg-blue-800 rounded-lg shadow-lg ${sizeClasses} flex flex-col items-center justify-center border-2 border-blue-900`}
-      initial={{ y: -100, opacity: 0, scale: 0.5 }}
+      className={`${sizeClasses} rounded-lg relative overflow-hidden`}
+      initial={{ y: -80, opacity: 0, scale: 0.6 }}
       animate={{
         y: 0,
         opacity: 1,
         scale: 1,
         transition: {
           type: 'spring',
-          stiffness: 300,
-          damping: 25,
+          stiffness: 350,
+          damping: 28,
           delay: delay,
         },
       }}
       style={{
-        boxShadow: '0 4px 12px rgba(0,0,0,0.3), inset 0 1px 1px rgba(255,255,255,0.1)',
+        boxShadow: '0 4px 12px rgba(0,0,0,0.5), 0 2px 4px rgba(0,0,0,0.3)',
+        background: 'linear-gradient(135deg, #1e3a5f 0%, #0d1f33 50%, #1e3a5f 100%)',
       }}
     >
-      <div className={`${innerSizeClasses} bg-blue-700 rounded border border-blue-600 flex items-center justify-center`}>
-        <div className="w-6 h-8 rounded bg-gradient-to-br from-blue-600 to-blue-800 border border-blue-500" />
+      {/* Card border */}
+      <div className="absolute inset-0.5 rounded-md border border-amber-600/30" />
+      
+      {/* Diamond pattern overlay */}
+      <div 
+        className="absolute inset-1 rounded opacity-40"
+        style={{
+          backgroundImage: `
+            linear-gradient(45deg, transparent 40%, rgba(212,175,55,0.15) 40%, rgba(212,175,55,0.15) 60%, transparent 60%),
+            linear-gradient(-45deg, transparent 40%, rgba(212,175,55,0.15) 40%, rgba(212,175,55,0.15) 60%, transparent 60%)
+          `,
+          backgroundSize: '6px 6px',
+        }}
+      />
+      
+      {/* Center emblem */}
+      <div className="absolute inset-0 flex items-center justify-center">
+        <div 
+          className="w-1/2 h-1/2 rounded-full border border-amber-500/30 flex items-center justify-center"
+          style={{
+            background: 'radial-gradient(circle, rgba(212,175,55,0.12) 0%, transparent 70%)',
+          }}
+        >
+          <span className="text-amber-500/40 text-[10px]">♠</span>
+        </div>
       </div>
+      
+      {/* Glossy highlight */}
+      <div 
+        className="absolute inset-0 rounded-lg"
+        style={{
+          background: 'linear-gradient(135deg, rgba(255,255,255,0.08) 0%, transparent 50%, rgba(0,0,0,0.1) 100%)',
+        }}
+      />
     </motion.div>
   );
 }

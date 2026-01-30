@@ -3,6 +3,52 @@ import { motion, LayoutGroup } from 'framer-motion';
 import PokerChip, { CHIP_DENOMINATIONS } from './PokerChip';
 
 /**
+ * Chip size configurations for overlap calculations
+ */
+export const CHIP_SIZES = {
+  xs: { size: 28, overlap: -6 },
+  sm: { size: 36, overlap: -8 },
+  md: { size: 48, overlap: -10 },
+  lg: { size: 64, overlap: -12 },
+};
+
+/**
+ * Calculate overlap margin for stacked chips based on size
+ */
+export function getOverlapMargin(size) {
+  const config = CHIP_SIZES[size] || CHIP_SIZES.md;
+  return `${config.overlap}px`;
+}
+
+/**
+ * Calculate chip breakdown by denomination for a given amount
+ * Returns array of { denomination, count } in descending order
+ */
+export function calculateChipBreakdown(amount) {
+  const denominations = [1000, 500, 100, 25, 5, 1];
+  const result = [];
+  let remaining = amount;
+
+  for (const denom of denominations) {
+    if (remaining >= denom) {
+      const count = Math.floor(remaining / denom);
+      result.push({ denomination: denom, count });
+      remaining = remaining % denom;
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Generate deterministic rotation for chips based on index and denomination
+ */
+export function getDeterministicRotation(index, denomination, seed = 0, range = 5) {
+  const hash = (index * 17 + denomination * 13 + seed * 7) % 100;
+  return (hash / 100) * range * 2 - range;
+}
+
+/**
  * 3D Chip component with realistic stacking effect using CSS box-shadow
  */
 function Chip3D({ color, size = 'md', stackPosition = 0 }) {

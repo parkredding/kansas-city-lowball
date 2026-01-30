@@ -30,7 +30,7 @@ function generateColorFromString(str) {
  */
 function UserColorDot({ username, size = 'sm' }) {
   const color = useMemo(() => generateColorFromString(username), [username]);
-  const sizeClasses = size === 'sm' ? 'w-2 h-2' : 'w-3 h-3';
+  const sizeClasses = size === 'xs' ? 'w-1.5 h-1.5' : size === 'sm' ? 'w-2 h-2' : 'w-3 h-3';
 
   return (
     <span
@@ -93,14 +93,14 @@ function ChatBox({ messages = [], onSendMessage, currentUsername, disabled, expa
       <button
         type="button"
         onClick={() => setIsExpanded(true)}
-        className="fixed bottom-4 left-4 bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-lg shadow-lg border border-gray-600 flex items-center gap-2 transition-colors z-40"
+        className="fixed bottom-4 left-4 bg-slate-800/90 hover:bg-slate-700/90 text-slate-200 px-3 py-1.5 rounded-lg shadow-lg border border-slate-700/50 flex items-center gap-2 transition-colors z-40 backdrop-blur-sm"
       >
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
         </svg>
-        <span className="text-sm font-medium">Activity</span>
+        <span className="text-xs font-medium">Activity</span>
         {messages.length > 0 && (
-          <span className="bg-yellow-500 text-black text-xs font-bold px-1.5 py-0.5 rounded-full">
+          <span className="bg-amber-500 text-slate-900 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
             {messages.length}
           </span>
         )}
@@ -111,24 +111,24 @@ function ChatBox({ messages = [], onSendMessage, currentUsername, disabled, expa
   // Expanded view
   // If expanded prop is true, use full height (for desktop sidebar), otherwise fixed height (for floating modal)
   const containerClasses = expanded
-    ? 'w-full h-full flex flex-col'
-    : 'fixed bottom-4 left-4 w-80 bg-gray-800 rounded-lg shadow-2xl border border-gray-600 flex flex-col z-40';
+    ? 'w-full h-full flex flex-col bg-transparent'
+    : 'fixed bottom-4 left-4 w-72 bg-slate-900/95 rounded-lg shadow-2xl border border-slate-700/50 flex flex-col z-40 backdrop-blur-sm';
   const messagesClasses = expanded
-    ? 'flex-1 overflow-y-auto p-3 space-y-2'
-    : 'h-64 overflow-y-auto p-3 space-y-2';
+    ? 'flex-1 overflow-y-auto px-2 py-1.5 space-y-1'
+    : 'h-56 overflow-y-auto px-2 py-1.5 space-y-1';
 
   return (
     <div className={containerClasses}>
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-gray-700 flex-shrink-0">
-        <h3 className="text-white font-medium text-sm">Activity Log</h3>
+      <div className="flex items-center justify-between px-3 py-1.5 border-b border-slate-700/40 flex-shrink-0">
+        <h3 className="text-slate-300 font-medium text-xs">Activity Log</h3>
         {!expanded && (
           <button
             type="button"
             onClick={() => setIsExpanded(false)}
-            className="text-gray-400 hover:text-white transition-colors"
+            className="text-slate-500 hover:text-slate-300 transition-colors"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
             </svg>
           </button>
@@ -138,8 +138,8 @@ function ChatBox({ messages = [], onSendMessage, currentUsername, disabled, expa
       {/* Messages */}
       <div className={messagesClasses}>
         {messages.length === 0 ? (
-          <p className="text-gray-500 text-sm text-center py-4">
-            No activity yet. Game events and chat will appear here.
+          <p className="text-slate-500 text-xs text-center py-3">
+            Game events and chat will appear here.
           </p>
         ) : (
           messages.map((msg, index) => {
@@ -148,13 +148,13 @@ function ChatBox({ messages = [], onSendMessage, currentUsername, disabled, expa
               return (
                 <div
                   key={`${msg.timestamp}-${index}`}
-                  className="flex items-center gap-2 py-1"
+                  className="flex items-start gap-1.5 py-0.5"
                 >
-                  <span className="text-purple-400 text-xs">●</span>
-                  <span className="text-gray-400 text-xs italic flex-1">
+                  <span className="text-violet-400 text-[8px] mt-0.5">●</span>
+                  <span className="text-slate-400 text-[11px] italic flex-1 leading-tight">
                     {msg.text}
                   </span>
-                  <span className="text-gray-600 text-xs">
+                  <span className="text-slate-600 text-[10px] flex-shrink-0">
                     {formatTime(msg.timestamp)}
                   </span>
                 </div>
@@ -169,23 +169,23 @@ function ChatBox({ messages = [], onSendMessage, currentUsername, disabled, expa
                 key={`${msg.timestamp}-${index}`}
                 className={`flex flex-col ${isOwnMessage ? 'items-end' : 'items-start'}`}
               >
-                <div className="flex items-center gap-1.5 mb-0.5">
-                  <UserColorDot username={msg.sender} />
+                <div className="flex items-center gap-1 mb-0.5">
+                  <UserColorDot username={msg.sender} size="xs" />
                   <span
-                    className="text-xs font-medium"
+                    className="text-[10px] font-medium"
                     style={{ color: senderColor }}
                   >
                     {msg.sender}
                   </span>
-                  <span className="text-gray-500 text-xs">
+                  <span className="text-slate-600 text-[10px]">
                     {formatTime(msg.timestamp)}
                   </span>
                 </div>
                 <div
-                  className={`rounded-lg px-3 py-1.5 max-w-[85%] break-words text-sm ${
+                  className={`rounded px-2 py-1 max-w-[90%] break-words text-[11px] leading-tight ${
                     isOwnMessage
-                      ? 'bg-yellow-600/30 text-yellow-100'
-                      : 'bg-gray-700 text-gray-200'
+                      ? 'bg-amber-600/25 text-amber-100'
+                      : 'bg-slate-700/60 text-slate-200'
                   }`}
                 >
                   {msg.text}
@@ -198,24 +198,24 @@ function ChatBox({ messages = [], onSendMessage, currentUsername, disabled, expa
       </div>
 
       {/* Input */}
-      <form onSubmit={handleSubmit} className="p-2 border-t border-gray-700 flex-shrink-0">
-        <div className="flex gap-2">
+      <form onSubmit={handleSubmit} className="p-1.5 border-t border-slate-700/40 flex-shrink-0">
+        <div className="flex gap-1.5">
           <input
             ref={inputRef}
             type="text"
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
-            placeholder={disabled ? 'Set username to chat' : 'Type a message...'}
+            placeholder={disabled ? 'Set username' : 'Message...'}
             disabled={disabled}
             maxLength={200}
-            className="flex-1 bg-gray-700 border border-gray-600 text-white text-sm px-3 py-2 rounded-lg focus:outline-none focus:ring-1 focus:ring-yellow-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex-1 bg-slate-800/80 border border-slate-700/50 text-slate-100 text-xs px-2 py-1.5 rounded focus:outline-none focus:ring-1 focus:ring-amber-500/50 disabled:opacity-50 disabled:cursor-not-allowed placeholder:text-slate-500"
           />
           <button
             type="submit"
             disabled={disabled || !inputText.trim()}
-            className="bg-yellow-600 hover:bg-yellow-500 disabled:bg-gray-600 disabled:cursor-not-allowed text-white px-3 py-2 rounded-lg transition-colors"
+            className="bg-amber-600 hover:bg-amber-500 disabled:bg-slate-700 disabled:cursor-not-allowed text-white px-2 py-1.5 rounded transition-colors"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
             </svg>
           </button>

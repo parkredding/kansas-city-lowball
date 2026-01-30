@@ -34,27 +34,24 @@ const SUIT_SYMBOLS = {
 function getRadialPosition(relativeIndex, totalPlayers) {
   // Hero is always at position 0 (bottom center) - handled separately
   if (relativeIndex === 0) {
-    return { left: '50%', top: '85%' };
+    return { left: '50%', top: '88%' };
   }
 
   // For opponents, distribute them around the top portion of the oval
-  // We use positions 1 through (totalPlayers - 1) for opponents
   const numOpponents = totalPlayers - 1;
 
-  // Oval table dimensions (as percentages)
-  // Center of oval
+  // Oval table dimensions (as percentages) - adjusted for better visibility
   const centerX = 50;
-  const centerY = 45;
+  const centerY = 42;
 
-  // Radii for the oval (horizontal is wider than vertical for poker table shape)
-  const radiusX = 42; // Horizontal radius
-  const radiusY = 35; // Vertical radius
+  // Radii - slightly reduced to keep players away from edges
+  const radiusX = 38; // Horizontal radius (reduced from 42)
+  const radiusY = 32; // Vertical radius (reduced from 35)
 
   // Calculate angle for this opponent
   // Start from left side and go clockwise to right side (covering top arc)
-  // The arc goes from about 200 degrees (left) to -20 degrees (right), covering the top
-  const startAngle = 200; // Left side (in degrees)
-  const endAngle = -20;   // Right side (in degrees)
+  const startAngle = 195; // Left side (in degrees)
+  const endAngle = -15;   // Right side (in degrees)
 
   // Distribute opponents evenly along this arc
   const angleRange = startAngle - endAngle;
@@ -85,36 +82,88 @@ function getRelativeSeatIndex(playerSeatIndex, heroSeatIndex, totalPlayers) {
   return (playerSeatIndex - heroSeatIndex + totalPlayers) % totalPlayers;
 }
 
-function Card({ card, isSelected, onClick, isSelectable, faceDown = false, index = 0, isDealing = false }) {
-  if (faceDown) {
-    return (
-      <motion.div
-        className="bg-gradient-to-br from-blue-800 to-blue-900 rounded-xl shadow-2xl w-16 h-24 flex flex-col items-center justify-center border-2 border-blue-700"
-        initial={{ y: -100, opacity: 0, scale: 0.5, rotateY: 180 }}
-        animate={{ 
-          y: 0, 
-          opacity: 1, 
-          scale: 1, 
-          rotateY: 0,
-          transition: {
-            type: 'spring',
-            stiffness: 300,
-            damping: 25,
-            delay: isDealing ? index * 0.1 : 0,
-          }
-        }}
+/**
+ * Professional card back design with elegant casino pattern
+ */
+function ProfessionalCardBack({ size = 'normal', index = 0, isDealing = false }) {
+  const sizeClasses = size === 'small' 
+    ? 'w-10 h-14' 
+    : size === 'mini' 
+    ? 'w-8 h-11' 
+    : 'w-14 h-20';
+  
+  return (
+    <motion.div
+      className={`${sizeClasses} relative rounded-lg overflow-hidden`}
+      initial={{ y: -80, opacity: 0, scale: 0.6, rotateY: 180 }}
+      animate={{ 
+        y: 0, 
+        opacity: 1, 
+        scale: 1, 
+        rotateY: 0,
+        transition: {
+          type: 'spring',
+          stiffness: 350,
+          damping: 28,
+          delay: isDealing ? index * 0.08 : 0,
+        }
+      }}
+      style={{
+        boxShadow: '0 4px 12px rgba(0,0,0,0.5), 0 2px 4px rgba(0,0,0,0.3)',
+        background: 'linear-gradient(135deg, #1e3a5f 0%, #0d1f33 50%, #1e3a5f 100%)',
+      }}
+    >
+      {/* Card border */}
+      <div className="absolute inset-0.5 rounded-md border border-amber-600/30" />
+      
+      {/* Diamond pattern overlay */}
+      <div 
+        className="absolute inset-1 rounded opacity-40"
         style={{
-          boxShadow: '0 8px 16px rgba(0,0,0,0.4), inset 0 1px 2px rgba(255,255,255,0.1)',
+          backgroundImage: `
+            linear-gradient(45deg, transparent 40%, rgba(212,175,55,0.15) 40%, rgba(212,175,55,0.15) 60%, transparent 60%),
+            linear-gradient(-45deg, transparent 40%, rgba(212,175,55,0.15) 40%, rgba(212,175,55,0.15) 60%, transparent 60%)
+          `,
+          backgroundSize: '8px 8px',
         }}
-      >
-        <div className="w-12 h-18 bg-gradient-to-br from-blue-600 to-blue-800 rounded-lg border-2 border-blue-500 flex items-center justify-center">
-          <div className="w-10 h-14 rounded bg-gradient-to-br from-blue-500 to-blue-700 border border-blue-400" />
+      />
+      
+      {/* Center emblem */}
+      <div className="absolute inset-0 flex items-center justify-center">
+        <div 
+          className="w-3/5 h-3/5 rounded-full border border-amber-500/40 flex items-center justify-center"
+          style={{
+            background: 'radial-gradient(circle, rgba(212,175,55,0.15) 0%, transparent 70%)',
+          }}
+        >
+          <div className="text-amber-500/50 text-xs font-serif">♠</div>
         </div>
-      </motion.div>
-    );
+      </div>
+      
+      {/* Glossy highlight */}
+      <div 
+        className="absolute inset-0 rounded-lg"
+        style={{
+          background: 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, transparent 50%, rgba(0,0,0,0.1) 100%)',
+        }}
+      />
+    </motion.div>
+  );
+}
+
+function Card({ card, isSelected, onClick, isSelectable, faceDown = false, index = 0, isDealing = false, size = 'normal' }) {
+  if (faceDown) {
+    return <ProfessionalCardBack size={size} index={index} isDealing={isDealing} />;
   }
 
   const suit = SUIT_SYMBOLS[card.suit];
+  const sizeClasses = size === 'small' 
+    ? 'w-10 h-14 text-sm' 
+    : size === 'mini' 
+    ? 'w-8 h-11 text-xs' 
+    : 'w-14 h-20';
+  const rankSize = size === 'small' ? 'text-base' : size === 'mini' ? 'text-xs' : 'text-xl';
+  const suitSize = size === 'small' ? 'text-lg' : size === 'mini' ? 'text-sm' : 'text-2xl';
 
   return (
     <motion.button
@@ -122,65 +171,60 @@ function Card({ card, isSelected, onClick, isSelectable, faceDown = false, index
       onClick={onClick}
       disabled={!isSelectable}
       className={`
-        bg-gradient-to-br from-white to-gray-50 rounded-xl shadow-2xl w-16 h-24 flex flex-col items-center justify-center border-2
-        ${isSelected
-          ? 'border-yellow-400 ring-4 ring-yellow-400 ring-opacity-50'
-          : 'border-gray-200'
-        }
-        ${isSelectable
-          ? 'cursor-pointer'
-          : 'cursor-default'
-        }
+        ${sizeClasses} rounded-lg flex flex-col items-center justify-center relative overflow-hidden
+        ${isSelected ? 'ring-2 ring-amber-400 ring-offset-1 ring-offset-green-800' : ''}
+        ${isSelectable ? 'cursor-pointer hover:scale-105' : 'cursor-default'}
       `}
-      initial={{ y: -100, opacity: 0, scale: 0.5, rotateY: 180 }}
+      initial={{ y: -80, opacity: 0, scale: 0.6, rotateY: 180 }}
       animate={{ 
-        y: isSelected ? -8 : 0, 
+        y: isSelected ? -6 : 0, 
         opacity: 1, 
         scale: 1, 
         rotateY: 0,
         transition: {
           type: 'spring',
-          stiffness: 300,
-          damping: 25,
-          delay: isDealing ? index * 0.1 : 0,
+          stiffness: 350,
+          damping: 28,
+          delay: isDealing ? index * 0.08 : 0,
         }
       }}
       whileHover={isSelectable ? { 
-        y: isSelected ? -10 : -4, 
-        scale: 1.05,
-        transition: { duration: 0.2 }
+        y: isSelected ? -8 : -3, 
+        scale: 1.03,
+        transition: { duration: 0.15 }
       } : {}}
-      whileTap={isSelectable ? { scale: 0.95 } : {}}
+      whileTap={isSelectable ? { scale: 0.97 } : {}}
       style={{
+        background: 'linear-gradient(145deg, #ffffff 0%, #f8f8f8 50%, #f0f0f0 100%)',
         boxShadow: isSelected
-          ? '0 12px 24px rgba(234,179,8,0.5), 0 4px 8px rgba(0,0,0,0.3)'
-          : '0 4px 12px rgba(0,0,0,0.2), 0 2px 4px rgba(0,0,0,0.1)',
+          ? '0 8px 20px rgba(217,164,6,0.4), 0 4px 8px rgba(0,0,0,0.25)'
+          : '0 3px 10px rgba(0,0,0,0.25), 0 1px 3px rgba(0,0,0,0.15)',
       }}
     >
+      {/* Card content */}
       <motion.span 
-        className={`text-xl font-bold ${suit.color}`}
-        animate={isSelected ? { scale: [1, 1.1, 1] } : {}}
-        transition={{ duration: 0.3 }}
+        className={`${rankSize} font-bold ${suit.color} leading-none`}
+        animate={isSelected ? { scale: [1, 1.08, 1] } : {}}
+        transition={{ duration: 0.25 }}
       >
         {card.rank}
       </motion.span>
       <motion.span 
-        className={`text-2xl ${suit.color}`}
-        animate={isSelected ? { scale: [1, 1.1, 1] } : {}}
-        transition={{ duration: 0.3, delay: 0.1 }}
+        className={`${suitSize} ${suit.color} leading-none -mt-0.5`}
+        animate={isSelected ? { scale: [1, 1.08, 1] } : {}}
+        transition={{ duration: 0.25, delay: 0.05 }}
       >
         {suit.symbol}
       </motion.span>
+      
+      {/* Subtle inner border */}
+      <div className="absolute inset-0.5 rounded-md border border-gray-200/50 pointer-events-none" />
     </motion.button>
   );
 }
 
-function CardBack() {
-  return (
-    <div className="bg-blue-800 rounded-lg shadow-lg w-12 h-16 flex flex-col items-center justify-center border-2 border-blue-900">
-      <div className="w-8 h-10 bg-blue-700 rounded border border-blue-600"></div>
-    </div>
-  );
+function CardBack({ size = 'small' }) {
+  return <ProfessionalCardBack size={size} />;
 }
 
 function formatHandName(categoryName) {
@@ -199,20 +243,19 @@ function PhaseIndicator({ phase }) {
   const isShowdown = phase === 'SHOWDOWN';
   const isIdle = phase === 'IDLE';
 
-  let bgGradient = 'from-gray-600 to-gray-700';
-  if (isBetting) bgGradient = 'from-blue-600 to-blue-700';
-  if (isDraw) bgGradient = 'from-purple-600 to-purple-700';
-  if (isShowdown) bgGradient = 'from-yellow-500 to-yellow-600';
-  if (isIdle) bgGradient = 'from-gray-600 to-gray-700';
+  let bgColors = { from: 'from-slate-600', to: 'to-slate-700', border: 'border-slate-500/50' };
+  if (isBetting) bgColors = { from: 'from-blue-600', to: 'to-blue-700', border: 'border-blue-400/50' };
+  if (isDraw) bgColors = { from: 'from-violet-600', to: 'to-violet-700', border: 'border-violet-400/50' };
+  if (isShowdown) bgColors = { from: 'from-amber-500', to: 'to-amber-600', border: 'border-amber-400/50' };
 
   return (
     <motion.div 
-      className={`bg-gradient-to-r ${bgGradient} px-6 py-2.5 rounded-full shadow-xl`}
-      initial={{ scale: 0.8, opacity: 0 }}
+      className={`bg-gradient-to-r ${bgColors.from} ${bgColors.to} px-4 py-1.5 rounded-full shadow-lg border ${bgColors.border}`}
+      initial={{ scale: 0.9, opacity: 0 }}
       animate={{ scale: 1, opacity: 1 }}
-      transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+      transition={{ type: 'spring', stiffness: 350, damping: 22 }}
     >
-      <span className="text-white font-bold text-sm tracking-wide">
+      <span className="text-white font-semibold text-xs tracking-wide">
         {displayName}
       </span>
     </motion.div>
@@ -232,29 +275,26 @@ function ChipDisplay({ label, amount, variant = 'default' }) {
 
 function WalletDisplay({ balance, loading }) {
   return (
-    <div className="bg-gradient-to-r from-green-700 to-green-600 px-4 py-2 rounded-lg shadow flex items-center gap-2">
-      <svg className="w-5 h-5 text-green-300" fill="currentColor" viewBox="0 0 20 20">
+    <div className="bg-emerald-800/60 px-3 py-1.5 rounded-lg shadow-md flex items-center gap-2 border border-emerald-600/40">
+      <svg className="w-4 h-4 text-emerald-400" fill="currentColor" viewBox="0 0 20 20">
         <path d="M4 4a2 2 0 00-2 2v1h16V6a2 2 0 00-2-2H4z" />
         <path fillRule="evenodd" d="M18 9H2v5a2 2 0 002 2h12a2 2 0 002-2V9zM4 13a1 1 0 011-1h1a1 1 0 110 2H5a1 1 0 01-1-1zm5-1a1 1 0 100 2h1a1 1 0 100-2H9z" clipRule="evenodd" />
       </svg>
-      <div>
-        <span className="text-green-200 text-xs">Wallet</span>
-        <span className="text-white font-bold ml-2">
-          {loading ? '...' : `$${(balance || 0).toLocaleString()}`}
-        </span>
-      </div>
+      <span className="text-emerald-100 font-bold text-sm">
+        {loading ? '...' : `$${(balance || 0).toLocaleString()}`}
+      </span>
     </div>
   );
 }
 
 /**
- * Badge component for dealer/blind positions
+ * Badge component for dealer/blind positions - Refined casino style
  */
 function PositionBadge({ type }) {
   const badges = {
-    dealer: { label: 'D', bg: 'bg-white', text: 'text-black', title: 'Dealer' },
-    sb: { label: 'SB', bg: 'bg-blue-500', text: 'text-white', title: 'Small Blind' },
-    bb: { label: 'BB', bg: 'bg-yellow-500', text: 'text-black', title: 'Big Blind' },
+    dealer: { label: 'D', bg: 'bg-slate-100', text: 'text-slate-900', border: 'border-slate-300', title: 'Dealer' },
+    sb: { label: 'SB', bg: 'bg-sky-500', text: 'text-white', border: 'border-sky-300', title: 'Small Blind' },
+    bb: { label: 'BB', bg: 'bg-amber-500', text: 'text-slate-900', border: 'border-amber-300', title: 'Big Blind' },
   };
 
   const badge = badges[type];
@@ -262,8 +302,9 @@ function PositionBadge({ type }) {
 
   return (
     <div
-      className={`${badge.bg} ${badge.text} w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shadow-lg border-2 border-gray-800`}
+      className={`${badge.bg} ${badge.text} w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold shadow-md border ${badge.border}`}
       title={badge.title}
+      style={{ boxShadow: '0 2px 4px rgba(0,0,0,0.3)' }}
     >
       {badge.label}
     </div>
@@ -296,119 +337,104 @@ function getBetChipPosition(relativeIndex, totalPlayers) {
 }
 
 function PlayerSlot({ player, isCurrentUser, isActive, showCards, handResult, turnDeadline, isDealer, isSmallBlind, isBigBlind }) {
-  const statusColors = {
-    active: 'border-green-500',
-    folded: 'border-gray-500 opacity-50',
-    'all-in': 'border-yellow-500',
-    'sitting_out': 'border-gray-600 opacity-40',
+  const statusConfig = {
+    active: { border: 'border-emerald-500/70', bg: 'from-slate-800/95 to-slate-900/95' },
+    folded: { border: 'border-slate-600/50', bg: 'from-slate-800/50 to-slate-900/50', opacity: 'opacity-60' },
+    'all-in': { border: 'border-amber-500/70', bg: 'from-slate-800/95 to-slate-900/95' },
+    'sitting_out': { border: 'border-slate-700/40', bg: 'from-slate-800/40 to-slate-900/40', opacity: 'opacity-40' },
   };
+  
+  const config = statusConfig[player.status] || statusConfig.active;
 
   return (
     <motion.div
       className={`
-        relative bg-gradient-to-br from-gray-800 to-gray-900 rounded-xl p-4 border-2
-        ${isActive ? 'ring-4 ring-yellow-400 ring-opacity-60' : ''}
-        ${statusColors[player.status] || 'border-gray-600'}
+        relative rounded-xl p-2.5 border backdrop-blur-sm min-w-[140px] max-w-[180px]
+        ${isActive ? 'ring-2 ring-amber-400/80 ring-offset-1 ring-offset-green-900' : ''}
+        ${config.border} ${config.opacity || ''}
       `}
       animate={isActive ? {
-        boxShadow: '0 0 20px rgba(234,179,8,0.5)',
+        boxShadow: '0 0 24px rgba(251,191,36,0.35)',
       } : {}}
-      transition={{ duration: 0.3 }}
+      transition={{ duration: 0.25 }}
       style={{
+        background: `linear-gradient(135deg, rgba(30,41,59,0.92) 0%, rgba(15,23,42,0.95) 100%)`,
         boxShadow: isActive 
-          ? '0 8px 24px rgba(234,179,8,0.4), 0 4px 8px rgba(0,0,0,0.3)'
-          : '0 4px 12px rgba(0,0,0,0.2)',
+          ? '0 6px 20px rgba(251,191,36,0.3), 0 2px 8px rgba(0,0,0,0.4)'
+          : '0 4px 16px rgba(0,0,0,0.4), 0 2px 4px rgba(0,0,0,0.2)',
       }}
     >
-      {/* Position badges (Dealer/SB/BB) */}
-      <div className="absolute -top-2 -right-2 flex gap-1 z-20">
+      {/* Position badges (Dealer/SB/BB) - repositioned */}
+      <div className="absolute -top-2 left-1/2 -translate-x-1/2 flex gap-1 z-20">
         {isDealer && <PositionBadge type="dealer" />}
         {isSmallBlind && <PositionBadge type="sb" />}
         {isBigBlind && <PositionBadge type="bb" />}
       </div>
 
-      {/* Circular timer around avatar when active */}
+      {/* Circular timer when active */}
       {isActive && turnDeadline && (
-        <div className="absolute -top-1 -left-1">
-          <CircularTimer turnDeadline={turnDeadline} size={40} isActive={isActive} />
+        <div className="absolute -top-1 -right-1 z-30">
+          <CircularTimer turnDeadline={turnDeadline} size={32} isActive={isActive} />
         </div>
       )}
 
-      {/* Last Action Badge (speech bubble style) */}
-      {player.lastAction && (
-        <div className="absolute -top-3 left-1/2 -translate-x-1/2 z-10">
-          <div className="bg-purple-600 text-white text-xs font-medium px-2 py-1 rounded-full shadow-lg whitespace-nowrap">
-            {player.lastAction}
-          </div>
-        </div>
-      )}
-
+      {/* Player info row - compact */}
       <div className="flex items-center gap-2 mb-2">
-        <div className="relative">
+        <div className="relative flex-shrink-0">
           {player.photoURL ? (
             <img
               src={player.photoURL}
               alt={player.displayName}
-              className="w-8 h-8 rounded-full"
+              className="w-7 h-7 rounded-full border border-slate-600"
             />
           ) : (
-            <div className="w-8 h-8 rounded-full bg-gray-600 flex items-center justify-center">
-              <span className="text-white text-sm">
+            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-slate-600 to-slate-700 flex items-center justify-center border border-slate-500">
+              <span className="text-white text-xs font-medium">
                 {player.displayName?.charAt(0)?.toUpperCase() || '?'}
               </span>
             </div>
           )}
         </div>
-        <div className="flex-1">
-          <p className={`text-sm font-medium ${isCurrentUser ? 'text-yellow-400' : 'text-white'}`}>
+        <div className="flex-1 min-w-0">
+          <p className={`text-xs font-semibold truncate ${isCurrentUser ? 'text-amber-400' : 'text-slate-100'}`}>
             {player.displayName}
-            {isCurrentUser && ' (You)'}
           </p>
-          <div className="flex items-center gap-2">
-            <MiniChipStack amount={player.chips} />
-            <p className="text-xs text-gray-400">${player.chips}</p>
-          </div>
+          <p className="text-xs text-emerald-400 font-medium">${player.chips.toLocaleString()}</p>
         </div>
-        {isActive && (
-          <span className="text-xs bg-yellow-500 text-black px-2 py-1 rounded animate-pulse">
-            Turn
+      </div>
+
+      {/* Status badges row */}
+      <div className="flex items-center justify-center gap-1 mb-2 min-h-[20px]">
+        {player.lastAction && (
+          <span className="text-[10px] bg-violet-600/90 text-white font-medium px-1.5 py-0.5 rounded-full">
+            {player.lastAction}
+          </span>
+        )}
+        {player.currentRoundBet > 0 && (
+          <span className="text-[10px] bg-amber-600/90 text-white font-medium px-1.5 py-0.5 rounded-full">
+            ${player.currentRoundBet}
           </span>
         )}
         {player.status === 'folded' && (
-          <span className="text-xs bg-gray-600 text-gray-300 px-2 py-1 rounded">
+          <span className="text-[10px] bg-slate-600/90 text-slate-300 px-1.5 py-0.5 rounded-full">
             Folded
           </span>
         )}
         {player.status === 'all-in' && (
-          <span className="text-xs bg-purple-600 text-white px-2 py-1 rounded">
+          <span className="text-[10px] bg-violet-600/90 text-white px-1.5 py-0.5 rounded-full animate-pulse">
             All-In
           </span>
         )}
       </div>
 
-      {/* Current round bet text indicator (chips shown separately) */}
-      {player.currentRoundBet > 0 && (
-        <motion.div
-          className="mb-2 flex items-center justify-center"
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={{ opacity: 1, scale: 1 }}
-        >
-          <span className="text-xs bg-yellow-600/80 text-white font-medium px-2 py-1 rounded shadow">
-            Bet: ${player.currentRoundBet}
-          </span>
-        </motion.div>
-      )}
-
-      {/* Player's cards */}
+      {/* Player's cards - clean display */}
       {player.hand && player.hand.length > 0 && (
-        <div className="flex gap-1 justify-center">
+        <div className="flex gap-0.5 justify-center">
           {player.hand.map((card, index) => (
             showCards ? (
-              <div key={index} className="transform scale-75 -mx-1">
-                <Card card={card} isSelectable={false} />
-              </div>
+              <Card key={index} card={card} isSelectable={false} size="mini" />
             ) : (
-              <CardBack key={index} />
+              <ProfessionalCardBack key={index} size="mini" index={index} />
             )
           ))}
         </div>
@@ -416,8 +442,8 @@ function PlayerSlot({ player, isCurrentUser, isActive, showCards, handResult, tu
 
       {/* Hand result at showdown */}
       {handResult && showCards && (
-        <div className="mt-2 text-center">
-          <p className="text-xs text-yellow-400">
+        <div className="mt-1.5 text-center">
+          <p className="text-[10px] text-amber-400 font-medium bg-amber-950/50 rounded px-1 py-0.5">
             {formatHandName(handResult.categoryName)}
           </p>
         </div>
@@ -842,10 +868,10 @@ function GameView() {
   const playersWithChips = tableData?.players?.filter((p) => p.chips > 0)?.length || 0;
   const canStartGame = playersWithChips >= 2;
 
-  // Desktop layout component for action controls
+  // Desktop layout component for action controls - Enhanced styling
   const ActionControlsSidebar = () => (
-    <div className="flex flex-col gap-3 p-4 bg-gray-900/50 rounded-xl h-full overflow-y-auto min-h-0">
-      <h3 className="text-white font-semibold text-center border-b border-gray-700 pb-2 flex-shrink-0">Actions</h3>
+    <div className="flex flex-col gap-3 p-4 h-full overflow-y-auto min-h-0">
+      <h3 className="text-slate-200 font-semibold text-center border-b border-slate-700/50 pb-2 flex-shrink-0 text-sm">Actions</h3>
 
       {/* Turn Timer */}
       {tableData?.turnDeadline && (isBettingPhase || isDrawPhase) && (
@@ -858,35 +884,45 @@ function GameView() {
         </div>
       )}
 
-      {/* Chip Displays */}
-      <div className="flex flex-col gap-2 flex-shrink-0">
-        <div className="bg-gray-800 rounded-lg p-3 text-center">
-          <span className="text-gray-400 text-xs block">Your Chips</span>
-          <span className="text-white font-bold text-lg">${currentPlayer?.chips || 0}</span>
+      {/* Chip Displays - More compact grid */}
+      <div className="grid grid-cols-1 gap-2 flex-shrink-0">
+        <div className="bg-slate-800/80 rounded-lg p-2.5 text-center border border-slate-700/50">
+          <span className="text-slate-400 text-[10px] block uppercase tracking-wider">Your Chips</span>
+          <span className="text-emerald-400 font-bold text-xl">${(currentPlayer?.chips || 0).toLocaleString()}</span>
         </div>
-        <div className="bg-yellow-600/30 rounded-lg p-3 text-center">
-          <span className="text-yellow-200 text-xs block">Pot</span>
-          <span className="text-yellow-400 font-bold text-lg">${tableData?.pot || 0}</span>
+        <div className="bg-amber-900/40 rounded-lg p-2.5 text-center border border-amber-700/30">
+          <span className="text-amber-300/80 text-[10px] block uppercase tracking-wider">Pot</span>
+          <span className="text-amber-400 font-bold text-xl">${(tableData?.pot || 0).toLocaleString()}</span>
         </div>
         {tableData?.currentBet > 0 && (
-          <div className="bg-blue-600/30 rounded-lg p-3 text-center">
-            <span className="text-blue-200 text-xs block">To Call</span>
-            <span className="text-blue-400 font-bold text-lg">${callAmount}</span>
+          <div className="bg-blue-900/40 rounded-lg p-2.5 text-center border border-blue-700/30">
+            <span className="text-blue-300/80 text-[10px] block uppercase tracking-wider">To Call</span>
+            <span className="text-blue-400 font-bold text-xl">${callAmount.toLocaleString()}</span>
           </div>
         )}
       </div>
 
-      {/* Action Buttons */}
-      <div className="flex flex-col gap-3 flex-shrink-0 mt-auto">
+      {/* Waiting indicator when not player's turn */}
+      {!myTurn && !isIdle && !isShowdown && (
+        <div className="text-center py-2 text-slate-400 text-sm flex items-center justify-center gap-2">
+          <span className="inline-block w-2 h-2 bg-slate-500 rounded-full animate-pulse"></span>
+          Waiting...
+        </div>
+      )}
+
+      {/* Action Buttons - flex-1 to take available space */}
+      <div className="flex flex-col gap-2.5 flex-1 justify-end">
         {isIdle && canStartGame && !needsBuyIn && (
-          <button
+          <motion.button
             type="button"
             onClick={handleDeal}
             disabled={loading}
-            className="w-full bg-yellow-600 hover:bg-yellow-500 disabled:bg-yellow-800 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition-colors"
+            className="w-full bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 disabled:from-amber-900 disabled:to-amber-950 text-white font-bold py-3 px-4 rounded-xl shadow-lg transition-all"
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
           >
             Deal Cards
-          </button>
+          </motion.button>
         )}
 
         {isBettingPhase && myTurn && currentPlayer?.status === 'active' && (
@@ -912,15 +948,9 @@ function GameView() {
             type="button"
             onClick={handleSubmitDraw}
             disabled={loading}
-            className="w-full bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-500 hover:to-purple-600 disabled:from-purple-800 disabled:to-purple-900 text-white font-bold py-3 px-6 rounded-xl shadow-xl transition-all duration-200"
-            whileHover={{ scale: 1.02, boxShadow: '0 10px 25px rgba(147,51,234,0.4)' }}
+            className="w-full bg-gradient-to-r from-violet-600 to-violet-700 hover:from-violet-500 hover:to-violet-600 disabled:from-violet-900 disabled:to-violet-950 text-white font-bold py-3 px-4 rounded-xl shadow-lg transition-all"
+            whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3 }}
-            style={{
-              boxShadow: '0 4px 12px rgba(147,51,234,0.3)',
-            }}
           >
             {selectedCardIndices.size > 0
               ? `Discard ${selectedCardIndices.size} Card${selectedCardIndices.size > 1 ? 's' : ''}`
@@ -930,31 +960,35 @@ function GameView() {
         )}
 
         {isShowdown && (
-          <button
+          <motion.button
             type="button"
             onClick={startNextHand}
             disabled={loading}
-            className="w-full bg-yellow-600 hover:bg-yellow-500 disabled:bg-yellow-800 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition-colors"
+            className="w-full bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 disabled:from-amber-900 disabled:to-amber-950 text-white font-bold py-3 px-4 rounded-xl shadow-lg transition-all"
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
           >
             Next Hand
-          </button>
+          </motion.button>
         )}
 
         {needsBuyIn && isIdle && (
-          <button
+          <motion.button
             type="button"
             onClick={() => setShowBuyInModal(true)}
-            className="w-full bg-green-600 hover:bg-green-500 text-white py-3 px-6 rounded-lg font-medium"
+            className="w-full bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 text-white py-3 px-4 rounded-xl font-bold shadow-lg transition-all"
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
           >
             + Buy Chips
-          </button>
+          </motion.button>
         )}
       </div>
     </div>
   );
 
   return (
-    <div className="h-screen bg-green-800 overflow-hidden">
+    <div className="h-screen overflow-hidden" style={{ background: 'linear-gradient(180deg, #0f1f14 0%, #14532d 30%, #166534 60%, #14532d 100%)' }}>
       {/* Buy-In Modal */}
       <BuyInModal
         isOpen={showBuyInModal}
@@ -1009,32 +1043,33 @@ function GameView() {
       {/* DESKTOP LAYOUT (min-width: 1024px) */}
       {isDesktop ? (
         <div className="h-screen flex flex-col">
-          {/* Header */}
+          {/* Header - Refined dark theme */}
           <motion.div 
-            className="flex items-center justify-between p-3 bg-gradient-to-r from-gray-900/90 to-gray-800/90 border-b border-gray-700/50 flex-shrink-0 backdrop-blur-sm"
-            initial={{ y: -20, opacity: 0 }}
+            className="flex items-center justify-between px-4 py-2 border-b border-slate-700/40 flex-shrink-0 backdrop-blur-md"
+            style={{ background: 'linear-gradient(180deg, rgba(15,23,42,0.95) 0%, rgba(30,41,59,0.9) 100%)' }}
+            initial={{ y: -15, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
-            transition={{ duration: 0.3 }}
+            transition={{ duration: 0.25 }}
           >
             <motion.button
               type="button"
               onClick={leaveTable}
-              className="bg-gradient-to-r from-gray-700 to-gray-600 hover:from-gray-600 hover:to-gray-500 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-lg transition-all duration-200"
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
+              className="bg-slate-700/80 hover:bg-slate-600/80 text-slate-200 px-3 py-1.5 rounded-lg text-sm font-medium transition-all border border-slate-600/50"
+              whileHover={{ scale: 1.03 }}
+              whileTap={{ scale: 0.97 }}
             >
               Leave Table
             </motion.button>
-            <div className="flex items-center gap-4">
-              <div className="bg-gray-800 px-4 py-2 rounded-lg">
-                <span className="text-gray-400 text-sm">Table: </span>
-                <span className="text-white font-mono font-bold">{currentTableId}</span>
+            <div className="flex items-center gap-3">
+              <div className="bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-700/50">
+                <span className="text-slate-400 text-xs">Table: </span>
+                <span className="text-slate-100 font-mono font-bold text-sm">{currentTableId}</span>
               </div>
               <PhaseIndicator phase={tableData?.phase} />
             </div>
-            <div className="flex items-center gap-3">
-              <div className="bg-gray-700 px-3 py-2 rounded-lg flex items-center gap-2">
-                <span className="text-yellow-400 font-medium text-sm">{getDisplayName()}</span>
+            <div className="flex items-center gap-2">
+              <div className="bg-slate-800/80 px-3 py-1.5 rounded-lg flex items-center gap-2 border border-slate-700/50">
+                <span className="text-amber-400 font-medium text-sm">{getDisplayName()}</span>
               </div>
               <WalletDisplay balance={userWallet?.balance} loading={walletLoading} />
             </div>
@@ -1042,10 +1077,10 @@ function GameView() {
 
           {/* Main Content - 3 Column Layout */}
           <div className="flex-1 flex overflow-visible min-h-0">
-            {/* Left Sidebar: Chat & Game Log */}
-            <div className="w-80 bg-gray-900/30 border-r border-gray-700 flex flex-col flex-shrink-0">
-              <div className="p-3 border-b border-gray-700 flex-shrink-0">
-                <h3 className="text-white font-semibold">Chat & Activity</h3>
+            {/* Left Sidebar: Chat & Game Log - NARROWER */}
+            <div className="w-64 bg-slate-900/50 border-r border-slate-700/50 flex flex-col flex-shrink-0">
+              <div className="p-2 border-b border-slate-700/50 flex-shrink-0">
+                <h3 className="text-slate-200 font-medium text-sm">Chat & Activity</h3>
               </div>
               <div className="flex-1 overflow-hidden min-h-0">
                 <ChatBox
@@ -1059,7 +1094,7 @@ function GameView() {
             </div>
 
             {/* Center: Poker Table */}
-            <div className="flex-1 flex flex-col items-center justify-between min-h-0 overflow-visible py-3">
+            <div className="flex-1 flex flex-col items-center justify-between min-h-0 overflow-visible py-2">
               {/* Error display */}
               {error && (
                 <div className="bg-red-500/20 border border-red-500 text-red-200 px-4 py-2 rounded text-sm mb-2 flex-shrink-0">
@@ -1068,22 +1103,50 @@ function GameView() {
               )}
 
               {/* Poker Table with Radial Player Positioning */}
-              <div className="w-full max-w-4xl relative flex-1 flex-shrink-0 overflow-visible px-4" style={{ minHeight: '0', height: '100%' }}>
-                {/* Oval table background */}
+              <div className="w-full max-w-5xl relative flex-1 flex-shrink-0 overflow-visible px-6" style={{ minHeight: '0', height: '100%' }}>
+                {/* Premium oval table background */}
                 <motion.div
-                  className="absolute bg-gradient-to-br from-green-700/40 via-green-600/30 to-green-700/40 border-4 border-green-500/60"
+                  className="absolute"
                   style={{
-                    left: '5%',
-                    right: '5%',
-                    top: '0%',
-                    bottom: '10%',
+                    left: '3%',
+                    right: '3%',
+                    top: '2%',
+                    bottom: '12%',
                     borderRadius: '50%',
-                    boxShadow: 'inset 0 4px 20px rgba(0,0,0,0.3), 0 0 40px rgba(34,197,94,0.2)',
+                    background: `
+                      radial-gradient(ellipse at 50% 40%, rgba(34,197,94,0.25) 0%, transparent 60%),
+                      linear-gradient(180deg, 
+                        rgba(21,128,61,0.6) 0%, 
+                        rgba(22,101,52,0.7) 30%, 
+                        rgba(20,83,45,0.8) 70%, 
+                        rgba(21,128,61,0.6) 100%
+                      )
+                    `,
+                    boxShadow: `
+                      inset 0 0 60px rgba(0,0,0,0.4),
+                      inset 0 0 20px rgba(0,0,0,0.2),
+                      0 0 60px rgba(34,197,94,0.15),
+                      0 8px 32px rgba(0,0,0,0.4)
+                    `,
+                    border: '3px solid',
+                    borderColor: 'rgba(74,222,128,0.4)',
                   }}
-                  initial={{ scale: 0.9, opacity: 0 }}
+                  initial={{ scale: 0.95, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}
-                  transition={{ duration: 0.6, ease: 'easeOut' }}
-                />
+                  transition={{ duration: 0.5, ease: 'easeOut' }}
+                >
+                  {/* Inner felt texture line */}
+                  <div 
+                    className="absolute rounded-[50%]"
+                    style={{
+                      left: '3%',
+                      right: '3%',
+                      top: '5%',
+                      bottom: '5%',
+                      border: '2px solid rgba(74,222,128,0.2)',
+                    }}
+                  />
+                </motion.div>
 
                 {/* Opponents positioned radially around the table */}
                 {opponentsWithPositions.map((player) => {
@@ -1145,18 +1208,36 @@ function GameView() {
                 )}
               </div>
 
-              {/* Hero's Hand Area */}
+              {/* Hero's Hand Area - Premium styling */}
               <motion.div 
-                className="bg-gradient-to-br from-green-700 via-green-600 to-green-700 rounded-3xl px-8 py-4 border-4 border-yellow-500 shadow-2xl flex-shrink-0 w-full max-w-4xl mx-4 mt-2"
-                initial={{ opacity: 0, y: 20 }}
+                className="rounded-2xl px-6 py-3 flex-shrink-0 w-full max-w-3xl mx-4 mt-1 relative overflow-hidden"
+                initial={{ opacity: 0, y: 15 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5 }}
+                transition={{ duration: 0.4 }}
                 style={{
-                  boxShadow: '0 20px 40px rgba(0,0,0,0.4), inset 0 2px 4px rgba(255,255,255,0.1)',
+                  background: `
+                    linear-gradient(180deg, 
+                      rgba(22,101,52,0.95) 0%, 
+                      rgba(21,128,61,0.9) 50%, 
+                      rgba(22,101,52,0.95) 100%
+                    )
+                  `,
+                  boxShadow: '0 -4px 30px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.1), 0 4px 20px rgba(0,0,0,0.4)',
+                  border: '2px solid rgba(251,191,36,0.6)',
+                  borderRadius: '16px',
                 }}
               >
+                {/* Subtle pattern overlay */}
+                <div 
+                  className="absolute inset-0 opacity-5"
+                  style={{
+                    backgroundImage: `radial-gradient(circle at 2px 2px, white 1px, transparent 0)`,
+                    backgroundSize: '16px 16px',
+                  }}
+                />
+                
                 {/* Position indicators for hero */}
-                <div className="flex justify-center mb-2">
+                <div className="flex justify-center mb-1 relative z-10">
                   <PositionIndicators
                     isDealer={isDealer(heroSeatIndex)}
                     isSmallBlind={isSmallBlind(heroSeatIndex)}
@@ -1166,25 +1247,25 @@ function GameView() {
 
                 {currentPlayer?.hand && currentPlayer.hand.length > 0 ? (
                   <motion.div 
-                    className="flex flex-col items-center gap-4"
-                    initial={{ opacity: 0, y: 20 }}
+                    className="flex flex-col items-center gap-2 relative z-10"
+                    initial={{ opacity: 0, y: 15 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.4 }}
+                    transition={{ duration: 0.35 }}
                   >
-                    <div className="flex gap-3">
+                    <div className="flex gap-2">
                       <AnimatePresence mode="popLayout">
                         {currentPlayer.hand.map((card, index) => (
                           <motion.div
                             key={`${index}-${card.rank}-${card.suit}`}
                             layout
-                            initial={{ opacity: 0, scale: 0.8 }}
+                            initial={{ opacity: 0, scale: 0.85 }}
                             animate={{ opacity: 1, scale: 1 }}
-                            exit={{ opacity: 0, scale: 0.8, y: -50 }}
+                            exit={{ opacity: 0, scale: 0.85, y: -40 }}
                             transition={{ 
                               type: 'spring',
-                              stiffness: 300,
-                              damping: 25,
-                              delay: index * 0.05
+                              stiffness: 350,
+                              damping: 28,
+                              delay: index * 0.04
                             }}
                           >
                             <Card
@@ -1201,14 +1282,14 @@ function GameView() {
                     </div>
 
                     {isDrawPhase && myTurn && (
-                      <p className="text-gray-300 text-sm">
-                        Click cards to select for discard ({selectedCardIndices.size} selected)
+                      <p className="text-emerald-200/80 text-xs">
+                        Click cards to discard ({selectedCardIndices.size} selected)
                       </p>
                     )}
 
                     {playerHandResult && isShowdown && (
-                      <div className="text-center">
-                        <p className="text-2xl font-bold text-yellow-400">
+                      <div className="text-center bg-amber-500/20 rounded-lg px-4 py-1">
+                        <p className="text-xl font-bold text-amber-400">
                           {formatHandName(playerHandResult.categoryName)}
                         </p>
                       </div>
@@ -1216,12 +1297,12 @@ function GameView() {
                   </motion.div>
                 ) : (
                   <motion.div 
-                    className="text-center py-4"
+                    className="text-center py-3 relative z-10"
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
-                    transition={{ duration: 0.3 }}
+                    transition={{ duration: 0.25 }}
                   >
-                    <p className="text-white text-xl font-semibold">
+                    <p className="text-white text-lg font-medium">
                       {needsBuyIn ? 'Buy in to play!' : isIdle ? (canStartGame ? 'Ready to deal!' : 'Waiting for players...') : 'Waiting for cards...'}
                     </p>
                   </motion.div>
@@ -1229,8 +1310,8 @@ function GameView() {
               </motion.div>
             </div>
 
-            {/* Right Sidebar: Action Controls */}
-            <div className="w-72 bg-gray-900/30 border-l border-gray-700 flex flex-col flex-shrink-0">
+            {/* Right Sidebar: Action Controls - WIDER */}
+            <div className="w-80 bg-slate-900/50 border-l border-slate-700/50 flex flex-col flex-shrink-0">
               <ActionControlsSidebar />
             </div>
           </div>
