@@ -87,6 +87,11 @@ export function useBotOrchestrator(tableData, currentTableId, currentUserId, cre
           return;
         }
 
+        // Skip if bot is all-in (can't act)
+        if (currentActivePlayer.status === 'all-in' || currentActivePlayer.chips === 0) {
+          return;
+        }
+
         // Re-check phase from latest tableData
         const currentPhase = latestTableData.phase;
         const currentIsBettingPhase = currentPhase?.startsWith('BETTING_');

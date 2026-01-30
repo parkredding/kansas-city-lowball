@@ -124,7 +124,7 @@ export function GameProvider({ children }) {
   }, [currentUser, userWallet]);
 
   // Join an existing table
-  const joinTable = useCallback(async (tableId) => {
+  const joinTable = useCallback(async (tableId, password = null) => {
     if (!currentUser) {
       setError('You must be logged in to join a table');
       return false;
@@ -144,7 +144,7 @@ export function GameProvider({ children }) {
     setError(null);
 
     try {
-      await GameService.joinTable(tableId.toUpperCase(), currentUser, userWallet);
+      await GameService.joinTable(tableId.toUpperCase(), currentUser, userWallet, password);
       setCurrentTableId(tableId.toUpperCase());
       return true;
     } catch (err) {

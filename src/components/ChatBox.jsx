@@ -45,11 +45,16 @@ function UserColorDot({ username, size = 'sm' }) {
  * Shows chat messages and game events (draws, bets, folds, wins)
  * Game events are displayed in italics with a different color
  */
-function ChatBox({ messages = [], onSendMessage, currentUsername, disabled }) {
+function ChatBox({ messages = [], onSendMessage, currentUsername, disabled, expanded = false }) {
   const [inputText, setInputText] = useState('');
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(expanded);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
+
+  // Sync internal state with expanded prop
+  useEffect(() => {
+    setIsExpanded(expanded);
+  }, [expanded]);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -104,24 +109,34 @@ function ChatBox({ messages = [], onSendMessage, currentUsername, disabled }) {
   }
 
   // Expanded view
+  // If expanded prop is true, use full height (for desktop sidebar), otherwise fixed height (for floating modal)
+  const containerClasses = expanded
+    ? 'w-full h-full flex flex-col'
+    : 'fixed bottom-4 left-4 w-80 bg-gray-800 rounded-lg shadow-2xl border border-gray-600 flex flex-col z-40';
+  const messagesClasses = expanded
+    ? 'flex-1 overflow-y-auto p-3 space-y-2'
+    : 'h-64 overflow-y-auto p-3 space-y-2';
+
   return (
-    <div className="fixed bottom-4 left-4 w-80 bg-gray-800 rounded-lg shadow-2xl border border-gray-600 flex flex-col z-40">
+    <div className={containerClasses}>
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-gray-700">
+      <div className="flex items-center justify-between px-4 py-2 border-b border-gray-700 flex-shrink-0">
         <h3 className="text-white font-medium text-sm">Activity Log</h3>
-        <button
-          type="button"
-          onClick={() => setIsExpanded(false)}
-          className="text-gray-400 hover:text-white transition-colors"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          </svg>
-        </button>
+        {!expanded && (
+          <button
+            type="button"
+            onClick={() => setIsExpanded(false)}
+            className="text-gray-400 hover:text-white transition-colors"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+        )}
       </div>
 
       {/* Messages */}
-      <div className="h-64 overflow-y-auto p-3 space-y-2">
+      <div className={messagesClasses}>
         {messages.length === 0 ? (
           <p className="text-gray-500 text-sm text-center py-4">
             No activity yet. Game events and chat will appear here.
@@ -183,7 +198,7 @@ function ChatBox({ messages = [], onSendMessage, currentUsername, disabled }) {
       </div>
 
       {/* Input */}
-      <form onSubmit={handleSubmit} className="p-2 border-t border-gray-700">
+      <form onSubmit={handleSubmit} className="p-2 border-t border-gray-700 flex-shrink-0">
         <div className="flex gap-2">
           <input
             ref={inputRef}

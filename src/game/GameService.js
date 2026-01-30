@@ -637,9 +637,10 @@ export class GameService {
    * @param {string} tableId - The table ID to join
    * @param {Object} user - Firebase user object
    * @param {Object} userWallet - User wallet data with username
+   * @param {string} password - Optional password for private tables
    * @returns {Promise<void>}
    */
-  static async joinTable(tableId, user, userWallet) {
+  static async joinTable(tableId, user, userWallet, password = null) {
     if (!db) {
       throw new Error('Firestore not initialized');
     }
@@ -668,6 +669,14 @@ export class GameService {
     // Check if game is already in progress
     if (tableData.phase !== 'IDLE') {
       throw new Error('Game already in progress');
+    }
+
+    // Check password for private tables
+    const config = tableData.config || {};
+    if (config.passwordHash) {
+      if (!password || password.trim() !== config.passwordHash) {
+        throw new Error('Incorrect password');
+      }
     }
 
     // Use custom username if available, otherwise fall back to Google displayName
@@ -875,10 +884,10 @@ export class GameService {
   // ============================================
 
   /**
-   * Find the next active (non-folded, non-all-in) player
+   * Find the next active (non-folded, non-all-in) player who can act
    * @param {Array} players - Array of player objects
    * @param {number} currentIndex - Current player index
-   * @returns {number} - Next active player index
+   * @returns {number} - Next active player index, or -1 if no player can act
    */
   static findNextActivePlayer(players, currentIndex) {
     const numPlayers = players.length;
@@ -887,6 +896,7 @@ export class GameService {
 
     while (checked < numPlayers) {
       const player = players[nextIndex];
+      // Only return players who are active and have chips (can still act)
       if (player.status === 'active' && player.chips > 0) {
         return nextIndex;
       }
@@ -894,8 +904,8 @@ export class GameService {
       checked++;
     }
 
-    // No active player found (shouldn't happen in normal gameplay)
-    return currentIndex;
+    // No active player found who can act (all are all-in, folded, or sitting out)
+    return -1;
   }
 
   /**
@@ -1215,14 +1225,65 @@ export class GameService {
       // Move to next player
       const nextPlayerIndex = GameService.findNextActivePlayer(players, playerIndex);
 
-      await GameService.updateTable(tableId, {
-        players,
-        pot,
-        currentBet: newCurrentBet,
-        activePlayerIndex: nextPlayerIndex,
-        turnDeadline: GameService.calculateTurnDeadline(),
-        chatLog: activityLog,
-      });
+      // If no player can act (all are all-in/folded), check if round should complete
+      if (nextPlayerIndex === -1) {
+        // Re-check if round is complete now that this player has acted
+        const shouldComplete = GameService.isBettingRoundComplete(players, newCurrentBet);
+        if (shouldComplete) {
+          // Round is complete, advance to next phase
+          const phaseAfterBet = {
+            BETTING_1: 'DRAW_1',
+            BETTING_2: 'DRAW_2',
+            BETTING_3: 'DRAW_3',
+            BETTING_4: 'SHOWDOWN',
+          };
+          const nextPhase = phaseAfterBet[tableData.phase];
+          const isShowdown = nextPhase === 'SHOWDOWN';
+          const isDrawPhase = nextPhase?.startsWith('DRAW_');
+
+          // Find first player for next phase
+          let activeIndices;
+          if (isDrawPhase) {
+            activeIndices = players
+              .map((p, i) => (p.status === 'active' || p.status === 'all-in' ? i : -1))
+              .filter((i) => i !== -1);
+          } else {
+            activeIndices = players
+              .map((p, i) => (p.status === 'active' && p.chips > 0 ? i : -1))
+              .filter((i) => i !== -1);
+          }
+
+          await GameService.updateTable(tableId, {
+            players,
+            pot,
+            pots: calculateSidePots(players),
+            currentBet: 0,
+            phase: nextPhase,
+            activePlayerIndex: activeIndices.length > 0 ? activeIndices[0] : 0,
+            turnDeadline: isShowdown ? null : GameService.calculateTurnDeadline(),
+            chatLog: activityLog,
+          });
+        } else {
+          // Round not complete but no one can act - this shouldn't happen, but set to 0 as fallback
+          await GameService.updateTable(tableId, {
+            players,
+            pot,
+            currentBet: newCurrentBet,
+            activePlayerIndex: 0,
+            turnDeadline: null,
+            chatLog: activityLog,
+          });
+        }
+      } else {
+        await GameService.updateTable(tableId, {
+          players,
+          pot,
+          currentBet: newCurrentBet,
+          activePlayerIndex: nextPlayerIndex,
+          turnDeadline: GameService.calculateTurnDeadline(),
+          chatLog: activityLog,
+        });
+      }
     }
 
     return { success: true, action, actionDescription };
@@ -1433,6 +1494,7 @@ export class GameService {
       }
       updates.players = players;
     } else {
+      // Move to next player who hasn't acted yet
       updates.activePlayerIndex = nextPlayerIndex;
       updates.turnDeadline = GameService.calculateTurnDeadline();
     }

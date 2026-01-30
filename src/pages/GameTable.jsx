@@ -9,6 +9,7 @@ import BettingControls from '../components/BettingControls';
 import TurnTimer, { CircularTimer } from '../components/TurnTimer';
 import UsernameModal from '../components/UsernameModal';
 import CreateGameModal from '../components/CreateGameModal';
+import JoinTableModal from '../components/JoinTableModal';
 import ChatBox from '../components/ChatBox';
 import ChipStack, { MiniChipStack } from '../components/ChipStack';
 import { PositionIndicators } from '../components/PositionButtons';
@@ -368,6 +369,7 @@ function LobbyView() {
   const [tableIdInput, setTableIdInput] = useState('');
   const [showUsernameModal, setShowUsernameModal] = useState(false);
   const [showCreateGameModal, setShowCreateGameModal] = useState(false);
+  const [showJoinTableModal, setShowJoinTableModal] = useState(false);
 
   // Show username modal if user needs to set username
   useEffect(() => {
@@ -407,12 +409,21 @@ function LobbyView() {
     await createTable(config);
   };
 
-  const handleJoinTable = async () => {
+  const handleJoinTable = () => {
     if (!tableIdInput.trim()) {
       setError('Please enter a table ID');
       return;
     }
-    await joinTable(tableIdInput.trim());
+    setShowJoinTableModal(true);
+  };
+
+  const handleJoinTableWithPassword = async (tableId, password) => {
+    const success = await joinTable(tableId, password);
+    if (success) {
+      setShowJoinTableModal(false);
+      setTableIdInput('');
+    }
+    return success;
   };
 
   const handleSaveUsername = async (username) => {
@@ -438,6 +449,19 @@ function LobbyView() {
         onClose={() => setShowCreateGameModal(false)}
         onCreate={handleCreateTableWithConfig}
         loading={loading}
+      />
+
+      {/* Join Table Modal */}
+      <JoinTableModal
+        isOpen={showJoinTableModal}
+        onClose={() => {
+          setShowJoinTableModal(false);
+          setError('');
+        }}
+        onJoin={handleJoinTableWithPassword}
+        tableId={tableIdInput}
+        loading={loading}
+        error={error}
       />
 
       <h1 className="text-4xl font-bold text-white">Kansas City Lowball</h1>
@@ -855,7 +879,7 @@ function GameView() {
   );
 
   return (
-    <div className="min-h-screen bg-green-800">
+    <div className="h-screen bg-green-800 overflow-hidden">
       {/* Buy-In Modal */}
       <BuyInModal
         isOpen={showBuyInModal}
@@ -953,7 +977,7 @@ function GameView() {
             </div>
 
             {/* Center: Poker Table */}
-            <div className="flex-1 flex flex-col items-center justify-center p-4 overflow-auto">
+            <div className="flex-1 flex flex-col items-center justify-center p-4 overflow-hidden">
               {/* Error display */}
               {error && (
                 <div className="bg-red-500/20 border border-red-500 text-red-200 px-4 py-2 rounded text-sm mb-4">
