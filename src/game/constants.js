@@ -21,3 +21,18 @@ export const TURN_TIME_SECONDS = 45;
 // That's 6 players * 5 cards * 3 rounds = 90 cards (which exceeds 52)
 // So we MUST track discards and reshuffle as needed
 export const TOTAL_DECK_CARDS = 52;
+
+// Card ranks and suits for dealer cut comparison
+// Ace is high in Kansas City Lowball for dealer determination
+export const RANK_VALUES = {
+  '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9,
+  'T': 10, 'J': 11, 'Q': 12, 'K': 13, 'A': 14,
+};
+
+// Suit priority for dealer cut tie-breaker: Spades > Hearts > Diamonds > Clubs
+export const SUIT_VALUES = {
+  's': 4, // Spades (highest)
+  'h': 3, // Hearts
+  'd': 2, // Diamonds
+  'c': 1, // Clubs (lowest)
+};

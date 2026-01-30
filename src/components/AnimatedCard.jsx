@@ -272,36 +272,275 @@ export function AnimatedHand({
 }
 
 /**
- * Muck animation overlay - shows cards flying to center
+ * Muck (Discard Pile) Component - Visual representation of the muck at table center
  */
-export function MuckAnimation({ isActive, cardCount = 0 }) {
-  if (!isActive || cardCount === 0) return null;
+export function MuckPile({ cardCount = 0, isReceiving = false }) {
+  if (cardCount <= 0 && !isReceiving) return null;
 
   return (
     <motion.div
-      className="fixed inset-0 pointer-events-none z-50 flex items-center justify-center"
-      initial={{ opacity: 1 }}
-      animate={{ opacity: 0 }}
-      transition={{ duration: 0.5, delay: 0.3 }}
+      className="relative w-16 h-20"
+      animate={isReceiving ? {
+        scale: [1, 1.1, 1],
+      } : {}}
+      transition={{ duration: 0.3 }}
     >
-      {Array.from({ length: cardCount }).map((_, i) => (
+      {/* Stack of card backs representing the muck */}
+      {Array.from({ length: Math.min(cardCount, 5) }).map((_, i) => (
         <motion.div
           key={i}
-          className="absolute w-16 h-24 bg-blue-800 rounded-lg border-2 border-blue-900"
-          initial={{ scale: 1, opacity: 1 }}
+          className="absolute w-12 h-16 rounded-lg"
+          style={{
+            boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+            background: 'linear-gradient(135deg, #1e3a5f 0%, #0d1f33 50%, #1e3a5f 100%)',
+            top: `${i * -2}px`,
+            left: `${i * 1}px`,
+            transform: `rotate(${(i - 2) * 8}deg)`,
+            zIndex: i,
+          }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 0.9 }}
+        >
+          <div className="absolute inset-0.5 rounded-md border border-amber-600/20" />
+        </motion.div>
+      ))}
+      {/* Muck label */}
+      <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-xs text-slate-400 whitespace-nowrap">
+        Muck
+      </div>
+    </motion.div>
+  );
+}
+
+/**
+ * Balatro-Style Discard Animation Overlay
+ *
+ * Creates smooth "whoosh" animations for cards flying to the muck:
+ * - Hero cards: Visually detach and fly rapidly to center
+ * - Opponent cards: Card backs spawn at seat and whoosh to muck
+ * - High z-index ensures cards fly OVER everything
+ * - NO shaking - clean, direct trajectory
+ */
+export function DiscardAnimationOverlay({
+  discardingCards = [],
+  muckPosition = { x: 50, y: 50 },
+  onAnimationComplete,
+}) {
+  if (discardingCards.length === 0) return null;
+
+  return (
+    <div className="fixed inset-0 pointer-events-none z-[9999]">
+      <AnimatePresence onExitComplete={onAnimationComplete}>
+        {discardingCards.map((discardInfo, index) => (
+          <DiscardingCard
+            key={discardInfo.id || index}
+            card={discardInfo.card}
+            startPosition={discardInfo.startPosition}
+            endPosition={muckPosition}
+            delay={index * 0.05}
+            isHero={discardInfo.isHero}
+          />
+        ))}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+/**
+ * Individual discarding card with Balatro-style whoosh animation
+ */
+function DiscardingCard({
+  card,
+  startPosition = { x: 50, y: 80 },
+  endPosition = { x: 50, y: 50 },
+  delay = 0,
+  isHero = false,
+}) {
+  const suit = card ? SUIT_SYMBOLS[card.suit] : null;
+
+  return (
+    <motion.div
+      className="absolute"
+      style={{
+        left: `${startPosition.x}%`,
+        top: `${startPosition.y}%`,
+        transform: 'translate(-50%, -50%)',
+        zIndex: 9999,
+      }}
+      initial={{
+        scale: 1,
+        opacity: 1,
+        rotate: 0,
+      }}
+      animate={{
+        left: `${endPosition.x}%`,
+        top: `${endPosition.y}%`,
+        scale: 0.4,
+        opacity: 0,
+        rotate: isHero ? 0 : (Math.random() - 0.5) * 30,
+      }}
+      exit={{
+        opacity: 0,
+        scale: 0,
+      }}
+      transition={{
+        duration: 0.3,
+        delay: delay,
+        ease: [0.4, 0, 1, 1], // easeIn
+      }}
+    >
+      {/* Render card face for hero, card back for opponents */}
+      {isHero && card && suit ? (
+        <div
+          className="w-14 h-20 rounded-lg flex flex-col items-center justify-center relative overflow-hidden"
+          style={{
+            background: 'linear-gradient(145deg, #ffffff 0%, #f8f8f8 50%, #f0f0f0 100%)',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
+          }}
+        >
+          <span className={`text-xl font-bold ${suit.color} leading-none`}>
+            {card.rank}
+          </span>
+          <span className={`text-2xl ${suit.color} leading-none -mt-0.5`}>
+            {suit.symbol}
+          </span>
+        </div>
+      ) : (
+        <div
+          className="w-14 h-20 rounded-lg relative overflow-hidden"
+          style={{
+            boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
+            background: 'linear-gradient(135deg, #1e3a5f 0%, #0d1f33 50%, #1e3a5f 100%)',
+          }}
+        >
+          <div className="absolute inset-0.5 rounded-md border border-amber-600/30" />
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div
+              className="w-3/5 h-3/5 rounded-full border border-amber-500/40 flex items-center justify-center"
+              style={{
+                background: 'radial-gradient(circle, rgba(212,175,55,0.15) 0%, transparent 70%)',
+              }}
+            >
+              <span className="text-amber-500/50 text-xs font-serif">♠</span>
+            </div>
+          </div>
+        </div>
+      )}
+    </motion.div>
+  );
+}
+
+/**
+ * Hook to manage discard animation state
+ */
+export function useDiscardAnimation() {
+  const [discardingCards, setDiscardingCards] = useState([]);
+  const [isAnimating, setIsAnimating] = useState(false);
+
+  const triggerDiscard = (cards, isHero = false, startPosition = { x: 50, y: 80 }) => {
+    const newCards = cards.map((card, index) => ({
+      id: `${Date.now()}-${index}`,
+      card: card,
+      startPosition: startPosition,
+      isHero: isHero,
+    }));
+
+    setDiscardingCards(newCards);
+    setIsAnimating(true);
+  };
+
+  const onComplete = () => {
+    setDiscardingCards([]);
+    setIsAnimating(false);
+  };
+
+  return {
+    discardingCards,
+    isAnimating,
+    triggerDiscard,
+    onComplete,
+  };
+}
+
+/**
+ * Opponent Discard Animation - spawns card backs that whoosh to muck
+ */
+export function OpponentDiscardAnimation({
+  playerId,
+  cardCount = 0,
+  playerPosition = { x: 50, y: 20 },
+  muckPosition = { x: 50, y: 50 },
+  isActive = false,
+  onComplete,
+}) {
+  const [cards, setCards] = useState([]);
+
+  useEffect(() => {
+    if (isActive && cardCount > 0) {
+      // Create card animations
+      const newCards = Array.from({ length: cardCount }).map((_, i) => ({
+        id: `${playerId}-${Date.now()}-${i}`,
+        index: i,
+      }));
+      setCards(newCards);
+
+      // Clear after animation
+      const timer = setTimeout(() => {
+        setCards([]);
+        onComplete?.();
+      }, 500);
+
+      return () => clearTimeout(timer);
+    }
+  }, [isActive, cardCount, playerId, onComplete]);
+
+  if (cards.length === 0) return null;
+
+  return (
+    <div className="fixed inset-0 pointer-events-none z-[9999]">
+      {cards.map((card, index) => (
+        <motion.div
+          key={card.id}
+          className="absolute"
+          style={{
+            left: `${playerPosition.x}%`,
+            top: `${playerPosition.y}%`,
+            transform: 'translate(-50%, -50%)',
+          }}
+          initial={{
+            scale: 0.8,
+            opacity: 1,
+            rotate: 0,
+          }}
           animate={{
-            scale: 0,
+            left: `${muckPosition.x}%`,
+            top: `${muckPosition.y}%`,
+            scale: 0.3,
             opacity: 0,
-            rotate: 360,
+            rotate: (index - cardCount / 2) * 15,
           }}
           transition={{
-            duration: 0.4,
-            delay: i * 0.05,
-            ease: 'easeIn',
+            duration: 0.3,
+            delay: index * 0.06,
+            ease: [0.4, 0, 1, 1],
           }}
-        />
+        >
+          {/* Card back */}
+          <div
+            className="w-10 h-14 rounded-lg"
+            style={{
+              boxShadow: '0 4px 15px rgba(0,0,0,0.5)',
+              background: 'linear-gradient(135deg, #1e3a5f 0%, #0d1f33 50%, #1e3a5f 100%)',
+            }}
+          >
+            <div className="absolute inset-0.5 rounded-md border border-amber-600/30" />
+            <div className="absolute inset-0 flex items-center justify-center">
+              <span className="text-amber-500/50 text-[10px]">♠</span>
+            </div>
+          </div>
+        </motion.div>
       ))}
-    </motion.div>
+    </div>
   );
 }
 

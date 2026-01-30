@@ -240,12 +240,40 @@ export function GameProvider({ children }) {
     }
   }, [currentTableId, currentUser]);
 
+  // Start cut for dealer phase (first hand of game)
+  const startCutForDealer = useCallback(async () => {
+    if (!currentTableId || !tableData) return;
+
+    try {
+      await GameService.startCutForDealer(currentTableId, tableData);
+    } catch (err) {
+      setError(err.message);
+    }
+  }, [currentTableId, tableData]);
+
+  // Resolve cut for dealer and proceed to deal
+  const resolveCutForDealer = useCallback(async () => {
+    if (!currentTableId || !tableData) return;
+
+    try {
+      await GameService.resolveCutForDealer(currentTableId, tableData);
+    } catch (err) {
+      setError(err.message);
+    }
+  }, [currentTableId, tableData]);
+
   // Deal cards (start the game)
   const dealCards = useCallback(async () => {
     if (!currentTableId || !tableData) return;
 
     try {
-      await GameService.dealCards(currentTableId, tableData);
+      // Check if this is the first hand (no dealer has been determined yet)
+      // If hasHadFirstDeal is not set and we're in IDLE, start cut for dealer
+      if (!tableData.hasHadFirstDeal && tableData.phase === 'IDLE') {
+        await GameService.startCutForDealer(currentTableId, tableData);
+      } else {
+        await GameService.dealCards(currentTableId, tableData);
+      }
     } catch (err) {
       setError(err.message);
     }
@@ -412,6 +440,7 @@ export function GameProvider({ children }) {
   const isDrawPhase = tableData?.phase?.startsWith('DRAW_') || false;
   const isShowdown = tableData?.phase === 'SHOWDOWN';
   const isIdle = tableData?.phase === 'IDLE';
+  const isCutForDealer = tableData?.phase === 'CUT_FOR_DEALER';
 
   // Check if user needs to set username
   const needsUsername = needsUsernameSetup(userWallet);
@@ -473,6 +502,7 @@ export function GameProvider({ children }) {
     isDrawPhase,
     isShowdown,
     isIdle,
+    isCutForDealer,
 
     // Actions
     createTable,
@@ -489,6 +519,8 @@ export function GameProvider({ children }) {
     sendChatMessage,
     kickBot,
     joinAsPlayer,
+    startCutForDealer,
+    resolveCutForDealer,
 
     // Utilities
     getCurrentPlayer,

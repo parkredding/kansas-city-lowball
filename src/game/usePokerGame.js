@@ -5,6 +5,7 @@ import { HandEvaluator } from './HandEvaluator';
 // Game phases for Triple Draw
 export const PHASES = {
   IDLE: 'IDLE',
+  CUT_FOR_DEALER: 'CUT_FOR_DEALER',
   BETTING_1: 'BETTING_1',
   DRAW_1: 'DRAW_1',
   BETTING_2: 'BETTING_2',
@@ -32,6 +33,7 @@ const PHASE_AFTER_DRAW = {
 // Human-readable phase names
 export const PHASE_DISPLAY_NAMES = {
   [PHASES.IDLE]: 'Waiting to Start',
+  [PHASES.CUT_FOR_DEALER]: 'Cut for Dealer',
   [PHASES.BETTING_1]: 'First Betting Round',
   [PHASES.DRAW_1]: 'First Draw',
   [PHASES.BETTING_2]: 'Second Betting Round',
