@@ -15,6 +15,8 @@ import ChipStack, { MiniChipStack, BetChip, PotDisplay } from '../components/Chi
 import { PositionIndicators } from '../components/PositionButtons';
 import { useBotOrchestrator } from '../game/ai/useBotOrchestrator';
 import { useTurnNotification, playNotificationSound } from '../hooks/useTurnNotification';
+import { SoundManager } from '../audio/SoundManager';
+import { MuckPile, DiscardAnimationOverlay, OpponentDiscardAnimation, useDiscardAnimation } from '../components/AnimatedCard';
 
 /**
  * Error Boundary component to catch rendering errors and prevent white screens
@@ -286,17 +288,38 @@ function formatHandName(categoryName) {
 }
 
 /**
- * Enhanced Pot Display with contribution breakdown
- * Shows total pot with parenthetical for how much comes from other players
+ * Enhanced Pot Display with proper staging area handling
+ *
+ * FIX: Chips now only appear in ONE place:
+ * - During betting rounds: currentRoundBet chips appear ONLY near players (staging)
+ * - The central pot displays only GATHERED chips (total pot - all currentRoundBets)
+ * - This prevents the visual "duplication" bug
+ *
+ * Props:
+ * - totalPot: The total pot amount in the game
+ * - players: Array of players to calculate staged amounts
+ * - isBettingPhase: Whether we're in a betting round (affects display)
+ * - isGathering: Trigger gather animation when true
  */
-function PotDisplayWithContribution({ totalPot, playerContribution, size = 'lg' }) {
-  if (totalPot <= 0) return null;
+function PotDisplayWithContribution({ totalPot, players = [], isBettingPhase = false, playerContribution = 0, size = 'lg' }) {
+  // Calculate how much is currently "staged" (in front of players, not yet gathered)
+  const stagedAmount = players.reduce((sum, p) => sum + (p?.currentRoundBet || 0), 0);
 
-  const othersContribution = Math.max(0, totalPot - playerContribution);
+  // The "gathered" pot is what's already been collected from previous rounds
+  // During betting, subtract the staged amount to avoid visual duplication
+  const gatheredPot = isBettingPhase ? Math.max(0, totalPot - stagedAmount) : totalPot;
+
+  // Don't show anything if gathered pot is 0
+  if (gatheredPot <= 0) return null;
+
+  const othersContribution = Math.max(0, gatheredPot - playerContribution);
 
   return (
-    <div className="flex flex-col items-center">
-      <ChipStack amount={totalPot} size={size} showAmount={false} />
+    <motion.div
+      className="flex flex-col items-center"
+      layout
+    >
+      <ChipStack amount={gatheredPot} size={size} showAmount={false} animate={true} />
       <motion.div
         className="bg-amber-900/95 px-4 py-2 rounded-lg shadow-lg mt-2 border border-amber-700/50"
         initial={{ opacity: 0, y: 10 }}
@@ -308,16 +331,16 @@ function PotDisplayWithContribution({ totalPot, playerContribution, size = 'lg' 
       >
         <div className="flex items-center gap-2">
           <span className="text-amber-100 font-bold text-lg">
-            ${totalPot.toLocaleString()}
+            ${gatheredPot.toLocaleString()}
           </span>
-          {othersContribution > 0 && (
-            <span className="text-amber-300/80 text-sm">
-              (+${othersContribution.toLocaleString()})
+          {stagedAmount > 0 && isBettingPhase && (
+            <span className="text-amber-300/60 text-xs">
+              (+${stagedAmount.toLocaleString()} staged)
             </span>
           )}
         </div>
       </motion.div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -416,14 +439,16 @@ function PhaseIndicator({ phase }) {
   const isDraw = phase?.startsWith('DRAW_');
   const isShowdown = phase === 'SHOWDOWN';
   const isIdle = phase === 'IDLE';
+  const isCutForDealer = phase === 'CUT_FOR_DEALER';
 
   let bgColors = { from: 'from-slate-600', to: 'to-slate-700', border: 'border-slate-500/50' };
   if (isBetting) bgColors = { from: 'from-blue-600', to: 'to-blue-700', border: 'border-blue-400/50' };
   if (isDraw) bgColors = { from: 'from-violet-600', to: 'to-violet-700', border: 'border-violet-400/50' };
   if (isShowdown) bgColors = { from: 'from-amber-500', to: 'to-amber-600', border: 'border-amber-400/50' };
+  if (isCutForDealer) bgColors = { from: 'from-emerald-600', to: 'to-emerald-700', border: 'border-emerald-400/50' };
 
   return (
-    <motion.div 
+    <motion.div
       className={`bg-gradient-to-r ${bgColors.from} ${bgColors.to} px-4 py-1.5 rounded-full shadow-lg border ${bgColors.border}`}
       initial={{ scale: 0.9, opacity: 0 }}
       animate={{ scale: 1, opacity: 1 }}
@@ -432,6 +457,136 @@ function PhaseIndicator({ phase }) {
       <span className="text-white font-semibold text-xs tracking-wide">
         {displayName}
       </span>
+    </motion.div>
+  );
+}
+
+/**
+ * Cut for Dealer Display - Shows cut cards for each player
+ * Highlights the winning card with the highest rank (Ace high)
+ * Tie-breaker: Spades > Hearts > Diamonds > Clubs
+ */
+function CutForDealerDisplay({ players, winnerIndex, onResolve, isResolved }) {
+  const SUIT_PRIORITY = { s: 4, h: 3, d: 2, c: 1 };
+  const RANK_VALUES = {
+    '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9,
+    'T': 10, 'J': 11, 'Q': 12, 'K': 13, 'A': 14,
+  };
+
+  // Find the winning card
+  let highestIndex = -1;
+  let highestRank = 0;
+  let highestSuit = 0;
+
+  players.forEach((player, index) => {
+    if (player.cutCard) {
+      const rank = RANK_VALUES[player.cutCard.rank] || 0;
+      const suit = SUIT_PRIORITY[player.cutCard.suit] || 0;
+
+      if (rank > highestRank || (rank === highestRank && suit > highestSuit)) {
+        highestRank = rank;
+        highestSuit = suit;
+        highestIndex = index;
+      }
+    }
+  });
+
+  return (
+    <motion.div
+      className="bg-gradient-to-r from-emerald-900/95 to-emerald-950/95 rounded-2xl p-6 shadow-2xl border-2 border-emerald-500/50"
+      initial={{ scale: 0, opacity: 0 }}
+      animate={{ scale: 1, opacity: 1 }}
+      transition={{ type: 'spring', stiffness: 200, damping: 20 }}
+      style={{
+        boxShadow: '0 0 60px rgba(16,185,129,0.3), 0 8px 30px rgba(0,0,0,0.5)',
+      }}
+    >
+      {/* Header */}
+      <div className="text-center mb-4">
+        <h2 className="text-xl font-bold text-emerald-100">Cut for Dealer</h2>
+        <p className="text-emerald-300/70 text-sm">Highest card wins the button</p>
+      </div>
+
+      {/* Cut Cards Grid */}
+      <div className="flex flex-wrap justify-center gap-4 mb-4">
+        {players.map((player, index) => {
+          if (!player.cutCard) return null;
+          const isWinner = index === highestIndex;
+          const suit = SUIT_SYMBOLS[player.cutCard.suit];
+
+          return (
+            <motion.div
+              key={player.uid}
+              className={`flex flex-col items-center gap-2 ${isWinner ? '' : 'opacity-70'}`}
+              initial={{ y: -20, opacity: 0 }}
+              animate={{ y: 0, opacity: isWinner ? 1 : 0.7 }}
+              transition={{ delay: index * 0.1 }}
+            >
+              {/* Player name */}
+              <span className={`text-xs font-medium ${isWinner ? 'text-yellow-400' : 'text-slate-300'}`}>
+                {player.displayName}
+              </span>
+
+              {/* Cut Card */}
+              <motion.div
+                className={`
+                  w-16 h-22 rounded-lg flex flex-col items-center justify-center relative overflow-hidden
+                  ${isWinner ? 'ring-4 ring-yellow-400 ring-offset-2 ring-offset-emerald-900' : ''}
+                `}
+                animate={isWinner ? {
+                  boxShadow: [
+                    '0 0 20px rgba(250,204,21,0.5)',
+                    '0 0 40px rgba(250,204,21,0.7)',
+                    '0 0 20px rgba(250,204,21,0.5)',
+                  ],
+                } : {}}
+                transition={isWinner ? { duration: 1, repeat: Infinity, ease: 'easeInOut' } : {}}
+                style={{
+                  background: 'linear-gradient(145deg, #ffffff 0%, #f8f8f8 50%, #f0f0f0 100%)',
+                  boxShadow: isWinner
+                    ? '0 8px 25px rgba(250,204,21,0.4)'
+                    : '0 4px 12px rgba(0,0,0,0.3)',
+                }}
+              >
+                <span className={`text-2xl font-bold ${suit.color} leading-none`}>
+                  {player.cutCard.rank}
+                </span>
+                <span className={`text-3xl ${suit.color} leading-none -mt-1`}>
+                  {suit.symbol}
+                </span>
+              </motion.div>
+
+              {/* Winner badge */}
+              {isWinner && (
+                <motion.span
+                  className="text-xs bg-yellow-500 text-gray-900 px-2 py-0.5 rounded-full font-bold"
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  transition={{ delay: 0.5, type: 'spring' }}
+                >
+                  DEALER
+                </motion.span>
+              )}
+            </motion.div>
+          );
+        })}
+      </div>
+
+      {/* Continue Button */}
+      {!isResolved && (
+        <motion.button
+          type="button"
+          onClick={onResolve}
+          className="w-full bg-gradient-to-r from-yellow-500 to-amber-500 hover:from-yellow-400 hover:to-amber-400 text-gray-900 font-bold py-3 px-6 rounded-xl shadow-lg transition-all"
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.8 }}
+        >
+          Start Game
+        </motion.button>
+      )}
     </motion.div>
   );
 }
@@ -517,25 +672,34 @@ function PlayerSlot({ player, isCurrentUser, isActive, showCards, handResult, tu
     'all-in': { border: 'border-amber-500/70', bg: 'from-slate-800/95 to-slate-900/95' },
     'sitting_out': { border: 'border-slate-700/40', bg: 'from-slate-800/40 to-slate-900/40', opacity: 'opacity-40' },
   };
-  
+
   const config = statusConfig[player.status] || statusConfig.active;
+
+  // Enhanced Active Turn highlight: Dim inactive players
+  const inactiveOpacity = !isActive && player.status === 'active' ? 'opacity-80' : '';
 
   return (
     <motion.div
       className={`
         relative rounded-xl p-2.5 border backdrop-blur-sm min-w-[140px] max-w-[180px]
-        ${isActive ? 'ring-2 ring-amber-400/80 ring-offset-1 ring-offset-green-900' : ''}
-        ${config.border} ${config.opacity || ''}
+        ${isActive ? 'ring-4 ring-yellow-400 ring-offset-2 ring-offset-green-900' : ''}
+        ${config.border} ${config.opacity || ''} ${inactiveOpacity}
+        transition-opacity duration-300
       `}
       animate={isActive ? {
-        boxShadow: '0 0 24px rgba(251,191,36,0.35)',
-      } : {}}
-      transition={{ duration: 0.25 }}
+        boxShadow: [
+          '0 0 20px rgba(250,204,21,0.4), 0 0 40px rgba(250,204,21,0.2)',
+          '0 0 30px rgba(250,204,21,0.5), 0 0 60px rgba(250,204,21,0.3)',
+          '0 0 20px rgba(250,204,21,0.4), 0 0 40px rgba(250,204,21,0.2)',
+        ],
+      } : {
+        boxShadow: '0 4px 16px rgba(0,0,0,0.4), 0 2px 4px rgba(0,0,0,0.2)',
+      }}
+      transition={isActive ? {
+        boxShadow: { duration: 1.5, repeat: Infinity, ease: 'easeInOut' },
+      } : { duration: 0.25 }}
       style={{
         background: `linear-gradient(135deg, rgba(30,41,59,0.92) 0%, rgba(15,23,42,0.95) 100%)`,
-        boxShadow: isActive 
-          ? '0 6px 20px rgba(251,191,36,0.3), 0 2px 8px rgba(0,0,0,0.4)'
-          : '0 4px 16px rgba(0,0,0,0.4), 0 2px 4px rgba(0,0,0,0.2)',
       }}
     >
       {/* Position badges (Dealer/SB/BB) - repositioned */}
@@ -554,25 +718,55 @@ function PlayerSlot({ player, isCurrentUser, isActive, showCards, handResult, tu
 
       {/* Player info row - compact */}
       <div className="flex items-center gap-2 mb-2">
+        {/* Avatar with enhanced active glow */}
         <div className="relative flex-shrink-0">
           {player.photoURL ? (
-            <img
+            <motion.img
               src={player.photoURL}
               alt={player.displayName}
-              className="w-7 h-7 rounded-full border border-slate-600"
+              className={`w-7 h-7 rounded-full ${isActive ? 'ring-2 ring-yellow-400' : 'border border-slate-600'}`}
+              animate={isActive ? {
+                boxShadow: [
+                  '0 0 0px rgba(250,204,21,0.6)',
+                  '0 0 12px rgba(250,204,21,0.8)',
+                  '0 0 0px rgba(250,204,21,0.6)',
+                ],
+              } : {}}
+              transition={isActive ? { duration: 1, repeat: Infinity, ease: 'easeInOut' } : {}}
             />
           ) : (
-            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-slate-600 to-slate-700 flex items-center justify-center border border-slate-500">
+            <motion.div
+              className={`w-7 h-7 rounded-full bg-gradient-to-br from-slate-600 to-slate-700 flex items-center justify-center ${isActive ? 'ring-2 ring-yellow-400' : 'border border-slate-500'}`}
+              animate={isActive ? {
+                boxShadow: [
+                  '0 0 0px rgba(250,204,21,0.6)',
+                  '0 0 12px rgba(250,204,21,0.8)',
+                  '0 0 0px rgba(250,204,21,0.6)',
+                ],
+              } : {}}
+              transition={isActive ? { duration: 1, repeat: Infinity, ease: 'easeInOut' } : {}}
+            >
               <span className="text-white text-xs font-medium">
                 {player.displayName?.charAt(0)?.toUpperCase() || '?'}
               </span>
-            </div>
+            </motion.div>
           )}
         </div>
         <div className="flex-1 min-w-0">
-          <p className={`text-xs font-semibold truncate ${isCurrentUser ? 'text-amber-400' : 'text-slate-100'}`}>
+          {/* Player name with pulse animation when active */}
+          <motion.p
+            className={`text-xs font-semibold truncate ${isCurrentUser ? 'text-amber-400' : 'text-slate-100'}`}
+            animate={isActive ? {
+              textShadow: [
+                '0 0 0px rgba(250,204,21,0)',
+                '0 0 8px rgba(250,204,21,0.8)',
+                '0 0 0px rgba(250,204,21,0)',
+              ],
+            } : {}}
+            transition={isActive ? { duration: 1.2, repeat: Infinity, ease: 'easeInOut' } : {}}
+          >
             {player.displayName}
-          </p>
+          </motion.p>
           <p className="text-xs text-emerald-400 font-medium">${player.chips.toLocaleString()}</p>
         </div>
       </div>
@@ -849,6 +1043,7 @@ function GameView() {
     isDrawPhase,
     isShowdown,
     isIdle,
+    isCutForDealer,
     userWallet,
     walletLoading,
     needsUsername,
@@ -876,6 +1071,8 @@ function GameView() {
     joinAsPlayer,
     isTableCreator,
     kickBot,
+    // Cut for dealer
+    resolveCutForDealer,
   } = useGame();
 
   const [selectedCardIndices, setSelectedCardIndices] = useState(new Set());
@@ -1024,6 +1221,12 @@ function GameView() {
     e?.preventDefault();
     e?.stopPropagation();
     const indices = Array.from(selectedCardIndices);
+
+    // Play whoosh sound for discard
+    if (indices.length > 0) {
+      SoundManager.playWhoosh();
+    }
+
     await submitDraw(indices);
     setSelectedCardIndices(new Set());
   };
@@ -1031,13 +1234,34 @@ function GameView() {
   const handleDeal = async (e) => {
     e.preventDefault();
     e.stopPropagation();
+    // Play deal sound (cut for dealer plays a different sound)
+    if (!tableData?.hasHadFirstDeal) {
+      SoundManager.playCutForDealer();
+    } else {
+      SoundManager.playDeal(5);
+    }
     await dealCards();
+  };
+
+  // Handler to resolve cut for dealer and start the actual game
+  const handleResolveCutForDealer = async (e) => {
+    e?.preventDefault();
+    e?.stopPropagation();
+    // Resolve the cut and determine dealer
+    await resolveCutForDealer();
+    // Small delay then deal the actual hand
+    setTimeout(async () => {
+      SoundManager.playDeal(5);
+      await dealCards();
+    }, 500);
   };
 
   const handleBuyIn = async (amount) => {
     const success = await buyIn(amount);
     if (success) {
       setHasDismissedBuyIn(true);
+      // Play chip sound on successful buy-in
+      SoundManager.playChipClack();
     }
     return success;
   };
@@ -1052,12 +1276,14 @@ function GameView() {
     setShowUsernameModal(false);
   };
 
-  // Betting action handlers with toast feedback on error
+  // Betting action handlers with toast feedback on error AND sound effects
   const handleFold = async (e) => {
     e?.preventDefault();
     e?.stopPropagation();
     const result = await performBetAction(BetAction.FOLD);
-    if (!result.success) {
+    if (result.success) {
+      SoundManager.playFold();
+    } else {
       showToast(result.error);
     }
   };
@@ -1066,7 +1292,9 @@ function GameView() {
     e?.preventDefault();
     e?.stopPropagation();
     const result = await performBetAction(BetAction.CHECK);
-    if (!result.success) {
+    if (result.success) {
+      SoundManager.playCheck();
+    } else {
       showToast(result.error);
     }
   };
@@ -1075,7 +1303,9 @@ function GameView() {
     e?.preventDefault();
     e?.stopPropagation();
     const result = await performBetAction(BetAction.CALL);
-    if (!result.success) {
+    if (result.success) {
+      SoundManager.playChipClack();
+    } else {
       showToast(result.error);
     }
   };
@@ -1084,7 +1314,9 @@ function GameView() {
     e?.preventDefault();
     e?.stopPropagation();
     const result = await performBetAction(BetAction.RAISE, amount);
-    if (!result.success) {
+    if (result.success) {
+      SoundManager.playChipClack();
+    } else {
       showToast(result.error);
     }
   };
@@ -1093,7 +1325,12 @@ function GameView() {
     e?.preventDefault();
     e?.stopPropagation();
     const result = await performBetAction(BetAction.ALL_IN);
-    if (!result.success) {
+    if (result.success) {
+      // Multiple chip clacks for dramatic all-in
+      SoundManager.playChipClack();
+      setTimeout(() => SoundManager.playChipClack(), 100);
+      setTimeout(() => SoundManager.playChipClack(), 200);
+    } else {
       showToast(result.error);
     }
   };
@@ -1570,8 +1807,23 @@ function GameView() {
                 </AnimatePresence>
 
                 {/* Pot display or Showdown Result in center */}
-                {isShowdown && tableData?.showdownResult ? (
-                  <motion.div 
+                {/* Cut for Dealer Phase Display */}
+                {isCutForDealer && tableData?.players?.some(p => p.cutCard) ? (
+                  <motion.div
+                    className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 z-30"
+                    initial={{ scale: 0, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ type: 'spring', stiffness: 200, damping: 20 }}
+                  >
+                    <CutForDealerDisplay
+                      players={tableData.players}
+                      winnerIndex={tableData.cutForDealerWinner}
+                      onResolve={handleResolveCutForDealer}
+                      isResolved={tableData.cutForDealerComplete}
+                    />
+                  </motion.div>
+                ) : isShowdown && tableData?.showdownResult ? (
+                  <motion.div
                     className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 z-30"
                     initial={{ scale: 0, opacity: 0 }}
                     animate={{ scale: 1, opacity: 1 }}
@@ -1580,14 +1832,16 @@ function GameView() {
                     <ShowdownResultDisplay showdownResult={tableData.showdownResult} isDesktop={true} currentUserUid={currentUser?.uid} players={tableData?.players} />
                   </motion.div>
                 ) : tableData?.pot > 0 ? (
-                  <motion.div 
+                  <motion.div
                     className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 z-30"
                     initial={{ scale: 0, opacity: 0 }}
                     animate={{ scale: 1, opacity: 1 }}
                     transition={{ type: 'spring', stiffness: 200, damping: 20 }}
                   >
-                    <PotDisplayWithContribution 
-                      totalPot={tableData.pot} 
+                    <PotDisplayWithContribution
+                      totalPot={tableData.pot}
+                      players={tableData?.players || []}
+                      isBettingPhase={isBettingPhase}
                       playerContribution={currentPlayer?.totalContribution || 0}
                       size="lg"
                     />
@@ -1984,8 +2238,22 @@ function GameView() {
           </div>
         )}
 
-        {/* Pot display or Showdown Result in center of table */}
-        {isShowdown && tableData?.showdownResult ? (
+        {/* Cut for Dealer, Pot display, or Showdown Result in center of table */}
+        {isCutForDealer && tableData?.players?.some(p => p.cutCard) ? (
+          <motion.div
+            className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 flex flex-col items-center z-30"
+            initial={{ scale: 0, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+          >
+            <CutForDealerDisplay
+              players={tableData.players}
+              winnerIndex={tableData.cutForDealerWinner}
+              onResolve={handleResolveCutForDealer}
+              isResolved={tableData.cutForDealerComplete}
+            />
+          </motion.div>
+        ) : isShowdown && tableData?.showdownResult ? (
           <motion.div
             className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 flex flex-col items-center z-30"
             initial={{ scale: 0, opacity: 0 }}
@@ -2001,8 +2269,10 @@ function GameView() {
             animate={{ scale: 1, opacity: 1 }}
             transition={{ type: 'spring', stiffness: 300, damping: 25 }}
           >
-            <PotDisplayWithContribution 
-              totalPot={tableData.pot} 
+            <PotDisplayWithContribution
+              totalPot={tableData.pot}
+              players={tableData?.players || []}
+              isBettingPhase={isBettingPhase}
               playerContribution={currentPlayer?.totalContribution || 0}
               size="md"
             />

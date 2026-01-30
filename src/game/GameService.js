@@ -23,6 +23,8 @@ import {
   DEFAULT_STARTING_BALANCE,
   DEFAULT_MIN_BET,
   TURN_TIME_SECONDS,
+  RANK_VALUES,
+  SUIT_VALUES,
 } from './constants';
 
 const TABLES_COLLECTION = 'tables';
@@ -357,6 +359,144 @@ export class GameService {
     const newDeck = [...deck, ...shuffledMuck];
 
     return { deck: newDeck, muck: [] };
+  }
+
+  /**
+   * Compare two cards for dealer cut
+   * Returns positive if card1 wins, negative if card2 wins, 0 if tie (shouldn't happen with suit tiebreaker)
+   * Highest rank wins. Ties broken by suit: Spades > Hearts > Diamonds > Clubs
+   * @param {Object} card1 - { rank, suit }
+   * @param {Object} card2 - { rank, suit }
+   * @returns {number} - Comparison result
+   */
+  static compareDealerCutCards(card1, card2) {
+    const rank1 = RANK_VALUES[card1.rank] || 0;
+    const rank2 = RANK_VALUES[card2.rank] || 0;
+
+    if (rank1 !== rank2) {
+      return rank1 - rank2;
+    }
+
+    // Tie-breaker: suit priority
+    const suit1 = SUIT_VALUES[card1.suit] || 0;
+    const suit2 = SUIT_VALUES[card2.suit] || 0;
+
+    return suit1 - suit2;
+  }
+
+  /**
+   * Start the "Cut for Dealer" phase
+   * Deals 1 card face-up to each active player to determine dealer
+   * @param {string} tableId - The table ID
+   * @param {Object} tableData - Current table data
+   * @returns {Promise<void>}
+   */
+  static async startCutForDealer(tableId, tableData) {
+    let deck = [...tableData.deck];
+    let muck = [...(tableData.muck || [])];
+
+    // Filter players with chips
+    const activePlayers = tableData.players.filter((p) => p.chips > 0);
+    if (activePlayers.length < 2) {
+      throw new Error('Need at least 2 players with chips to start');
+    }
+
+    // Reshuffle if needed
+    const reshuffled = GameService.reshuffleMuckIfNeeded(deck, muck, activePlayers.length);
+    deck = reshuffled.deck;
+    muck = reshuffled.muck;
+
+    // Deal 1 card to each player for dealer cut
+    const players = tableData.players.map((player) => ({
+      ...player,
+      cutCard: null,
+      hand: [],
+      status: player.chips > 0 ? 'active' : 'sitting_out',
+      cardsToDiscard: [],
+      currentRoundBet: 0,
+      totalContribution: 0,
+      hasActedThisRound: false,
+      lastAction: null,
+    }));
+
+    // Deal one card to each active player
+    for (let i = 0; i < players.length; i++) {
+      if (players[i].status === 'active' && deck.length > 0) {
+        players[i].cutCard = deck.shift();
+      }
+    }
+
+    await GameService.updateTable(tableId, {
+      deck,
+      muck,
+      players,
+      phase: 'CUT_FOR_DEALER',
+      pot: 0,
+      pots: [],
+      currentBet: 0,
+      turnDeadline: null, // No time limit for cut phase
+      cutForDealerComplete: false,
+    });
+  }
+
+  /**
+   * Resolve the "Cut for Dealer" phase
+   * Determines the winner (highest card) and sets them as dealer
+   * @param {string} tableId - The table ID
+   * @param {Object} tableData - Current table data
+   * @returns {Promise<number>} - The seat index of the winning dealer
+   */
+  static async resolveCutForDealer(tableId, tableData) {
+    const players = tableData.players;
+    let winnerIndex = -1;
+    let winnerCard = null;
+
+    // Find the player with the highest card
+    for (let i = 0; i < players.length; i++) {
+      const player = players[i];
+      if (player.cutCard && player.status !== 'sitting_out') {
+        if (!winnerCard || GameService.compareDealerCutCards(player.cutCard, winnerCard) > 0) {
+          winnerCard = player.cutCard;
+          winnerIndex = i;
+        }
+      }
+    }
+
+    if (winnerIndex === -1) {
+      // Fallback: first active player
+      winnerIndex = players.findIndex(p => p.status === 'active');
+      if (winnerIndex === -1) winnerIndex = 0;
+    }
+
+    // Find active player indices and determine dealer position
+    const activeIndices = players
+      .map((p, i) => (p.status === 'active' ? i : -1))
+      .filter((i) => i !== -1);
+
+    const dealerActivePosition = activeIndices.indexOf(winnerIndex);
+    const finalDealerPosition = dealerActivePosition !== -1 ? dealerActivePosition : 0;
+
+    // Collect cut cards to muck
+    const cutCards = players
+      .filter(p => p.cutCard)
+      .map(p => p.cutCard);
+
+    // Clear cut cards from players
+    const updatedPlayers = players.map(p => ({
+      ...p,
+      cutCard: null,
+    }));
+
+    await GameService.updateTable(tableId, {
+      players: updatedPlayers,
+      muck: [...(tableData.muck || []), ...cutCards],
+      dealerIndex: finalDealerPosition,
+      cutForDealerWinner: winnerIndex,
+      cutForDealerComplete: true,
+      phase: 'IDLE', // Return to idle for deal
+    });
+
+    return winnerIndex;
   }
 
   // ============================================
@@ -1183,6 +1323,9 @@ export class GameService {
       smallBlindSeatIndex: sbSeatIndex,
       bigBlindSeatIndex: bbSeatIndex,
       turnDeadline: GameService.calculateTurnDeadline(),
+      hasHadFirstDeal: true, // Mark that dealer has been determined
+      cutForDealerComplete: null, // Clear cut for dealer state
+      cutForDealerWinner: null,
     });
   }
 
