@@ -323,14 +323,23 @@ function PotDisplayWithContribution({ totalPot, playerContribution, size = 'lg' 
 
 /**
  * Showdown Result Display - Shows the winner announcement prominently
+ * Shows total pot won and actual gain (pot minus their own contribution)
  */
-function ShowdownResultDisplay({ showdownResult, isDesktop }) {
+function ShowdownResultDisplay({ showdownResult, isDesktop, currentUserUid, players }) {
   if (!showdownResult || !showdownResult.winners || showdownResult.winners.length === 0) {
     return null;
   }
 
   const winner = showdownResult.winners[0];
   const isSplit = showdownResult.winners.length > 1;
+  
+  // Calculate the winner's contribution to the pot
+  const winnerPlayer = players?.find(p => p.uid === winner.uid);
+  const winnerContribution = winnerPlayer?.totalContribution || 0;
+  const actualGain = winner.amount - winnerContribution;
+  
+  // Check if current user is the winner
+  const isCurrentUserWinner = showdownResult.winners.some(w => w.uid === currentUserUid);
 
   return (
     <motion.div
@@ -372,11 +381,29 @@ function ShowdownResultDisplay({ showdownResult, isDesktop }) {
         </span>
       </div>
 
-      {/* Amount won */}
+      {/* Amount won - show pot total and actual gain */}
       <div className="text-center mt-3">
         <span className={`font-bold text-gray-900 ${isDesktop ? 'text-2xl' : 'text-xl'}`}>
           ${winner.amount.toLocaleString()}
         </span>
+        {/* Show actual gain for the winner (pot - their contribution) */}
+        {actualGain !== winner.amount && (
+          <div className={`${isDesktop ? 'text-sm' : 'text-xs'} text-gray-800 mt-1`}>
+            {actualGain > 0 ? (
+              <span className="bg-green-800/30 px-2 py-0.5 rounded-full">
+                +${actualGain.toLocaleString()} profit
+              </span>
+            ) : actualGain === 0 ? (
+              <span className="bg-gray-800/20 px-2 py-0.5 rounded-full">
+                Break even
+              </span>
+            ) : (
+              <span className="bg-gray-800/20 px-2 py-0.5 rounded-full">
+                ${Math.abs(actualGain).toLocaleString()} returned
+              </span>
+            )}
+          </div>
+        )}
       </div>
     </motion.div>
   );
@@ -1388,6 +1415,43 @@ function GameView() {
                   </div>
                 )}
 
+                {/* Opponent bet chips positioned between players and center (during betting) */}
+                <AnimatePresence>
+                  {opponentsWithPositions.map((player) => {
+                    if (player.currentRoundBet <= 0) return null;
+                    const betPos = getBetChipPosition(player.relativeIndex, totalPlayers);
+                    return (
+                      <motion.div
+                        key={`bet-${player.uid}`}
+                        className="absolute transform -translate-x-1/2 -translate-y-1/2 z-20"
+                        style={{ left: betPos.x, top: betPos.y }}
+                        initial={{ scale: 0, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        exit={{ scale: 0, opacity: 0, y: -20 }}
+                        transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+                      >
+                        <BetChip amount={player.currentRoundBet} playerId={player.uid} />
+                      </motion.div>
+                    );
+                  })}
+                </AnimatePresence>
+
+                {/* Hero's bet chips (desktop) */}
+                <AnimatePresence>
+                  {currentPlayer?.currentRoundBet > 0 && (
+                    <motion.div
+                      className="absolute transform -translate-x-1/2 -translate-y-1/2 z-20"
+                      style={{ left: '50%', top: '72%' }}
+                      initial={{ scale: 0, opacity: 0, y: 30 }}
+                      animate={{ scale: 1, opacity: 1, y: 0 }}
+                      exit={{ scale: 0, opacity: 0, y: -20 }}
+                      transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+                    >
+                      <BetChip amount={currentPlayer.currentRoundBet} playerId={currentPlayer.uid} />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
                 {/* Pot display or Showdown Result in center */}
                 {isShowdown && tableData?.showdownResult ? (
                   <motion.div 
@@ -1396,7 +1460,7 @@ function GameView() {
                     animate={{ scale: 1, opacity: 1 }}
                     transition={{ type: 'spring', stiffness: 200, damping: 20 }}
                   >
-                    <ShowdownResultDisplay showdownResult={tableData.showdownResult} isDesktop={true} />
+                    <ShowdownResultDisplay showdownResult={tableData.showdownResult} isDesktop={true} currentUserUid={currentUser?.uid} players={tableData?.players} />
                   </motion.div>
                 ) : tableData?.pot > 0 ? (
                   <motion.div 
@@ -1775,7 +1839,7 @@ function GameView() {
             animate={{ scale: 1, opacity: 1 }}
             transition={{ type: 'spring', stiffness: 300, damping: 25 }}
           >
-            <ShowdownResultDisplay showdownResult={tableData.showdownResult} isDesktop={false} />
+            <ShowdownResultDisplay showdownResult={tableData.showdownResult} isDesktop={false} currentUserUid={currentUser?.uid} players={tableData?.players} />
           </motion.div>
         ) : tableData?.pot > 0 ? (
           <motion.div
