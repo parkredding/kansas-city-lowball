@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { getBotStrategy } from './BotFactory';
 import { BetAction, GameService } from '../GameService';
 
@@ -13,13 +13,33 @@ import { BetAction, GameService } from '../GameService';
  */
 export function useBotOrchestrator(tableData, currentTableId, currentUserId, creatorId) {
   const processingRef = useRef(false);
-  const lastProcessedRef = useRef({ phase: null, activePlayerIndex: -1 });
+  const lastProcessedRef = useRef({ phase: null, activePlayerIndex: -1, timestamp: 0 });
   const tableDataRef = useRef(tableData);
+  const botTimeoutRef = useRef(null);
+  const botActionTimeoutRef = useRef(null);
+  const [retryCounter, setRetryCounter] = useState(0);
 
   // Keep ref updated with latest tableData
   useEffect(() => {
     tableDataRef.current = tableData;
   }, [tableData]);
+
+  // Cleanup timeouts on unmount
+  useEffect(() => {
+    return () => {
+      if (botTimeoutRef.current) {
+        clearTimeout(botTimeoutRef.current);
+      }
+      if (botActionTimeoutRef.current) {
+        clearTimeout(botActionTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // Function to trigger a retry
+  const triggerRetry = useCallback(() => {
+    setRetryCounter(prev => prev + 1);
+  }, []);
 
   useEffect(() => {
     // Only run if we're the table creator
@@ -27,8 +47,26 @@ export function useBotOrchestrator(tableData, currentTableId, currentUserId, cre
       return;
     }
 
+    // Clear any pending timeouts when table data changes
+    if (botTimeoutRef.current) {
+      clearTimeout(botTimeoutRef.current);
+      botTimeoutRef.current = null;
+    }
+    if (botActionTimeoutRef.current) {
+      clearTimeout(botActionTimeoutRef.current);
+      botActionTimeoutRef.current = null;
+    }
+
     // Only process if we're not already processing
     if (processingRef.current) {
+      // Schedule a retry in case we're stuck
+      botActionTimeoutRef.current = setTimeout(() => {
+        if (processingRef.current) {
+          console.warn('Bot orchestrator appears stuck - forcing reset');
+          processingRef.current = false;
+          triggerRetry();
+        }
+      }, 5000);
       return;
     }
 
@@ -37,8 +75,13 @@ export function useBotOrchestrator(tableData, currentTableId, currentUserId, cre
     const phase = tableData.phase;
 
     // Check if we've already processed this exact turn (same phase + same player)
-    if (phase === lastProcessedRef.current.phase && 
-        activePlayerIndex === lastProcessedRef.current.activePlayerIndex) {
+    // Also allow reprocessing if enough time has passed (safety mechanism)
+    const now = Date.now();
+    const timeSinceLastProcess = now - (lastProcessedRef.current.timestamp || 0);
+    const isSameTurn = phase === lastProcessedRef.current.phase && 
+                       activePlayerIndex === lastProcessedRef.current.activePlayerIndex;
+    
+    if (isSameTurn && timeSinceLastProcess < 10000) {
       return;
     }
 
@@ -48,14 +91,14 @@ export function useBotOrchestrator(tableData, currentTableId, currentUserId, cre
 
     if (!isBettingPhase && !isDrawPhase) {
       // Not a valid phase for bot action, update tracking
-      lastProcessedRef.current = { phase, activePlayerIndex };
+      lastProcessedRef.current = { phase, activePlayerIndex, timestamp: Date.now() };
       return;
     }
 
     // Check if active player is a bot
     if (!activePlayer || !activePlayer.isBot) {
       // Not a bot, update tracking
-      lastProcessedRef.current = { phase, activePlayerIndex };
+      lastProcessedRef.current = { phase, activePlayerIndex, timestamp: Date.now() };
       return;
     }
 
@@ -67,7 +110,37 @@ export function useBotOrchestrator(tableData, currentTableId, currentUserId, cre
 
     // Mark as processing
     processingRef.current = true;
-    lastProcessedRef.current = { phase, activePlayerIndex };
+    lastProcessedRef.current = { phase, activePlayerIndex, timestamp: Date.now() };
+
+    // Set up a fallback timeout in case bot action fails
+    // This will trigger a default action (check/fold for betting, stand pat for draw)
+    const fallbackTimeout = 10000; // 10 seconds
+    botTimeoutRef.current = setTimeout(async () => {
+      try {
+        const latestTableData = tableDataRef.current;
+        if (!latestTableData || !currentTableId) return;
+        
+        const currentActivePlayer = latestTableData.players?.[latestTableData.activePlayerIndex];
+        if (!currentActivePlayer || currentActivePlayer.uid !== botUid || !currentActivePlayer.isBot) {
+          return; // Bot is no longer active
+        }
+
+        const currentPhase = latestTableData.phase;
+        console.warn(`Bot ${botUid} action timeout - executing fallback action`);
+        
+        if (currentPhase?.startsWith('DRAW_')) {
+          // Stand pat (discard nothing)
+          await GameService.submitDraw(currentTableId, latestTableData, botUid, []);
+        } else if (currentPhase?.startsWith('BETTING_')) {
+          // Check if possible, otherwise fold
+          await GameService.handleTimeout(currentTableId, latestTableData, botUid);
+        }
+      } catch (err) {
+        console.error('Error in bot fallback timeout:', err);
+      } finally {
+        processingRef.current = false;
+      }
+    }, fallbackTimeout);
 
     // Add a small delay to make bot actions feel more natural
     const delay = Math.random() * 1000 + 500; // 500-1500ms
@@ -97,10 +170,18 @@ export function useBotOrchestrator(tableData, currentTableId, currentUserId, cre
         const currentIsDrawPhase = currentPhase?.startsWith('DRAW_');
 
         // Skip if bot is all-in or has zero chips (can't act in betting phases)
-        // But allow all-in players to act in draw phases (they stand pat)
+        // But allow all-in players to act in draw phases (they can choose to discard)
         if (currentIsBettingPhase && (currentActivePlayer.status === 'all-in' || currentActivePlayer.chips === 0)) {
+          // Clear the fallback timeout since we're skipping this action
+          if (botTimeoutRef.current) {
+            clearTimeout(botTimeoutRef.current);
+            botTimeoutRef.current = null;
+          }
+          processingRef.current = false;
           return;
         }
+
+        let actionSucceeded = false;
 
         if (currentIsDrawPhase) {
           // Handle draw phase
@@ -115,6 +196,7 @@ export function useBotOrchestrator(tableData, currentTableId, currentUserId, cre
 
             // Execute the draw using bot's UID
             await GameService.submitDraw(currentTableId, latestTableData, botUid, discardIndices);
+            actionSucceeded = true;
           }
         } else if (currentIsBettingPhase) {
           // Handle betting phase
@@ -164,16 +246,27 @@ export function useBotOrchestrator(tableData, currentTableId, currentUserId, cre
               decision.action,
               decision.amount || 0
             );
+            actionSucceeded = true;
           }
+        }
+
+        // Clear fallback timeout if action succeeded
+        if (actionSucceeded && botTimeoutRef.current) {
+          clearTimeout(botTimeoutRef.current);
+          botTimeoutRef.current = null;
         }
       } catch (error) {
         console.error('Error executing bot action:', error);
+        // Don't clear the fallback timeout - let it handle the error case
       } finally {
-        // Reset processing flag after a delay
+        // Reset processing flag with a shorter delay
+        // This allows the next bot action to be processed quickly
         setTimeout(() => {
           processingRef.current = false;
-        }, 1000);
+          // Trigger a retry to ensure we don't miss the next bot's turn
+          triggerRetry();
+        }, 300);
       }
     }, delay);
-  }, [tableData, currentTableId, currentUserId, creatorId]);
+  }, [tableData, currentTableId, currentUserId, creatorId, retryCounter, triggerRetry]);
 }

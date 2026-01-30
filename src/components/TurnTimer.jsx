@@ -2,7 +2,14 @@ import { useState, useEffect, useCallback } from 'react';
 
 const TOTAL_TIME = 45; // seconds
 
-function TurnTimer({ turnDeadline, onTimeout, isMyTurn }) {
+/**
+ * TurnTimer component that displays remaining time and triggers timeout callback
+ * @param {Object} turnDeadline - Firestore Timestamp or Date for when turn expires
+ * @param {Function} onTimeout - Callback when timer expires
+ * @param {boolean} isMyTurn - Whether it's the current user's turn
+ * @param {boolean} canTriggerTimeout - Whether this client can trigger the timeout (for bot handling)
+ */
+function TurnTimer({ turnDeadline, onTimeout, isMyTurn, canTriggerTimeout = false }) {
   const [secondsLeft, setSecondsLeft] = useState(TOTAL_TIME);
   const [hasTimedOut, setHasTimedOut] = useState(false);
 
@@ -37,14 +44,17 @@ function TurnTimer({ turnDeadline, onTimeout, isMyTurn }) {
       setSecondsLeft(remaining);
 
       // Trigger timeout when time runs out
-      if (remaining <= 0 && !hasTimedOut && isMyTurn && onTimeout) {
+      // Allow timeout to be triggered by:
+      // 1. The active player (isMyTurn)
+      // 2. The table creator for bot players (canTriggerTimeout)
+      if (remaining <= 0 && !hasTimedOut && (isMyTurn || canTriggerTimeout) && onTimeout) {
         setHasTimedOut(true);
         onTimeout();
       }
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [turnDeadline, calculateSecondsLeft, hasTimedOut, isMyTurn, onTimeout]);
+  }, [turnDeadline, calculateSecondsLeft, hasTimedOut, isMyTurn, canTriggerTimeout, onTimeout]);
 
   // Calculate percentage for progress bar
   const percentage = Math.min(100, Math.max(0, (secondsLeft / TOTAL_TIME) * 100));

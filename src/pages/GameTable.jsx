@@ -1026,6 +1026,7 @@ function GameView() {
             turnDeadline={tableData.turnDeadline}
             onTimeout={handleTimeout}
             isMyTurn={myTurn}
+            canTriggerTimeout={tableData?.createdBy === currentUser?.uid && activePlayer?.isBot}
           />
         </div>
       )}
@@ -1534,6 +1535,7 @@ function GameView() {
             turnDeadline={tableData.turnDeadline}
             onTimeout={handleTimeout}
             isMyTurn={myTurn}
+            canTriggerTimeout={tableData?.createdBy === currentUser?.uid && activePlayer?.isBot}
           />
         </div>
       )}
@@ -1789,7 +1791,7 @@ function GameView() {
           />
         </div>
 
-        {currentPlayer?.hand && currentPlayer.hand.length > 0 ? (
+        {currentPlayer?.hand && Array.isArray(currentPlayer.hand) && currentPlayer.hand.length > 0 ? (
           <motion.div 
             className="flex flex-col items-center gap-3 relative z-10"
             initial={{ opacity: 0, y: 15 }}

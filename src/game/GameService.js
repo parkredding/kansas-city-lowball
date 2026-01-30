@@ -1470,7 +1470,9 @@ export class GameService {
   }
 
   /**
-   * Auto-fold/check for timed out player
+   * Auto-action for timed out player
+   * - Betting phase: Auto-check if possible, otherwise auto-fold
+   * - Draw phase: Auto stand pat (discard nothing)
    * @param {string} tableId - The table ID
    * @param {Object} tableData - Current table data
    * @param {string} playerUid - The player's UID
@@ -1482,14 +1484,23 @@ export class GameService {
       return; // Not this player's turn
     }
 
-    const player = tableData.players[playerIndex];
-    const currentBet = tableData.currentBet || 0;
+    const phase = tableData.phase;
+    const isDrawPhase = phase?.startsWith('DRAW_');
+    const isBettingPhase = phase?.startsWith('BETTING_');
 
-    // Auto-check if possible, otherwise auto-fold
-    if (player.currentRoundBet >= currentBet) {
-      await GameService.performBetAction(tableId, tableData, playerUid, BetAction.CHECK);
-    } else {
-      await GameService.performBetAction(tableId, tableData, playerUid, BetAction.FOLD);
+    if (isDrawPhase) {
+      // Auto stand pat (discard nothing) in draw phases
+      await GameService.submitDraw(tableId, tableData, playerUid, []);
+    } else if (isBettingPhase) {
+      const player = tableData.players[playerIndex];
+      const currentBet = tableData.currentBet || 0;
+
+      // Auto-check if possible, otherwise auto-fold
+      if (player.currentRoundBet >= currentBet) {
+        await GameService.performBetAction(tableId, tableData, playerUid, BetAction.CHECK);
+      } else {
+        await GameService.performBetAction(tableId, tableData, playerUid, BetAction.FOLD);
+      }
     }
   }
 
@@ -1635,7 +1646,8 @@ export class GameService {
         .filter((i) => i !== -1);
 
       // Check if no one can bet (all players are all-in or folded)
-      const canAnyoneBet = bettingActiveIndices.length >= 2;
+      // A single active player with chips should still be able to check/act
+      const canAnyoneBet = bettingActiveIndices.length >= 1;
 
       if (!canAnyoneBet) {
         // No betting possible - skip the betting phase

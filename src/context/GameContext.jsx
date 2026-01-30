@@ -262,9 +262,13 @@ export function GameProvider({ children }) {
     const activePlayer = tableData.players[tableData.activePlayerIndex];
     if (!activePlayer) return;
 
-    // Only the active player should trigger timeout action
-    // This prevents multiple clients from triggering the same action
-    if (activePlayer.uid !== currentUser.uid) return;
+    // Allow timeout to be triggered by:
+    // 1. The active player themselves (for human players)
+    // 2. The table creator (for bot players) - since bots don't have their own browser session
+    const isActivePlayer = activePlayer.uid === currentUser.uid;
+    const isCreatorAndBotTurn = tableData.createdBy === currentUser.uid && activePlayer.isBot;
+    
+    if (!isActivePlayer && !isCreatorAndBotTurn) return;
 
     timeoutProcessedRef.current = true;
 
