@@ -1393,7 +1393,6 @@ function GameView() {
         </div>
       )}
     </div>
-    </LayoutGroup>
   );
 }
 
