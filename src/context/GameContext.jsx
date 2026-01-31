@@ -241,6 +241,57 @@ export function GameProvider({ children }) {
     }
   }, [currentTableId, currentUser]);
 
+  // Request to sit out from the game
+  // If game is IDLE: Immediately demote to railbird
+  // If game is in progress: Set pending flag (will become railbird after hand ends)
+  const requestSitOut = useCallback(async () => {
+    if (!currentTableId || !currentUser) {
+      setError('Must be at a table to sit out');
+      return { success: false };
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const result = await GameService.requestSitOut(currentTableId, currentUser.uid);
+      return { success: true, immediate: result.immediate };
+    } catch (err) {
+      setError(err.message);
+      return { success: false };
+    } finally {
+      setLoading(false);
+    }
+  }, [currentTableId, currentUser]);
+
+  // Cancel a pending sit out request
+  const cancelSitOut = useCallback(async () => {
+    if (!currentTableId || !currentUser) {
+      setError('Must be at a table to cancel sit out');
+      return false;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      await GameService.cancelSitOut(currentTableId, currentUser.uid);
+      return true;
+    } catch (err) {
+      setError(err.message);
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  }, [currentTableId, currentUser]);
+
+  // Check if current player has pending sit out
+  const hasPendingSitOut = useCallback(() => {
+    if (!tableData || !currentUser) return false;
+    const player = tableData.players.find((p) => p.uid === currentUser.uid);
+    return player?.pendingSitOut === true;
+  }, [tableData, currentUser]);
+
   // Start cut for dealer phase (first hand of game)
   const startCutForDealer = useCallback(async () => {
     if (!currentTableId || !tableData) return;
@@ -590,6 +641,8 @@ export function GameProvider({ children }) {
     sendChatMessage,
     kickBot,
     joinAsPlayer,
+    requestSitOut,
+    cancelSitOut,
     startCutForDealer,
     resolveCutForDealer,
 
@@ -607,6 +660,7 @@ export function GameProvider({ children }) {
     getCurrentRailbird,
     canBecomePlayer,
     isTableCreator,
+    hasPendingSitOut,
 
     // Export BetAction for use in components
     BetAction,

@@ -1190,6 +1190,10 @@ function GameView() {
     joinAsPlayer,
     isTableCreator,
     kickBot,
+    // Sit out
+    requestSitOut,
+    cancelSitOut,
+    hasPendingSitOut,
     // Cut for dealer
     resolveCutForDealer,
     // Show/Muck
@@ -1230,6 +1234,9 @@ function GameView() {
   const userCanBecomePlayer = canBecomePlayer();
   const userIsTableCreator = isTableCreator();
   const railbirds = tableData?.railbirds || [];
+
+  // Sit out status
+  const playerHasPendingSitOut = hasPendingSitOut();
 
   // Turn notification - plays audio cue when it becomes player's turn
   useTurnNotification(myTurn, tableData?.phase);
@@ -1466,6 +1473,30 @@ function GameView() {
     const success = await joinAsPlayer();
     if (success) {
       showToast('You are now a player!', 'success');
+    }
+  };
+
+  // Handler for player to sit out
+  const handleSitOut = async (e) => {
+    e?.preventDefault();
+    e?.stopPropagation();
+    const result = await requestSitOut();
+    if (result.success) {
+      if (result.immediate) {
+        showToast('You are now watching as a spectator', 'success');
+      } else {
+        showToast('You will sit out after this hand ends', 'success');
+      }
+    }
+  };
+
+  // Handler to cancel pending sit out
+  const handleCancelSitOut = async (e) => {
+    e?.preventDefault();
+    e?.stopPropagation();
+    const success = await cancelSitOut();
+    if (success) {
+      showToast('Sit out cancelled - you will stay in the game', 'success');
     }
   };
 
@@ -1753,15 +1784,45 @@ function GameView() {
             animate={{ y: 0, opacity: 1 }}
             transition={{ duration: 0.25 }}
           >
-            <motion.button
-              type="button"
-              onClick={leaveTable}
-              className="bg-slate-700/80 hover:bg-slate-600/80 text-slate-200 px-3 py-1.5 rounded-lg text-sm font-medium transition-all border border-slate-600/50"
-              whileHover={{ scale: 1.03 }}
-              whileTap={{ scale: 0.97 }}
-            >
-              Leave Table
-            </motion.button>
+            <div className="flex items-center gap-2">
+              <motion.button
+                type="button"
+                onClick={leaveTable}
+                className="bg-slate-700/80 hover:bg-slate-600/80 text-slate-200 px-3 py-1.5 rounded-lg text-sm font-medium transition-all border border-slate-600/50"
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
+              >
+                Leave Table
+              </motion.button>
+              {/* Sit Out Toggle - Only show for players (not railbirds) */}
+              {!userIsRailbird && currentPlayer && (
+                playerHasPendingSitOut ? (
+                  <motion.button
+                    type="button"
+                    onClick={handleCancelSitOut}
+                    disabled={loading}
+                    className="bg-amber-600/80 hover:bg-amber-500/80 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-all border border-amber-500/50"
+                    whileHover={{ scale: 1.03 }}
+                    whileTap={{ scale: 0.97 }}
+                    title="Cancel pending sit out"
+                  >
+                    Cancel Sit Out
+                  </motion.button>
+                ) : (
+                  <motion.button
+                    type="button"
+                    onClick={handleSitOut}
+                    disabled={loading}
+                    className="bg-slate-700/80 hover:bg-orange-600/80 text-slate-200 hover:text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-all border border-slate-600/50 hover:border-orange-500/50"
+                    whileHover={{ scale: 1.03 }}
+                    whileTap={{ scale: 0.97 }}
+                    title={isIdle ? "Sit out immediately" : "Sit out after this hand"}
+                  >
+                    Sit Out
+                  </motion.button>
+                )
+              )}
+            </div>
             <div className="flex items-center gap-3">
               <div className="bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-700/50">
                 <span className="text-slate-400 text-xs">Table: </span>
@@ -2165,13 +2226,37 @@ function GameView() {
           {/* Mobile Header - Compact */}
           <div className="flex-shrink-0 px-3 py-2 bg-slate-900/90 border-b border-slate-700/50 backdrop-blur-sm">
             <div className="flex items-center justify-between gap-2">
-              <button
-                type="button"
-                onClick={leaveTable}
-                className="bg-slate-700/80 hover:bg-slate-600/80 text-white px-3 py-1.5 rounded-lg text-xs font-medium"
-              >
-                Leave
-              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={leaveTable}
+                  className="bg-slate-700/80 hover:bg-slate-600/80 text-white px-2 py-1.5 rounded-lg text-xs font-medium"
+                >
+                  Leave
+                </button>
+                {/* Sit Out Toggle for Mobile - Only show for players */}
+                {!userIsRailbird && currentPlayer && (
+                  playerHasPendingSitOut ? (
+                    <button
+                      type="button"
+                      onClick={handleCancelSitOut}
+                      disabled={loading}
+                      className="bg-amber-600/80 text-white px-2 py-1.5 rounded-lg text-xs font-medium"
+                    >
+                      Stay
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleSitOut}
+                      disabled={loading}
+                      className="bg-slate-700/80 text-slate-200 px-2 py-1.5 rounded-lg text-xs font-medium"
+                    >
+                      Sit Out
+                    </button>
+                  )
+                )}
+              </div>
 
               <div className="flex items-center gap-2">
                 <div className="bg-slate-800/80 px-2 py-1 rounded-lg">

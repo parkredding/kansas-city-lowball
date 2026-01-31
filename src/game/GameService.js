@@ -995,12 +995,14 @@ export class GameService {
 
     if (shouldJoinAsRailbird) {
       // Join as railbird (observer)
+      // Note: wantsToPlay is now ALWAYS false - users must explicitly click "Join Game"
+      // This moves us from "Auto-Join" to "Opt-In" model
       const newRailbird = {
         uid: user.uid,
         displayName: displayName,
         photoURL: user.photoURL || null,
         joinedAt: Date.now(),
-        wantsToPlay: !asRailbird, // True if they wanted to play but couldn't
+        wantsToPlay: false, // Always false - user must explicitly opt-in via "Join Game" button
       };
 
       await updateDoc(tableRef, {
@@ -1105,6 +1107,193 @@ export class GameService {
   }
 
   /**
+   * Request to sit out from the game
+   * - If game is IDLE: Immediately demote player to railbird
+   * - If game is in progress: Set pendingSitOut flag (player finishes current hand)
+   *
+   * @param {string} tableId - The table ID
+   * @param {string} playerUid - The player's UID
+   * @returns {Promise<{ immediate: boolean }>} - Whether the sit out was immediate or pending
+   */
+  static async requestSitOut(tableId, playerUid) {
+    if (!db) {
+      throw new Error('Firestore not initialized');
+    }
+
+    const tableRef = doc(db, TABLES_COLLECTION, tableId);
+
+    return await runTransaction(db, async (transaction) => {
+      const tableDoc = await transaction.get(tableRef);
+      if (!tableDoc.exists()) {
+        throw new Error('Table not found');
+      }
+
+      const tableData = tableDoc.data();
+      const players = tableData.players || [];
+      const playerIndex = players.findIndex((p) => p.uid === playerUid);
+
+      if (playerIndex === -1) {
+        throw new Error('Player not found at this table');
+      }
+
+      const player = players[playerIndex];
+
+      // If game is IDLE, demote immediately
+      if (tableData.phase === 'IDLE') {
+        // Create railbird from player data
+        const newRailbird = {
+          uid: player.uid,
+          displayName: player.displayName,
+          photoURL: player.photoURL || null,
+          joinedAt: Date.now(),
+          wantsToPlay: false,
+        };
+
+        // Return chips to wallet before removing player
+        if (player.chips > 0) {
+          const userRef = doc(db, USERS_COLLECTION, playerUid);
+          const userSnap = await transaction.get(userRef);
+          if (userSnap.exists()) {
+            const currentBalance = userSnap.data().balance || 0;
+            transaction.update(userRef, {
+              balance: currentBalance + player.chips,
+            });
+          }
+        }
+
+        // Remove from players and add to railbirds
+        const updatedPlayers = players.filter((p) => p.uid !== playerUid);
+        const updatedRailbirds = [...(tableData.railbirds || []), newRailbird];
+
+        transaction.update(tableRef, {
+          players: updatedPlayers,
+          railbirds: updatedRailbirds,
+          lastUpdated: serverTimestamp(),
+        });
+
+        return { immediate: true };
+      } else {
+        // Game is in progress - set pending flag
+        const updatedPlayers = players.map((p) => {
+          if (p.uid === playerUid) {
+            return { ...p, pendingSitOut: true };
+          }
+          return p;
+        });
+
+        transaction.update(tableRef, {
+          players: updatedPlayers,
+          lastUpdated: serverTimestamp(),
+        });
+
+        return { immediate: false };
+      }
+    });
+  }
+
+  /**
+   * Cancel a pending sit out request
+   * @param {string} tableId - The table ID
+   * @param {string} playerUid - The player's UID
+   * @returns {Promise<void>}
+   */
+  static async cancelSitOut(tableId, playerUid) {
+    if (!db) {
+      throw new Error('Firestore not initialized');
+    }
+
+    const tableRef = doc(db, TABLES_COLLECTION, tableId);
+    const tableSnap = await getDoc(tableRef);
+
+    if (!tableSnap.exists()) {
+      throw new Error('Table not found');
+    }
+
+    const tableData = tableSnap.data();
+    const players = tableData.players || [];
+    const playerIndex = players.findIndex((p) => p.uid === playerUid);
+
+    if (playerIndex === -1) {
+      throw new Error('Player not found at this table');
+    }
+
+    const updatedPlayers = players.map((p) => {
+      if (p.uid === playerUid) {
+        const { pendingSitOut, ...rest } = p;
+        return rest;
+      }
+      return p;
+    });
+
+    await updateDoc(tableRef, {
+      players: updatedPlayers,
+      lastUpdated: serverTimestamp(),
+    });
+  }
+
+  /**
+   * Demote a player to railbird (used at hand end for pending sit outs)
+   * @param {string} tableId - The table ID
+   * @param {string} playerUid - The player's UID
+   * @returns {Promise<void>}
+   */
+  static async demotePlayerToRailbird(tableId, playerUid) {
+    if (!db) {
+      throw new Error('Firestore not initialized');
+    }
+
+    const tableRef = doc(db, TABLES_COLLECTION, tableId);
+
+    await runTransaction(db, async (transaction) => {
+      const tableDoc = await transaction.get(tableRef);
+      if (!tableDoc.exists()) {
+        throw new Error('Table not found');
+      }
+
+      const tableData = tableDoc.data();
+      const players = tableData.players || [];
+      const playerIndex = players.findIndex((p) => p.uid === playerUid);
+
+      if (playerIndex === -1) {
+        return; // Player already removed
+      }
+
+      const player = players[playerIndex];
+
+      // Create railbird from player data
+      const newRailbird = {
+        uid: player.uid,
+        displayName: player.displayName,
+        photoURL: player.photoURL || null,
+        joinedAt: Date.now(),
+        wantsToPlay: false,
+      };
+
+      // Return chips to wallet before removing player
+      if (player.chips > 0) {
+        const userRef = doc(db, USERS_COLLECTION, playerUid);
+        const userSnap = await transaction.get(userRef);
+        if (userSnap.exists()) {
+          const currentBalance = userSnap.data().balance || 0;
+          transaction.update(userRef, {
+            balance: currentBalance + player.chips,
+          });
+        }
+      }
+
+      // Remove from players and add to railbirds
+      const updatedPlayers = players.filter((p) => p.uid !== playerUid);
+      const updatedRailbirds = [...(tableData.railbirds || []), newRailbird];
+
+      transaction.update(tableRef, {
+        players: updatedPlayers,
+        railbirds: updatedRailbirds,
+        lastUpdated: serverTimestamp(),
+      });
+    });
+  }
+
+  /**
    * Kick a bot player from the table to make room for a human player
    * Only the table creator can kick bots
    * @param {string} tableId - The table ID
@@ -1199,11 +1388,21 @@ export class GameService {
 
   /**
    * Auto-promote railbirds who want to play when the game becomes IDLE and seats are available
+   *
+   * NOTE: This function is now effectively disabled as part of the "Opt-In" model.
+   * Railbirds must explicitly click "Join Game" to become players.
+   * The wantsToPlay flag is always set to false when joining.
+   *
    * @param {string} tableId - The table ID
    * @param {Object} tableData - Current table data
    * @returns {Promise<void>}
    */
   static async autoPromoteRailbirds(tableId, tableData) {
+    // DISABLED: Auto-promotion is no longer supported.
+    // Users must explicitly click "Join Game" to become players.
+    // This function is kept for backward compatibility but does nothing.
+    // If a railbird's wantsToPlay is true (legacy data), they will still be promoted.
+
     if (!db) {
       throw new Error('Firestore not initialized');
     }
@@ -1215,13 +1414,15 @@ export class GameService {
     const players = tableData.players || [];
 
     // Find railbirds who want to play, sorted by join time (first come first served)
+    // Note: With the new Opt-In model, wantsToPlay is always false for new joins
+    // This only handles legacy data where wantsToPlay might still be true
     const waitingRailbirds = railbirds
-      .filter((r) => r.wantsToPlay)
+      .filter((r) => r.wantsToPlay === true) // Strict check for true
       .sort((a, b) => (a.joinedAt || 0) - (b.joinedAt || 0));
 
     const availableSeats = MAX_PLAYERS - players.length;
 
-    // Promote up to available seats
+    // Promote up to available seats (only for legacy wantsToPlay=true railbirds)
     for (let i = 0; i < Math.min(waitingRailbirds.length, availableSeats); i++) {
       try {
         await GameService.promoteRailbirdToPlayer(tableId, waitingRailbirds[i].uid);
@@ -1952,12 +2153,15 @@ export class GameService {
         p.totalContribution = 0;
       });
 
-      // Get updated activity log
-      const activityLog = await GameService.addActivityEvent(tableId, actionDescription);
+      // Get updated activity log with player info for color coding
+      const activityLog = await GameService.addActivityEvent(tableId, actionDescription, player.uid, player.displayName);
       if (winnerDescription) {
         activityLog.push({
           type: 'game_event',
+          eventType: 'win',
           text: winnerDescription,
+          playerUid: winner?.uid || null,
+          playerName: winner?.displayName || null,
           timestamp: Date.now(),
         });
       }
@@ -1994,8 +2198,8 @@ export class GameService {
       BETTING_4: 'SHOWDOWN',
     };
 
-    // Add activity event for this action
-    const activityLog = await GameService.addActivityEvent(tableId, actionDescription);
+    // Add activity event for this action with player info for color coding
+    const activityLog = await GameService.addActivityEvent(tableId, actionDescription, player.uid, player.displayName);
 
     if (roundComplete) {
       // Calculate side pots when betting round completes
@@ -2053,11 +2257,15 @@ export class GameService {
 
         updatedPot = 0;
 
-        // Add winner message to activity log
+        // Add winner message to activity log with winner info for color coding
         if (showdownResult.message) {
+          const firstWinner = showdownResult.winners?.[0];
           updatedActivityLog = [...activityLog, {
             type: 'game_event',
+            eventType: 'win',
             text: showdownResult.message,
+            playerUid: firstWinner?.uid || null,
+            playerName: firstWinner?.displayName || null,
             timestamp: Date.now(),
           }];
         }
@@ -2156,11 +2364,15 @@ export class GameService {
 
             updatedPot = 0;
 
-            // Add winner message to activity log
+            // Add winner message to activity log with winner info for color coding
             if (showdownResult.message) {
+              const firstWinner = showdownResult.winners?.[0];
               updatedActivityLog = [...activityLog, {
                 type: 'game_event',
+                eventType: 'win',
                 text: showdownResult.message,
+                playerUid: firstWinner?.uid || null,
+                playerName: firstWinner?.displayName || null,
                 timestamp: Date.now(),
               }];
             }
@@ -2477,8 +2689,8 @@ export class GameService {
       BETTING_4: 'SHOWDOWN',
     };
 
-    // Add activity event for this draw
-    const activityLog = await GameService.addActivityEvent(tableId, drawDescription);
+    // Add activity event for this draw with player info for color coding
+    const activityLog = await GameService.addActivityEvent(tableId, drawDescription, player.uid, player.displayName);
 
     const updates = {
       deck,
@@ -2536,11 +2748,15 @@ export class GameService {
           updates.pots = [];
           updates.showdownResult = showdownResult;
 
-          // Add winner message to activity log
+          // Add winner message to activity log with winner info for color coding
           if (showdownResult.message) {
+            const firstWinner = showdownResult.winners?.[0];
             updates.chatLog = [...activityLog, {
               type: 'game_event',
+              eventType: 'win',
               text: showdownResult.message,
+              playerUid: firstWinner?.uid || null,
+              playerName: firstWinner?.displayName || null,
               timestamp: Date.now(),
             }];
           }
@@ -2581,7 +2797,7 @@ export class GameService {
   /**
    * Start a new hand (reset for next round)
    * Uses a transaction to read fresh data and prevent race conditions
-   * Also auto-promotes waiting railbirds after the phase becomes IDLE
+   * Also handles pending sit outs and auto-promotes waiting railbirds after the phase becomes IDLE
    * @param {string} tableId - The table ID
    * @param {Object} _tableData - Current table data (unused, we read fresh data in transaction)
    * @returns {Promise<void>}
@@ -2601,7 +2817,39 @@ export class GameService {
       }
 
       const tableData = tableDoc.data();
-      const players = tableData.players.map((player) => ({
+      let railbirds = [...(tableData.railbirds || [])];
+
+      // Handle pending sit outs - demote players with pendingSitOut flag to railbirds
+      const playersWithPendingSitOut = tableData.players.filter((p) => p.pendingSitOut === true);
+      const playersStaying = tableData.players.filter((p) => p.pendingSitOut !== true);
+
+      // Process pending sit outs - return chips and convert to railbirds
+      for (const player of playersWithPendingSitOut) {
+        // Return chips to wallet
+        if (player.chips > 0) {
+          const userRef = doc(db, USERS_COLLECTION, player.uid);
+          const userSnap = await transaction.get(userRef);
+          if (userSnap.exists()) {
+            const currentBalance = userSnap.data().balance || 0;
+            transaction.update(userRef, {
+              balance: currentBalance + player.chips,
+            });
+          }
+        }
+
+        // Convert to railbird
+        const newRailbird = {
+          uid: player.uid,
+          displayName: player.displayName,
+          photoURL: player.photoURL || null,
+          joinedAt: Date.now(),
+          wantsToPlay: false,
+        };
+        railbirds.push(newRailbird);
+      }
+
+      // Reset remaining players for new hand
+      const players = playersStaying.map((player) => ({
         ...player,
         hand: [],
         status: player.chips > 0 ? 'active' : 'sitting_out',
@@ -2610,6 +2858,7 @@ export class GameService {
         totalContribution: 0, // Reset for new hand
         hasActedThisRound: false,
         lastAction: null, // Clear action text for new hand
+        pendingSitOut: undefined, // Clear any lingering flag
       }));
 
       // Move dealer button - dealerIndex is a position among active players
@@ -2624,6 +2873,7 @@ export class GameService {
         pots: [], // Clear side pots
         currentBet: 0,
         players,
+        railbirds,
         activePlayerIndex: 0,
         dealerIndex: newDealerIndex,
         // Clear seat indices - will be recalculated when dealing
@@ -2909,12 +3159,15 @@ export class GameService {
       return p;
     });
 
-    // Add activity event
+    // Add activity event with player info for color coding
     const revealingPlayer = players.find(p => p.uid === playerUid);
     const activityLog = tableData.chatLog || [];
     activityLog.push({
       type: 'game_event',
+      eventType: 'reveal',
       text: `${revealingPlayer?.displayName || 'Player'} shows their hand`,
+      playerUid: playerUid,
+      playerName: revealingPlayer?.displayName || null,
       timestamp: Date.now(),
     });
 
@@ -2935,13 +3188,20 @@ export class GameService {
   static MAX_CHAT_MESSAGES = 50;
 
   /**
-   * Add a game activity event to the activity log
+   * Centralized game event logger - ensures all game actions are reliably logged
+   * This function should be called immediately after every successful state change
+   *
    * @param {string} tableId - The table ID
-   * @param {string} eventText - Description of the game event
+   * @param {string} eventType - Type of event (bet, fold, check, call, raise, draw, win, etc.)
+   * @param {Object} payload - Event payload containing:
+   *   - text: Description of the game event
+   *   - playerUid: UID of the player who performed the action (optional, for color coding)
+   *   - playerName: Display name of the player (optional)
    * @returns {Promise<Array>} - Updated activity log array
    */
-  static async addActivityEvent(tableId, eventText) {
-    if (!db || !eventText) {
+  static async logGameEvent(tableId, eventType, payload) {
+    if (!db || !payload?.text) {
+      console.warn('logGameEvent called without required parameters');
       return [];
     }
 
@@ -2949,16 +3209,20 @@ export class GameService {
     const tableSnap = await getDoc(tableRef);
 
     if (!tableSnap.exists()) {
+      console.warn(`logGameEvent: Table ${tableId} not found`);
       return [];
     }
 
     const tableData = tableSnap.data();
     let chatLog = tableData.chatLog || [];
 
-    // Add new game event
+    // Create enhanced game event with player info for color coding
     const newEvent = {
       type: 'game_event',
-      text: eventText,
+      eventType: eventType, // e.g., 'bet', 'fold', 'draw', 'win'
+      text: payload.text,
+      playerUid: payload.playerUid || null, // For color coding
+      playerName: payload.playerName || null,
       timestamp: Date.now(),
     };
 
@@ -2970,6 +3234,22 @@ export class GameService {
     }
 
     return chatLog;
+  }
+
+  /**
+   * Add a game activity event to the activity log (legacy wrapper)
+   * @param {string} tableId - The table ID
+   * @param {string} eventText - Description of the game event
+   * @param {string} playerUid - Optional UID of the acting player for color coding
+   * @param {string} playerName - Optional display name of the player
+   * @returns {Promise<Array>} - Updated activity log array
+   */
+  static async addActivityEvent(tableId, eventText, playerUid = null, playerName = null) {
+    return GameService.logGameEvent(tableId, 'action', {
+      text: eventText,
+      playerUid,
+      playerName,
+    });
   }
 
   /**
