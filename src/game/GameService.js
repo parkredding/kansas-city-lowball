@@ -35,6 +35,17 @@ const TABLES_COLLECTION = 'tables';
 const USERS_COLLECTION = 'users';
 
 /**
+ * Remove undefined values from an object (Firestore doesn't allow undefined)
+ * @param {Object} obj - Object to sanitize
+ * @returns {Object} - Object with undefined values removed
+ */
+function removeUndefinedValues(obj) {
+  return Object.fromEntries(
+    Object.entries(obj).filter(([_, v]) => v !== undefined)
+  );
+}
+
+/**
  * Betting action types
  */
 export const BetAction = {
@@ -480,7 +491,8 @@ export class GameService {
       muck = reshuffled.muck;
 
       // Deal 1 card to each player for dealer cut
-      const players = tableData.players.map((player) => ({
+      // Use removeUndefinedValues to prevent Firestore errors from undefined properties
+      const players = tableData.players.map((player) => removeUndefinedValues({
         ...player,
         cutCard: null,
         hand: [],
@@ -572,7 +584,8 @@ export class GameService {
         .map(p => p.cutCard);
 
       // Clear cut cards from players
-      const updatedPlayers = players.map(p => ({
+      // Use removeUndefinedValues to prevent Firestore errors from undefined properties
+      const updatedPlayers = players.map(p => removeUndefinedValues({
         ...p,
         cutCard: null,
       }));
@@ -1475,8 +1488,15 @@ export class GameService {
 
     const tableRef = doc(db, TABLES_COLLECTION, tableId);
 
+    // Sanitize data to remove undefined values (Firestore doesn't allow them)
+    // If players array exists, sanitize each player object as well
+    const sanitizedData = removeUndefinedValues(data);
+    if (sanitizedData.players) {
+      sanitizedData.players = sanitizedData.players.map(removeUndefinedValues);
+    }
+
     await updateDoc(tableRef, {
-      ...data,
+      ...sanitizedData,
       lastUpdated: serverTimestamp(),
     });
   }
@@ -2849,17 +2869,20 @@ export class GameService {
       }
 
       // Reset remaining players for new hand
-      // Destructure pendingSitOut to remove it (Firestore doesn't allow undefined values)
-      const players = playersStaying.map(({ pendingSitOut, ...player }) => ({
-        ...player,
-        hand: [],
-        status: player.chips > 0 ? 'active' : 'sitting_out',
-        cardsToDiscard: [],
-        currentRoundBet: 0,
-        totalContribution: 0, // Reset for new hand
-        hasActedThisRound: false,
-        lastAction: null, // Clear action text for new hand
-      }));
+      // Destructure pendingSitOut to remove it, then use removeUndefinedValues
+      // to filter out any other undefined properties (Firestore doesn't allow undefined values)
+      const players = playersStaying.map(({ pendingSitOut, ...player }) =>
+        removeUndefinedValues({
+          ...player,
+          hand: [],
+          status: player.chips > 0 ? 'active' : 'sitting_out',
+          cardsToDiscard: [],
+          currentRoundBet: 0,
+          totalContribution: 0, // Reset for new hand
+          hasActedThisRound: false,
+          lastAction: null, // Clear action text for new hand
+        })
+      );
 
       // Move dealer button - dealerIndex is a position among active players
       const activePlayerCount = players.filter((p) => p.status === 'active').length;
