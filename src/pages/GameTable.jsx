@@ -799,7 +799,7 @@ function PlayerSlot({ player, isCurrentUser, isActive, showCards, handResult, tu
     <motion.div
       className={`
         relative rounded-xl p-2.5 border backdrop-blur-sm
-        ${isMobile ? 'min-w-[110px] max-w-[140px]' : 'min-w-[140px] max-w-[180px]'}
+        ${isMobile ? 'min-w-[115px] max-w-[150px]' : 'min-w-[140px] max-w-[180px]'}
         ${isActive ? 'ring-4 ring-yellow-400 ring-offset-2 ring-offset-green-900' : ''}
         ${config.border} ${config.opacity || ''} ${inactiveOpacity}
         transition-opacity duration-300
@@ -885,7 +885,7 @@ function PlayerSlot({ player, isCurrentUser, isActive, showCards, handResult, tu
           >
             {player.displayName}
           </motion.p>
-          <p className="text-xs text-emerald-400 font-medium">${player.chips.toLocaleString()}</p>
+          <p className="text-xs text-emerald-400 font-medium whitespace-nowrap overflow-visible">${player.chips.toLocaleString()}</p>
         </div>
       </div>
 
@@ -1190,6 +1190,7 @@ function GameView() {
     joinAsPlayer,
     isTableCreator,
     kickBot,
+    addBot,
     // Sit out
     requestSitOut,
     cancelSitOut,
@@ -1304,8 +1305,16 @@ function GameView() {
   const bigBlindSeatIndex = tableData?.bigBlindSeatIndex;
 
   // Helper to check if a player is at a specific position
+  // Note: All position badges are shown to ALL players (including the hero)
+  // In heads-up (2 players), dealer is also SB so we only show D (not both D and SB)
   const isDealer = (seatIndex) => dealerSeatIndex !== null && dealerSeatIndex !== undefined && seatIndex === dealerSeatIndex;
-  const isSmallBlind = (seatIndex) => smallBlindSeatIndex !== null && smallBlindSeatIndex !== undefined && seatIndex === smallBlindSeatIndex && totalPlayers > 2;
+  const isSmallBlind = (seatIndex) => {
+    if (smallBlindSeatIndex === null || smallBlindSeatIndex === undefined) return false;
+    if (seatIndex !== smallBlindSeatIndex) return false;
+    // In heads-up, dealer is also SB - only show D button (not both)
+    if (totalPlayers <= 2) return false;
+    return true;
+  };
   const isBigBlind = (seatIndex) => bigBlindSeatIndex !== null && bigBlindSeatIndex !== undefined && seatIndex === bigBlindSeatIndex;
 
   // Detect desktop mode
@@ -1510,6 +1519,20 @@ function GameView() {
     }
   };
 
+  // Handler to add a bot player
+  const handleAddBot = async (difficulty = 'hard') => {
+    const bot = await addBot(difficulty);
+    if (bot) {
+      const isWaiting = bot.waitingForNextHand;
+      showToast(
+        isWaiting
+          ? `${bot.displayName} will join next hand`
+          : `${bot.displayName} joined the table`,
+        'success'
+      );
+    }
+  };
+
   // Handler to reveal hand at showdown (show instead of muck)
   const handleRevealHand = async (e) => {
     e?.preventDefault();
@@ -1643,6 +1666,22 @@ function GameView() {
               whileTap={{ scale: 0.98 }}
             >
               Deal Cards
+            </motion.button>
+          )}
+
+          {/* Add Bot button - visible to table creator when seats available */}
+          {userIsTableCreator && (tableData?.players?.length || 0) < 6 && (
+            <motion.button
+              type="button"
+              onClick={() => handleAddBot('hard')}
+              disabled={loading}
+              className="w-full bg-gradient-to-r from-slate-600 to-slate-700 hover:from-slate-500 hover:to-slate-600 disabled:from-slate-800 disabled:to-slate-900 text-white font-medium py-2 px-4 rounded-lg shadow transition-all flex items-center justify-center gap-2"
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+            >
+              <span className="text-lg">🤖</span>
+              <span>Add Bot</span>
+              {!isIdle && <span className="text-xs opacity-70">(joins next hand)</span>}
             </motion.button>
           )}
 
@@ -2297,26 +2336,26 @@ function GameView() {
 
             {/* Hero Chip Stack Display - More compact for mobile */}
             {!userIsRailbird && (
-              <div className="flex gap-2 flex-wrap justify-center items-center mb-2">
+              <div className="flex gap-1.5 flex-wrap justify-center items-center mb-2 px-1">
                 {/* Your Chips - inline compact */}
-                <div className="bg-slate-800/80 rounded-lg px-2 py-1 text-center border border-slate-700/50">
+                <div className="bg-slate-800/80 rounded-lg px-2 py-1 text-center border border-slate-700/50 flex-shrink-0">
                   <span className="text-slate-400 text-[9px] uppercase tracking-wider mr-1">Chips:</span>
-                  <span className="text-emerald-400 font-bold text-sm">${(currentPlayer?.chips || 0).toLocaleString()}</span>
+                  <span className="text-emerald-400 font-bold text-sm whitespace-nowrap">${(currentPlayer?.chips || 0).toLocaleString()}</span>
                 </div>
 
                 {/* Pot Display */}
                 {tableData?.pot > 0 && (
-                  <div className="bg-amber-900/40 rounded-lg px-2 py-1 text-center border border-amber-700/30">
+                  <div className="bg-amber-900/40 rounded-lg px-2 py-1 text-center border border-amber-700/30 flex-shrink-0">
                     <span className="text-amber-300/80 text-[9px] uppercase tracking-wider mr-1">Pot:</span>
-                    <span className="text-amber-400 font-bold text-sm">${(tableData?.pot || 0).toLocaleString()}</span>
+                    <span className="text-amber-400 font-bold text-sm whitespace-nowrap">${(tableData?.pot || 0).toLocaleString()}</span>
                   </div>
                 )}
 
                 {/* To Call */}
                 {tableData?.currentBet > 0 && (
-                  <div className="bg-blue-900/40 rounded-lg px-2 py-1 text-center border border-blue-700/30">
+                  <div className="bg-blue-900/40 rounded-lg px-2 py-1 text-center border border-blue-700/30 flex-shrink-0">
                     <span className="text-blue-300/80 text-[9px] uppercase tracking-wider mr-1">Call:</span>
-                    <span className="text-blue-400 font-bold text-sm">${callAmount.toLocaleString()}</span>
+                    <span className="text-blue-400 font-bold text-sm whitespace-nowrap">${callAmount.toLocaleString()}</span>
                   </div>
                 )}
 
@@ -2677,6 +2716,21 @@ function GameView() {
                     whileTap={{ scale: 0.98 }}
                   >
                     Deal Cards
+                  </motion.button>
+                )}
+
+                {/* Add Bot button - visible to table creator when seats available */}
+                {userIsTableCreator && (tableData?.players?.length || 0) < 6 && (
+                  <motion.button
+                    type="button"
+                    onClick={() => handleAddBot('hard')}
+                    disabled={loading}
+                    className="w-full bg-slate-600 hover:bg-slate-500 disabled:opacity-50 text-white font-medium py-2 px-4 rounded-lg shadow flex items-center justify-center gap-2"
+                    whileTap={{ scale: 0.98 }}
+                  >
+                    <span>🤖</span>
+                    <span>Add Bot</span>
+                    {!isIdle && <span className="text-xs opacity-70">(next hand)</span>}
                   </motion.button>
                 )}
 
