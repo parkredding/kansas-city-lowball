@@ -345,8 +345,107 @@ function PotDisplayWithContribution({ totalPot, players = [], isBettingPhase = f
 }
 
 /**
+ * Show/Muck Buttons Component
+ * Handles the "Show Bluff" button for uncontested wins and "Show Hand" for losers
+ */
+function ShowMuckButtons({
+  showdownResult,
+  currentUserUid,
+  currentPlayer,
+  onRevealHand,
+  isDesktop
+}) {
+  const [showBluffTimer, setShowBluffTimer] = useState(5);
+  const [showBluffExpired, setShowBluffExpired] = useState(false);
+
+  // Check if current user is the winner
+  const isWinner = showdownResult?.winners?.some(w => w.uid === currentUserUid);
+  const isUncontested = showdownResult?.isContested === false;
+  const isLoser = !isWinner && showdownResult?.losers?.some(l => l.uid === currentUserUid);
+
+  // Check if hand is already revealed
+  const handRevealed = currentPlayer?.handRevealed || false;
+
+  // Timer for "Show Bluff" button (5 seconds for uncontested wins)
+  useEffect(() => {
+    if (isWinner && isUncontested && !handRevealed && !showBluffExpired) {
+      const interval = setInterval(() => {
+        setShowBluffTimer(prev => {
+          if (prev <= 1) {
+            setShowBluffExpired(true);
+            clearInterval(interval);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+      return () => clearInterval(interval);
+    }
+  }, [isWinner, isUncontested, handRevealed, showBluffExpired]);
+
+  // Reset timer when showdown result changes
+  useEffect(() => {
+    setShowBluffTimer(5);
+    setShowBluffExpired(false);
+  }, [showdownResult]);
+
+  // Don't show anything if hand is already revealed or not applicable
+  if (handRevealed) return null;
+
+  // Scenario A: Uncontested win - show "Show Bluff" button
+  if (isWinner && isUncontested && !showBluffExpired) {
+    return (
+      <motion.button
+        type="button"
+        onClick={onRevealHand}
+        className={`
+          bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500
+          text-white font-bold rounded-xl shadow-lg transition-all
+          ${isDesktop ? 'py-3 px-6 text-base' : 'py-4 px-8 text-lg min-h-[56px]'}
+        `}
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        whileHover={{ scale: 1.02 }}
+        whileTap={{ scale: 0.98 }}
+      >
+        <div className="flex items-center gap-2 justify-center">
+          <span>Show Bluff</span>
+          <span className="bg-white/20 px-2 py-0.5 rounded-full text-sm">
+            {showBluffTimer}s
+          </span>
+        </div>
+      </motion.button>
+    );
+  }
+
+  // Scenario B: Loser at contested showdown - show "Show Hand" button
+  if (isLoser && showdownResult?.isContested) {
+    return (
+      <motion.button
+        type="button"
+        onClick={onRevealHand}
+        className={`
+          bg-gradient-to-r from-slate-600 to-slate-700 hover:from-slate-500 hover:to-slate-600
+          text-white font-bold rounded-xl shadow-lg transition-all
+          ${isDesktop ? 'py-3 px-6 text-base' : 'py-4 px-8 text-lg min-h-[56px]'}
+        `}
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        whileHover={{ scale: 1.02 }}
+        whileTap={{ scale: 0.98 }}
+      >
+        Show Hand
+      </motion.button>
+    );
+  }
+
+  return null;
+}
+
+/**
  * Showdown Result Display - Shows the winner announcement prominently
  * Shows total pot won and actual gain (pot minus their own contribution)
+ * Winners at contested showdowns have cards auto-revealed
  */
 function ShowdownResultDisplay({ showdownResult, isDesktop, currentUserUid, players }) {
   if (!showdownResult || !showdownResult.winners || showdownResult.winners.length === 0) {
@@ -355,12 +454,13 @@ function ShowdownResultDisplay({ showdownResult, isDesktop, currentUserUid, play
 
   const winner = showdownResult.winners[0];
   const isSplit = showdownResult.winners.length > 1;
-  
+  const isContested = showdownResult.isContested;
+
   // Calculate the winner's contribution to the pot
   const winnerPlayer = players?.find(p => p.uid === winner.uid);
   const winnerContribution = winnerPlayer?.totalContribution || 0;
   const actualGain = winner.amount - winnerContribution;
-  
+
   // Check if current user is the winner
   const isCurrentUserWinner = showdownResult.winners.some(w => w.uid === currentUserUid);
 
@@ -382,27 +482,29 @@ function ShowdownResultDisplay({ showdownResult, isDesktop, currentUserUid, play
       <div className="flex justify-center mb-2">
         <span className="text-3xl">👑</span>
       </div>
-      
+
       {/* Winner name */}
       <div className="text-center">
         <p className={`font-bold text-gray-900 ${isDesktop ? 'text-xl' : 'text-lg'}`}>
-          {isSplit 
+          {isSplit
             ? showdownResult.winners.map(w => w.displayName).join(' & ')
             : winner.displayName}
         </p>
         <p className={`text-gray-800 ${isDesktop ? 'text-sm' : 'text-xs'} mt-1`}>
-          {isSplit ? 'split the pot' : 'wins'}
+          {isContested ? (isSplit ? 'split the pot' : 'wins') : 'wins (uncontested)'}
         </p>
       </div>
 
-      {/* Winning hand description */}
-      <div className="text-center mt-2">
-        <span className="inline-block bg-gray-900/20 px-3 py-1 rounded-full">
-          <span className={`font-semibold text-gray-900 ${isDesktop ? 'text-base' : 'text-sm'}`}>
-            {winner.handDescription || formatHandName(winner.handResult?.categoryName)}
+      {/* Winning hand description - only show for contested showdowns */}
+      {isContested && winner.handDescription && (
+        <div className="text-center mt-2">
+          <span className="inline-block bg-gray-900/20 px-3 py-1 rounded-full">
+            <span className={`font-semibold text-gray-900 ${isDesktop ? 'text-base' : 'text-sm'}`}>
+              {winner.handDescription || formatHandName(winner.handResult?.categoryName)}
+            </span>
           </span>
-        </span>
-      </div>
+        </div>
+      )}
 
       {/* Amount won - show pot total and actual gain */}
       <div className="text-center mt-3">
@@ -665,7 +767,21 @@ function getBetChipPosition(relativeIndex, totalPlayers) {
   return { x: `${betX}%`, y: `${betY}%` };
 }
 
-function PlayerSlot({ player, isCurrentUser, isActive, showCards, handResult, turnDeadline, isDealer, isSmallBlind, isBigBlind, isViewerRailbird = false, canKick = false, onKick }) {
+function PlayerSlot({ player, isCurrentUser, isActive, showCards, handResult, turnDeadline, isDealer, isSmallBlind, isBigBlind, isViewerRailbird = false, canKick = false, onKick, showdownResult = null, isMobile = false }) {
+  // Determine if this player's cards should actually be shown at showdown
+  const isWinner = showdownResult?.winners?.some(w => w.uid === player.uid);
+  const isContested = showdownResult?.isContested;
+
+  // Cards are visible if:
+  // 1. General showCards is true (showdown phase)
+  // 2. AND either:
+  //    a. Winner at contested showdown (auto-reveal)
+  //    b. Player manually revealed their hand (handRevealed)
+  const shouldRevealCards = showCards && (
+    (isWinner && isContested) || // Winner at contested showdown
+    player.handRevealed // Player chose to show
+  );
+
   const statusConfig = {
     active: { border: 'border-emerald-500/70', bg: 'from-slate-800/95 to-slate-900/95' },
     folded: { border: 'border-slate-600/50', bg: 'from-slate-800/50 to-slate-900/50', opacity: 'opacity-60' },
@@ -681,7 +797,8 @@ function PlayerSlot({ player, isCurrentUser, isActive, showCards, handResult, tu
   return (
     <motion.div
       className={`
-        relative rounded-xl p-2.5 border backdrop-blur-sm min-w-[140px] max-w-[180px]
+        relative rounded-xl p-2.5 border backdrop-blur-sm
+        ${isMobile ? 'min-w-[110px] max-w-[140px]' : 'min-w-[140px] max-w-[180px]'}
         ${isActive ? 'ring-4 ring-yellow-400 ring-offset-2 ring-offset-green-900' : ''}
         ${config.border} ${config.opacity || ''} ${inactiveOpacity}
         transition-opacity duration-300
@@ -796,11 +913,12 @@ function PlayerSlot({ player, isCurrentUser, isActive, showCards, handResult, tu
       </div>
 
       {/* Player's cards - clean display with safety checks */}
-      {/* Railbirds always see card backs to prevent collusion (except at showdown) */}
+      {/* Cards shown based on showdown rules: winners at contested showdown auto-reveal, others must choose to show */}
+      {/* Railbirds always see card backs to prevent collusion */}
       {player.hand && Array.isArray(player.hand) && player.hand.length > 0 && (
-        <div className="flex gap-0.5 justify-center">
+        <div className={`flex gap-0.5 justify-center ${isMobile ? 'scale-90' : ''}`}>
           {player.hand.map((card, index) => (
-            showCards && !isViewerRailbird && card && card.rank && card.suit ? (
+            shouldRevealCards && !isViewerRailbird && card && card.rank && card.suit ? (
               <Card key={`${index}-${card.rank}-${card.suit}`} card={card} isSelectable={false} size="mini" />
             ) : (
               <ProfessionalCardBack key={index} size="mini" index={index} />
@@ -823,8 +941,8 @@ function PlayerSlot({ player, isCurrentUser, isActive, showCards, handResult, tu
         </motion.button>
       )}
 
-      {/* Hand result at showdown */}
-      {handResult && showCards && (
+      {/* Hand result at showdown - only show if cards are revealed */}
+      {handResult && shouldRevealCards && (
         <div className="mt-1.5 text-center">
           <p className="text-[10px] text-amber-400 font-medium bg-amber-950/50 rounded px-1 py-0.5">
             {formatHandName(handResult.categoryName)}
@@ -1073,6 +1191,8 @@ function GameView() {
     kickBot,
     // Cut for dealer
     resolveCutForDealer,
+    // Show/Muck
+    revealHand,
   } = useGame();
 
   const [selectedCardIndices, setSelectedCardIndices] = useState(new Set());
@@ -1355,6 +1475,16 @@ function GameView() {
     }
   };
 
+  // Handler to reveal hand at showdown (show instead of muck)
+  const handleRevealHand = async (e) => {
+    e?.preventDefault();
+    e?.stopPropagation();
+    const success = await revealHand();
+    if (success) {
+      SoundManager.playCardFlip && SoundManager.playCardFlip();
+    }
+  };
+
   // Evaluate hands at showdown
   const playerHandResult = isShowdown && currentPlayer?.hand
     ? evaluateHand(currentPlayer.hand)
@@ -1515,16 +1645,26 @@ function GameView() {
           )}
 
           {isShowdown && (
-            <motion.button
-              type="button"
-              onClick={startNextHand}
-              disabled={loading}
-              className="w-full bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 disabled:from-amber-900 disabled:to-amber-950 text-white font-bold py-3 px-4 rounded-xl shadow-lg transition-all"
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-            >
-              Next Hand
-            </motion.button>
+            <div className="flex flex-col gap-2">
+              {/* Show/Muck buttons for showdown */}
+              <ShowMuckButtons
+                showdownResult={tableData?.showdownResult}
+                currentUserUid={currentUser?.uid}
+                currentPlayer={currentPlayer}
+                onRevealHand={handleRevealHand}
+                isDesktop={true}
+              />
+              <motion.button
+                type="button"
+                onClick={startNextHand}
+                disabled={loading}
+                className="w-full bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 disabled:from-amber-900 disabled:to-amber-950 text-white font-bold py-3 px-4 rounded-xl shadow-lg transition-all"
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+              >
+                Next Hand
+              </motion.button>
+            </div>
           )}
 
           {needsBuyIn && isIdle && (
@@ -1752,6 +1892,8 @@ function GameView() {
                         isViewerRailbird={userIsRailbird}
                         canKick={userIsTableCreator && isIdle && player.isBot}
                         onKick={handleKickBot}
+                        showdownResult={tableData?.showdownResult}
+                        isMobile={false}
                       />
                     </motion.div>
                   );
@@ -1991,128 +2133,95 @@ function GameView() {
           </div>
         </div>
       ) : (
-        /* MOBILE LAYOUT */
-        <div className="flex flex-col items-center gap-4 p-4">
-          {/* Header */}
-          <div className="w-full max-w-4xl flex items-center justify-between flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={leaveTable}
-          className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm"
-        >
-          Leave Table
-        </button>
+        /* MOBILE LAYOUT - Restructured with fixed bottom action bar */
+        <div className="h-screen flex flex-col overflow-hidden">
+          {/* Mobile Header - Compact */}
+          <div className="flex-shrink-0 px-3 py-2 bg-slate-900/90 border-b border-slate-700/50 backdrop-blur-sm">
+            <div className="flex items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={leaveTable}
+                className="bg-slate-700/80 hover:bg-slate-600/80 text-white px-3 py-1.5 rounded-lg text-xs font-medium"
+              >
+                Leave
+              </button>
 
-        <div className="bg-gray-800 px-4 py-2 rounded-lg flex items-center gap-2">
-          <span className="text-gray-400 text-sm">Table: </span>
-          <span className="text-white font-mono font-bold">{currentTableId}</span>
-        </div>
+              <div className="flex items-center gap-2">
+                <div className="bg-slate-800/80 px-2 py-1 rounded-lg">
+                  <span className="text-white font-mono font-bold text-sm">{currentTableId}</span>
+                </div>
+                <PhaseIndicator phase={tableData?.phase} />
+              </div>
 
-        {/* Username Display with Edit */}
-        <div className="bg-gray-700 px-3 py-2 rounded-lg flex items-center gap-2">
-          <span className="text-yellow-400 font-medium text-sm">{getDisplayName()}</span>
-          <button
-            type="button"
-            onClick={() => setShowUsernameModal(true)}
-            className="text-gray-400 hover:text-white"
-            title="Edit username"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-            </svg>
-          </button>
-        </div>
-
-        <WalletDisplay balance={userWallet?.balance} loading={walletLoading} />
-
-        <PhaseIndicator phase={tableData?.phase} />
-      </div>
-
-      {/* Error display */}
-      {error && (
-        <div className="bg-red-500/20 border border-red-500 text-red-200 px-4 py-2 rounded text-sm max-w-md">
-          {error}
-        </div>
-      )}
-
-      {/* Turn Timer (for betting/draw phases) */}
-      {tableData?.turnDeadline && (isBettingPhase || isDrawPhase) && (
-        <div className="w-full max-w-md">
-          <TurnTimer
-            turnDeadline={tableData.turnDeadline}
-            onTimeout={handleTimeout}
-            isMyTurn={myTurn}
-            canTriggerTimeout={tableData?.createdBy === currentUser?.uid && activePlayer?.isBot}
-          />
-        </div>
-      )}
-
-      {/* Hero Chip Stack Display - Harmonized with desktop */}
-      <div className="flex gap-4 flex-wrap justify-center items-end">
-        {/* Your Chips */}
-        <motion.div
-          className="flex flex-col items-center"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-        >
-          <div className="bg-slate-800/80 rounded-lg p-2.5 text-center border border-slate-700/50">
-            <span className="text-slate-400 text-[10px] block uppercase tracking-wider">Your Chips</span>
-            <span className="text-emerald-400 font-bold text-lg">${(currentPlayer?.chips || 0).toLocaleString()}</span>
-          </div>
-        </motion.div>
-
-        {/* Pot Display */}
-        {tableData?.pot > 0 && (
-          <motion.div
-            className="flex flex-col items-center"
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-          >
-            <div className="bg-amber-900/40 rounded-lg p-2.5 text-center border border-amber-700/30">
-              <span className="text-amber-300/80 text-[10px] block uppercase tracking-wider">Pot</span>
-              <div className="flex items-center justify-center gap-1">
-                <span className="text-amber-400 font-bold text-lg">${(tableData?.pot || 0).toLocaleString()}</span>
-                {(currentPlayer?.totalContribution || 0) < tableData?.pot && (
-                  <span className="text-amber-300/60 text-xs">
-                    (+${Math.max(0, (tableData?.pot || 0) - (currentPlayer?.totalContribution || 0)).toLocaleString()})
-                  </span>
-                )}
+              <div className="flex items-center gap-1">
+                <span className="text-amber-400 font-medium text-xs truncate max-w-[80px]">{getDisplayName()}</span>
+                <WalletDisplay balance={userWallet?.balance} loading={walletLoading} />
               </div>
             </div>
-          </motion.div>
-        )}
+          </div>
 
-        {/* Current Bet Info */}
-        {tableData?.currentBet > 0 && (
-          <motion.div
-            className="flex flex-col items-center"
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-          >
-            <div className="bg-blue-900/40 rounded-lg p-2.5 text-center border border-blue-700/30">
-              <span className="text-blue-300/80 text-[10px] block uppercase tracking-wider">To Call</span>
-              <span className="text-blue-400 font-bold text-lg">${callAmount.toLocaleString()}</span>
-            </div>
-          </motion.div>
-        )}
+          {/* Scrollable Main Content Area */}
+          <div className="flex-1 overflow-y-auto overflow-x-hidden px-3 py-2">
+            {/* Error display */}
+            {error && (
+              <div className="bg-red-500/20 border border-red-500 text-red-200 px-3 py-2 rounded text-xs mb-2 text-center">
+                {error}
+              </div>
+            )}
 
-        {/* Buy More Chips Button */}
-        {needsBuyIn && isIdle && (
-          <motion.button
-            type="button"
-            onClick={() => setShowBuyInModal(true)}
-            className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg font-medium shadow-lg"
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-          >
-            + Buy Chips
-          </motion.button>
-        )}
-      </div>
+            {/* Turn Timer (for betting/draw phases) - compact */}
+            {tableData?.turnDeadline && (isBettingPhase || isDrawPhase) && !userIsRailbird && (
+              <div className="mb-2">
+                <TurnTimer
+                  turnDeadline={tableData.turnDeadline}
+                  onTimeout={handleTimeout}
+                  isMyTurn={myTurn}
+                  canTriggerTimeout={tableData?.createdBy === currentUser?.uid && activePlayer?.isBot}
+                />
+              </div>
+            )}
 
-      {/* Poker Table with Radial Player Positioning */}
-      <div className="w-full max-w-4xl relative" style={{ minHeight: '280px' }}>
+            {/* Hero Chip Stack Display - More compact for mobile */}
+            {!userIsRailbird && (
+              <div className="flex gap-2 flex-wrap justify-center items-center mb-2">
+                {/* Your Chips - inline compact */}
+                <div className="bg-slate-800/80 rounded-lg px-2 py-1 text-center border border-slate-700/50">
+                  <span className="text-slate-400 text-[9px] uppercase tracking-wider mr-1">Chips:</span>
+                  <span className="text-emerald-400 font-bold text-sm">${(currentPlayer?.chips || 0).toLocaleString()}</span>
+                </div>
+
+                {/* Pot Display */}
+                {tableData?.pot > 0 && (
+                  <div className="bg-amber-900/40 rounded-lg px-2 py-1 text-center border border-amber-700/30">
+                    <span className="text-amber-300/80 text-[9px] uppercase tracking-wider mr-1">Pot:</span>
+                    <span className="text-amber-400 font-bold text-sm">${(tableData?.pot || 0).toLocaleString()}</span>
+                  </div>
+                )}
+
+                {/* To Call */}
+                {tableData?.currentBet > 0 && (
+                  <div className="bg-blue-900/40 rounded-lg px-2 py-1 text-center border border-blue-700/30">
+                    <span className="text-blue-300/80 text-[9px] uppercase tracking-wider mr-1">Call:</span>
+                    <span className="text-blue-400 font-bold text-sm">${callAmount.toLocaleString()}</span>
+                  </div>
+                )}
+
+                {/* Buy Chips Button */}
+                {needsBuyIn && isIdle && (
+                  <motion.button
+                    type="button"
+                    onClick={() => setShowBuyInModal(true)}
+                    className="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1 rounded-lg font-medium text-sm"
+                    whileTap={{ scale: 0.95 }}
+                  >
+                    + Buy
+                  </motion.button>
+                )}
+              </div>
+            )}
+
+            {/* Poker Table with Radial Player Positioning - scaled for mobile */}
+            <div className="w-full relative" style={{ minHeight: '220px', maxHeight: '280px' }}>
         {/* Premium oval table background - Harmonized with desktop */}
         <motion.div
           className="absolute"
@@ -2184,6 +2293,8 @@ function GameView() {
                 isViewerRailbird={userIsRailbird}
                 canKick={userIsTableCreator && isIdle && player.isBot}
                 onKick={handleKickBot}
+                showdownResult={tableData?.showdownResult}
+                isMobile={true}
               />
             </motion.div>
           );
@@ -2428,118 +2539,131 @@ function GameView() {
         )}
       </motion.div>
 
-      {/* Current Player Info (only for players, not railbirds) */}
-      {!userIsRailbird && (
-        <div className="text-center">
-          <p className="text-gray-300 text-sm">
-            Playing as <span className="text-yellow-400 font-medium">{currentPlayer?.displayName}</span>
-          </p>
-          {currentPlayer?.currentRoundBet > 0 && (
-            <p className="text-gray-400 text-xs">
-              Your bet this round: ${currentPlayer.currentRoundBet}
-            </p>
-          )}
-          {/* Show your last draw action */}
-          {currentPlayer?.lastAction && (
-            <span className="inline-block mt-1 bg-purple-600 text-white text-xs font-medium px-2 py-1 rounded-full">
-              {currentPlayer.lastAction}
-            </span>
-          )}
-        </div>
-      )}
-      
-      {/* Railbirds info for mobile */}
-      {railbirds.length > 0 && (
-        <div className="text-center text-xs text-gray-400">
-          <span>Watching: </span>
-          <span className="text-violet-400">{railbirds.map(r => r.displayName).join(', ')}</span>
-        </div>
-      )}
+            {/* Railbirds info for mobile */}
+            {railbirds.length > 0 && (
+              <div className="text-center text-xs text-gray-400 mt-2">
+                <span>Watching: </span>
+                <span className="text-violet-400">{railbirds.map(r => r.displayName).join(', ')}</span>
+              </div>
+            )}
+          </div>{/* End of scrollable content area */}
 
-      {/* Action Buttons / Betting Controls (only for players, not railbirds) */}
-      {!userIsRailbird && (
-        <div className="w-full max-w-lg relative z-50">
-          {/* IDLE: Show Deal button */}
-          {isIdle && canStartGame && !needsBuyIn && (
-            <div className="flex justify-center">
-              <button
-                type="button"
-                onClick={handleDeal}
-                disabled={loading}
-                className="bg-yellow-600 hover:bg-yellow-500 disabled:bg-yellow-800 text-white font-bold py-3 px-8 rounded-lg shadow-lg transition-colors text-lg"
-              >
-                Deal Cards
-              </button>
-            </div>
-          )}
-
-          {/* BETTING phases: Show Betting Controls */}
-          {isBettingPhase && myTurn && currentPlayer?.status === 'active' && (
-            <BettingControls
-              onFold={handleFold}
-              onCheck={handleCheck}
-              onCall={handleCall}
-              onRaise={handleRaise}
-              onAllIn={handleAllIn}
-              callAmount={callAmount}
-              minRaise={minRaise}
-              maxRaise={currentPlayer?.chips || 0}
-              playerCurrentRoundBet={currentPlayer?.currentRoundBet || 0}
-              canCheck={playerCanCheck}
-              currentBet={tableData?.currentBet || 0}
-              pot={tableData?.pot || 0}
-              disabled={loading}
-              isDesktop={isDesktop}
-            />
-          )}
-
-          {/* DRAW phases: Show Discard button */}
-          {isDrawPhase && myTurn && (
-            <div className="flex justify-center">
-              <button
-                type="button"
-                onClick={handleSubmitDraw}
-                disabled={loading}
-                className="bg-purple-600 hover:bg-purple-500 disabled:bg-purple-800 text-white font-bold py-3 px-8 rounded-lg shadow-lg transition-colors text-lg"
-              >
-                {selectedCardIndices.size > 0
-                  ? `Discard ${selectedCardIndices.size} Card${selectedCardIndices.size > 1 ? 's' : ''}`
-                  : 'Stand Pat'
-                }
-              </button>
-            </div>
-          )}
-
-          {/* Mobile: Show action buttons inline */}
-          {!isDesktop && (
-            <>
-              {/* SHOWDOWN: Show Next Hand button */}
-              {isShowdown && (
-                <div className="flex justify-center">
+          {/* FIXED BOTTOM ACTION BAR - No scrolling required */}
+          <div className="flex-shrink-0 bg-slate-900/95 border-t border-slate-700/50 backdrop-blur-sm px-3 py-3 safe-area-pb">
+            {/* Action Buttons / Betting Controls */}
+            {!userIsRailbird ? (
+              <div className="w-full">
+                {/* IDLE: Show Deal button */}
+                {isIdle && canStartGame && !needsBuyIn && (
                   <motion.button
                     type="button"
-                    onClick={startNextHand}
+                    onClick={handleDeal}
                     disabled={loading}
-                    className="bg-yellow-600 hover:bg-yellow-500 disabled:bg-yellow-800 text-white font-bold py-3 px-8 rounded-lg shadow-lg text-lg"
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
+                    className="w-full bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 disabled:opacity-50 text-white font-bold py-4 rounded-xl shadow-lg text-lg min-h-[56px]"
+                    whileTap={{ scale: 0.98 }}
                   >
-                    Next Hand
+                    Deal Cards
                   </motion.button>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      )}
+                )}
 
-          {/* Chat Box */}
-          <ChatBox
-            messages={tableData?.chatLog || []}
-            onSendMessage={sendChatMessage}
-            currentUsername={getDisplayName()}
-            disabled={needsUsername}
-          />
+                {/* BETTING phases: Show Betting Controls */}
+                {isBettingPhase && myTurn && currentPlayer?.status === 'active' && (
+                  <BettingControls
+                    onFold={handleFold}
+                    onCheck={handleCheck}
+                    onCall={handleCall}
+                    onRaise={handleRaise}
+                    onAllIn={handleAllIn}
+                    callAmount={callAmount}
+                    minRaise={minRaise}
+                    maxRaise={currentPlayer?.chips || 0}
+                    playerCurrentRoundBet={currentPlayer?.currentRoundBet || 0}
+                    canCheck={playerCanCheck}
+                    currentBet={tableData?.currentBet || 0}
+                    pot={tableData?.pot || 0}
+                    disabled={loading}
+                    isDesktop={false}
+                  />
+                )}
+
+                {/* DRAW phases: Show Discard button */}
+                {isDrawPhase && myTurn && (
+                  <motion.button
+                    type="button"
+                    onClick={handleSubmitDraw}
+                    disabled={loading}
+                    className="w-full bg-gradient-to-r from-violet-600 to-violet-700 hover:from-violet-500 hover:to-violet-600 disabled:opacity-50 text-white font-bold py-4 rounded-xl shadow-lg text-lg min-h-[56px]"
+                    whileTap={{ scale: 0.98 }}
+                  >
+                    {selectedCardIndices.size > 0
+                      ? `Discard ${selectedCardIndices.size} Card${selectedCardIndices.size > 1 ? 's' : ''}`
+                      : 'Stand Pat'
+                    }
+                  </motion.button>
+                )}
+
+                {/* SHOWDOWN: Show/Muck buttons and Next Hand */}
+                {isShowdown && (
+                  <div className="flex flex-col gap-2">
+                    {/* Show/Muck buttons - touch-friendly */}
+                    <ShowMuckButtons
+                      showdownResult={tableData?.showdownResult}
+                      currentUserUid={currentUser?.uid}
+                      currentPlayer={currentPlayer}
+                      onRevealHand={handleRevealHand}
+                      isDesktop={false}
+                    />
+                    <motion.button
+                      type="button"
+                      onClick={startNextHand}
+                      disabled={loading}
+                      className="w-full bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 disabled:opacity-50 text-white font-bold py-4 rounded-xl shadow-lg text-lg min-h-[56px]"
+                      whileTap={{ scale: 0.98 }}
+                    >
+                      Next Hand
+                    </motion.button>
+                  </div>
+                )}
+
+                {/* Waiting indicator when not player's turn */}
+                {!myTurn && !isIdle && !isShowdown && (
+                  <div className="text-center py-3 text-slate-400 text-sm flex items-center justify-center gap-2">
+                    <span className="inline-block w-2 h-2 bg-slate-500 rounded-full animate-pulse"></span>
+                    Waiting for {activePlayer?.displayName || 'opponent'}...
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* Railbird View */
+              <div className="text-center py-2">
+                <div className="flex items-center justify-center gap-2 text-violet-300">
+                  <span className="text-lg">👁️</span>
+                  <span className="text-sm">Watching as Railbird</span>
+                </div>
+                {userCanBecomePlayer && (
+                  <motion.button
+                    type="button"
+                    onClick={handleJoinAsPlayer}
+                    disabled={loading}
+                    className="mt-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold py-3 px-6 rounded-xl text-sm"
+                    whileTap={{ scale: 0.98 }}
+                  >
+                    Join as Player
+                  </motion.button>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Chat Box - Non-intrusive floating overlay */}
+          <div className="fixed bottom-20 left-2 z-40">
+            <ChatBox
+              messages={tableData?.chatLog || []}
+              onSendMessage={sendChatMessage}
+              currentUsername={getDisplayName()}
+              disabled={needsUsername}
+            />
+          </div>
         </div>
       )}
     </div>

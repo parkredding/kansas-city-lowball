@@ -188,9 +188,10 @@ export function distributePots(pots, players, evaluateHand) {
 
 /**
  * Calculate showdown result - who wins with what hand
+ * Tracks whether win is contested (multiple contenders) or uncontested (everyone folded)
  * @param {Array} players - Array of player objects
  * @param {number} pot - Total pot amount
- * @returns {Object} - { winners: [{uid, displayName, amount, handDescription}], message }
+ * @returns {Object} - { winners, message, allHands, isContested }
  */
 export function calculateShowdownResult(players, pot) {
   // Find players still in the hand with hands
@@ -199,8 +200,29 @@ export function calculateShowdownResult(players, pot) {
          p.hand && p.hand.length === 5
   );
 
+  // Count how many players folded (to determine if win is contested)
+  const foldedCount = players.filter(p => p.status === 'folded').length;
+  const isContested = contenders.length > 1;
+
   if (contenders.length === 0) {
-    return { winners: [], message: 'No showdown' };
+    return { winners: [], message: 'No showdown', isContested: false };
+  }
+
+  // For uncontested wins (everyone else folded), winner doesn't need to show
+  if (contenders.length === 1) {
+    const winner = contenders[0];
+    return {
+      winners: [{
+        uid: winner.uid,
+        displayName: winner.displayName,
+        amount: pot,
+        handDescription: null, // Don't reveal hand description for uncontested
+        handResult: null,
+      }],
+      message: `${winner.displayName} wins $${pot} (others folded)`,
+      allHands: [], // No hands shown for uncontested win
+      isContested: false,
+    };
   }
 
   // Evaluate each contender's hand
@@ -224,6 +246,7 @@ export function calculateShowdownResult(players, pot) {
   // Find all players tied for best hand
   const bestScore = evaluated[0].handResult.score;
   const winners = evaluated.filter(e => e.handResult.score === bestScore);
+  const losers = evaluated.filter(e => e.handResult.score !== bestScore);
 
   // Calculate winnings
   const sharePerWinner = Math.floor(pot / winners.length);
@@ -248,8 +271,10 @@ export function calculateShowdownResult(players, pot) {
 
   return {
     winners: winnersWithAmounts,
+    losers: losers, // Include losers for show/muck UI
     message,
     allHands: evaluated, // Include all hands for display
+    isContested: true, // Showdown with multiple contenders
   };
 }
 
@@ -442,6 +467,7 @@ export class GameService {
   /**
    * Resolve the "Cut for Dealer" phase
    * Determines the winner (highest card) and sets them as dealer
+   * Then AUTOMATICALLY starts the first hand (deals cards and transitions to BETTING_1)
    * @param {string} tableId - The table ID
    * @param {Object} tableData - Current table data
    * @returns {Promise<number>} - The seat index of the winning dealer
@@ -451,7 +477,8 @@ export class GameService {
     let winnerIndex = -1;
     let winnerCard = null;
 
-    // Find the player with the highest card
+    // Find the player with the highest card (Ace > King)
+    // Tie-breaker: Spades > Hearts > Diamonds > Clubs
     for (let i = 0; i < players.length; i++) {
       const player = players[i];
       if (player.cutCard && player.status !== 'sitting_out') {
@@ -481,20 +508,36 @@ export class GameService {
       .filter(p => p.cutCard)
       .map(p => p.cutCard);
 
-    // Clear cut cards from players
+    // Clear cut cards from players and prepare for dealing
     const updatedPlayers = players.map(p => ({
       ...p,
       cutCard: null,
     }));
 
+    // First, update the table with the dealer determination
     await GameService.updateTable(tableId, {
       players: updatedPlayers,
       muck: [...(tableData.muck || []), ...cutCards],
       dealerIndex: finalDealerPosition,
       cutForDealerWinner: winnerIndex,
       cutForDealerComplete: true,
-      phase: 'IDLE', // Return to idle for deal
+      hasHadFirstDeal: true, // Mark that dealer has been determined
+      phase: 'IDLE', // Briefly set to IDLE before dealing
     });
+
+    // AUTOMATIC START: Immediately deal cards for the first real hand
+    // Small delay to allow UI to show the dealer determination
+    const updatedTableData = {
+      ...tableData,
+      players: updatedPlayers,
+      muck: [...(tableData.muck || []), ...cutCards],
+      dealerIndex: finalDealerPosition,
+      deck: tableData.deck,
+    };
+
+    // Auto-deal the first hand after a brief moment
+    await new Promise(resolve => setTimeout(resolve, 800));
+    await GameService.dealCards(tableId, updatedTableData);
 
     return winnerIndex;
   }
@@ -1223,6 +1266,7 @@ export class GameService {
 
   /**
    * Deal cards to all players and start the game
+   * Handles both standard (>2 players) and heads-up (2 players) positions
    * @param {string} tableId - The table ID
    * @param {Object} tableData - Current table data
    * @returns {Promise<void>}
@@ -1249,6 +1293,7 @@ export class GameService {
       totalContribution: 0, // Reset for new hand
       hasActedThisRound: false,
       lastAction: null, // Clear any previous action text
+      handRevealed: false, // Track if hand is revealed at showdown
     }));
 
     // Calculate cards needed for initial deal
@@ -1273,41 +1318,55 @@ export class GameService {
       .map((p, i) => (p.status === 'active' ? i : -1))
       .filter((i) => i !== -1);
 
+    const numActivePlayers = activeIndices.length;
+    const isHeadsUp = numActivePlayers === 2;
+
     // Determine dealer position within active players, then convert to actual seat index
     const dealerActivePosition = (tableData.dealerIndex || 0) % activeIndices.length;
     const dealerSeatIndex = activeIndices[dealerActivePosition];
 
-    // Small blind is next active player after dealer
-    const sbActivePosition = (dealerActivePosition + 1) % activeIndices.length;
-    const sbSeatIndex = activeIndices[sbActivePosition];
+    let sbSeatIndex, bbSeatIndex, firstToActIndex;
 
-    // Big blind is next active player after small blind
-    const bbActivePosition = (dealerActivePosition + 2) % activeIndices.length;
-    const bbSeatIndex = activeIndices[bbActivePosition];
+    if (isHeadsUp) {
+      // HEADS-UP EXCEPTION (2 Players):
+      // - Dealer posts Small Blind
+      // - Opponent posts Big Blind
+      // - Pre-draw action starts with Dealer (SB)
+      sbSeatIndex = dealerSeatIndex; // Dealer is SB in heads-up
+      const opponentActivePosition = (dealerActivePosition + 1) % activeIndices.length;
+      bbSeatIndex = activeIndices[opponentActivePosition]; // Opponent is BB in heads-up
+      firstToActIndex = dealerSeatIndex; // Dealer (SB) acts first pre-draw in heads-up
+    } else {
+      // STANDARD RULE (>2 Players):
+      // - SB is next after dealer
+      // - BB is next after SB
+      // - Pre-draw action starts at (dealer + 3) - Under the Gun
+      const sbActivePosition = (dealerActivePosition + 1) % activeIndices.length;
+      sbSeatIndex = activeIndices[sbActivePosition];
 
-    // For legacy compatibility, use variable names matching existing code
-    const sbActiveIndex = sbSeatIndex;
-    const bbActiveIndex = bbSeatIndex;
+      const bbActivePosition = (dealerActivePosition + 2) % activeIndices.length;
+      bbSeatIndex = activeIndices[bbActivePosition];
+
+      // UTG is (dealer + 3) for pre-draw
+      const utgActivePosition = (dealerActivePosition + 3) % activeIndices.length;
+      firstToActIndex = activeIndices[utgActivePosition];
+    }
 
     let pot = 0;
 
     // Post small blind
-    const sbAmount = Math.min(smallBlind, players[sbActiveIndex].chips);
-    players[sbActiveIndex].chips -= sbAmount;
-    players[sbActiveIndex].currentRoundBet = sbAmount;
-    players[sbActiveIndex].totalContribution = sbAmount;
+    const sbAmount = Math.min(smallBlind, players[sbSeatIndex].chips);
+    players[sbSeatIndex].chips -= sbAmount;
+    players[sbSeatIndex].currentRoundBet = sbAmount;
+    players[sbSeatIndex].totalContribution = sbAmount;
     pot += sbAmount;
 
     // Post big blind
-    const bbAmount = Math.min(bigBlind, players[bbActiveIndex].chips);
-    players[bbActiveIndex].chips -= bbAmount;
-    players[bbActiveIndex].currentRoundBet = bbAmount;
-    players[bbActiveIndex].totalContribution = bbAmount;
+    const bbAmount = Math.min(bigBlind, players[bbSeatIndex].chips);
+    players[bbSeatIndex].chips -= bbAmount;
+    players[bbSeatIndex].currentRoundBet = bbAmount;
+    players[bbSeatIndex].totalContribution = bbAmount;
     pot += bbAmount;
-
-    // Action starts with player after big blind (UTG)
-    const utgActivePosition = (dealerActivePosition + 3) % activeIndices.length;
-    const utgActiveIndex = activeIndices[utgActivePosition];
 
     await GameService.updateTable(tableId, {
       deck,
@@ -1316,17 +1375,47 @@ export class GameService {
       pot,
       currentBet: bigBlind,
       phase: 'BETTING_1',
-      activePlayerIndex: utgActiveIndex,
+      activePlayerIndex: firstToActIndex,
       // Store actual seat indices (full players array indices) for UI
       dealerIndex: dealerActivePosition, // Keep as position for rotation in startNextHand
       dealerSeatIndex: dealerSeatIndex,
       smallBlindSeatIndex: sbSeatIndex,
       bigBlindSeatIndex: bbSeatIndex,
+      isHeadsUp: isHeadsUp, // Track if this is a heads-up hand
       turnDeadline: GameService.calculateTurnDeadline(),
       hasHadFirstDeal: true, // Mark that dealer has been determined
       cutForDealerComplete: null, // Clear cut for dealer state
       cutForDealerWinner: null,
     });
+  }
+
+  /**
+   * Get the first player to act in post-draw betting rounds
+   * Handles heads-up exception where BB acts first post-draw
+   * @param {Array} players - Array of player objects
+   * @param {Object} tableData - Table data with dealer/blind positions
+   * @returns {number} - Seat index of first player to act
+   */
+  static getFirstToActPostDraw(players, tableData) {
+    const activeIndices = players
+      .map((p, i) => (p.status === 'active' || p.status === 'all-in' ? i : -1))
+      .filter((i) => i !== -1);
+
+    if (activeIndices.length === 0) return 0;
+
+    const numActivePlayers = activeIndices.length;
+    const isHeadsUp = numActivePlayers === 2 || tableData.isHeadsUp;
+    const dealerActivePosition = tableData.dealerIndex || 0;
+
+    if (isHeadsUp) {
+      // HEADS-UP: Post-draw action starts with opponent (BB)
+      const opponentActivePosition = (dealerActivePosition + 1) % activeIndices.length;
+      return activeIndices[opponentActivePosition];
+    } else {
+      // STANDARD: Post-draw action starts at (dealer + 1) - Small Blind position
+      const sbActivePosition = (dealerActivePosition + 1) % activeIndices.length;
+      return activeIndices[sbActivePosition];
+    }
   }
 
   // ============================================
@@ -2075,8 +2164,15 @@ export class GameService {
         }
       } else {
         // Normal case - proceed to betting phase
+        // Use proper post-draw starting position (SB for standard, BB for heads-up)
+        const firstToAct = GameService.getFirstToActPostDraw(players, tableData);
+        // Make sure the first to act is in the bettingActiveIndices list
+        const validFirstToAct = bettingActiveIndices.includes(firstToAct)
+          ? firstToAct
+          : bettingActiveIndices[0];
+
         updates.phase = nextPhase;
-        updates.activePlayerIndex = bettingActiveIndices[0];
+        updates.activePlayerIndex = validFirstToAct;
         updates.currentBet = 0;
         updates.turnDeadline = GameService.calculateTurnDeadline();
         updates.players = players;
@@ -2345,6 +2441,60 @@ export class GameService {
    */
   static markCleanupRun() {
     localStorage.setItem('lastTableCleanup', Date.now().toString());
+  }
+
+  // ============================================
+  // SHOW/MUCK HAND OPERATIONS
+  // ============================================
+
+  /**
+   * Reveal a player's hand at showdown (show instead of muck)
+   * Used when a player chooses to show their cards after winning uncontested
+   * or when a losing player wants to show their hand
+   * @param {string} tableId - The table ID
+   * @param {string} playerUid - The player's UID
+   * @returns {Promise<void>}
+   */
+  static async revealHand(tableId, playerUid) {
+    if (!db) {
+      throw new Error('Firestore not initialized');
+    }
+
+    const tableRef = doc(db, TABLES_COLLECTION, tableId);
+    const tableSnap = await getDoc(tableRef);
+
+    if (!tableSnap.exists()) {
+      throw new Error('Table not found');
+    }
+
+    const tableData = tableSnap.data();
+
+    // Can only reveal hands during showdown phase
+    if (tableData.phase !== 'SHOWDOWN') {
+      throw new Error('Can only reveal hands during showdown');
+    }
+
+    const players = tableData.players.map(p => {
+      if (p.uid === playerUid) {
+        return { ...p, handRevealed: true };
+      }
+      return p;
+    });
+
+    // Add activity event
+    const revealingPlayer = players.find(p => p.uid === playerUid);
+    const activityLog = tableData.chatLog || [];
+    activityLog.push({
+      type: 'game_event',
+      text: `${revealingPlayer?.displayName || 'Player'} shows their hand`,
+      timestamp: Date.now(),
+    });
+
+    await updateDoc(tableRef, {
+      players,
+      chatLog: activityLog,
+      lastUpdated: serverTimestamp(),
+    });
   }
 
   // ============================================

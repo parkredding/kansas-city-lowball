@@ -331,6 +331,19 @@ export function GameProvider({ children }) {
     }
   }, [currentTableId, tableData]);
 
+  // Reveal hand at showdown (show instead of muck)
+  const revealHand = useCallback(async () => {
+    if (!currentTableId || !currentUser) return false;
+
+    try {
+      await GameService.revealHand(currentTableId, currentUser.uid);
+      return true;
+    } catch (err) {
+      setError(err.message);
+      return false;
+    }
+  }, [currentTableId, currentUser]);
+
   // Handle turn timeout (auto-fold/check)
   const handleTimeout = useCallback(async () => {
     if (!currentTableId || !tableData || !currentUser) return;
@@ -514,6 +527,7 @@ export function GameProvider({ children }) {
     submitBet,
     submitDraw,
     startNextHand,
+    revealHand,
     handleTimeout,
     updateUsername,
     sendChatMessage,
