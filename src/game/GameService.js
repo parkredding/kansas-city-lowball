@@ -14,7 +14,8 @@ import {
   where,
   getDocs,
 } from 'firebase/firestore';
-import { db } from '../firebase';
+import { db, functions } from '../firebase';
+import { httpsCallable } from 'firebase/functions';
 import { Deck } from './Deck';
 import { HandEvaluator } from './HandEvaluator';
 import { TexasHoldemHandEvaluator } from './TexasHoldemHandEvaluator';
@@ -2278,6 +2279,79 @@ export class GameService {
       const currentBet = tableData.currentBet || 0;
 
       // Auto-check if possible, otherwise auto-fold
+      if (player.currentRoundBet >= currentBet) {
+        await GameService.performBetAction(tableId, tableData, playerUid, BetAction.CHECK);
+      } else {
+        await GameService.performBetAction(tableId, tableData, playerUid, BetAction.FOLD);
+      }
+    }
+  }
+
+  /**
+   * Claim a timeout via Cloud Function (Passive Timer System)
+   *
+   * This is the primary method for enforcing timeouts. It can be called by ANY
+   * player at the table when the timer expires. The Cloud Function validates
+   * that the deadline has actually passed using server time.
+   *
+   * ANTI-HANG LOGIC:
+   * - ANY player can trigger timeout (not just the active player)
+   * - Server validates turnDeadline against server time (anti-cheat)
+   * - Atomic transaction ensures exactly one timeout action
+   * - Fallback to client-side timeout if Cloud Function unavailable
+   *
+   * @param {string} tableId - The table ID
+   * @returns {Promise<Object>} - { success: boolean, action?: string, message?: string }
+   */
+  static async claimTimeout(tableId) {
+    try {
+      // Call the Cloud Function for server-validated timeout
+      const handleTimeoutFn = httpsCallable(functions, 'handleTimeout');
+      const result = await handleTimeoutFn({ tableId });
+      return result.data;
+    } catch (error) {
+      console.error('claimTimeout error:', error);
+
+      // If Cloud Function fails, return error info
+      // The caller can decide whether to fall back to client-side handling
+      return {
+        success: false,
+        error: error.message || 'Failed to claim timeout',
+        code: error.code,
+      };
+    }
+  }
+
+  /**
+   * Fallback client-side timeout handler (legacy)
+   *
+   * This method is kept for backwards compatibility and as a fallback
+   * when Cloud Functions are unavailable. It should only be used when:
+   * 1. Cloud Functions are not deployed
+   * 2. The calling player IS the active player (for security)
+   *
+   * For production, use claimTimeout() instead.
+   *
+   * @deprecated Use claimTimeout() for server-validated timeouts
+   */
+  static async handleTimeoutFallback(tableId, tableData, playerUid) {
+    // Same logic as original handleTimeout
+    const playerIndex = tableData.players.findIndex((p) => p.uid === playerUid);
+    if (playerIndex === -1 || playerIndex !== tableData.activePlayerIndex) {
+      return; // Not this player's turn
+    }
+
+    const phase = tableData.phase;
+    const isDrawPhase = phase?.startsWith('DRAW_');
+    const isBettingPhase = phase?.startsWith('BETTING_') ||
+                           ['PREFLOP', 'FLOP', 'TURN', 'RIVER'].includes(phase);
+
+    if (isDrawPhase) {
+      await GameService.submitDraw(tableId, tableData, playerUid, []);
+    } else if (isBettingPhase) {
+      const player = tableData.players[playerIndex];
+      const currentBet = tableData.currentBet || 0;
+
       if (player.currentRoundBet >= currentBet) {
         await GameService.performBetAction(tableId, tableData, playerUid, BetAction.CHECK);
       } else {

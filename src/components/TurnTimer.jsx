@@ -1,17 +1,28 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 const TOTAL_TIME = 45; // seconds
 
+// Time after deadline when any player can claim timeout (prevents hangs if active player disconnects)
+const GRACE_PERIOD_SECONDS = 2;
+
 /**
  * TurnTimer component that displays remaining time and triggers timeout callback
+ *
+ * PASSIVE TIMER SYSTEM:
+ * - Timer displays locally using (turnDeadline - Date.now())
+ * - When timer hits 0, the active player gets first chance to claim timeout
+ * - After GRACE_PERIOD_SECONDS, ANY player can claim (anti-hang protection)
+ * - Server validates all claims using server time (anti-cheat)
+ *
  * @param {Object} turnDeadline - Firestore Timestamp or Date for when turn expires
- * @param {Function} onTimeout - Callback when timer expires
+ * @param {Function} onTimeout - Callback when timer expires (called for server-validated claim)
  * @param {boolean} isMyTurn - Whether it's the current user's turn
  * @param {boolean} canTriggerTimeout - Whether this client can trigger the timeout (for bot handling)
+ * @param {boolean} isAtTable - Whether the user is at this table (player or railbird)
  */
-function TurnTimer({ turnDeadline, onTimeout, isMyTurn, canTriggerTimeout = false }) {
+function TurnTimer({ turnDeadline, onTimeout, isMyTurn, canTriggerTimeout = false, isAtTable = true }) {
   const [secondsLeft, setSecondsLeft] = useState(TOTAL_TIME);
-  const [hasTimedOut, setHasTimedOut] = useState(false);
+  const hasClaimedRef = useRef(false);
 
   const calculateSecondsLeft = useCallback(() => {
     if (!turnDeadline) return TOTAL_TIME;
@@ -27,13 +38,13 @@ function TurnTimer({ turnDeadline, onTimeout, isMyTurn, canTriggerTimeout = fals
     }
 
     const now = Date.now();
-    const remaining = Math.max(0, Math.floor((deadlineMs - now) / 1000));
-    return remaining;
+    // Allow negative values to track time past deadline
+    return Math.floor((deadlineMs - now) / 1000);
   }, [turnDeadline]);
 
   useEffect(() => {
-    // Reset timeout flag when deadline changes
-    setHasTimedOut(false);
+    // Reset claim flag when deadline changes (new turn)
+    hasClaimedRef.current = false;
 
     // Initial calculation
     setSecondsLeft(calculateSecondsLeft());
@@ -43,21 +54,33 @@ function TurnTimer({ turnDeadline, onTimeout, isMyTurn, canTriggerTimeout = fals
       const remaining = calculateSecondsLeft();
       setSecondsLeft(remaining);
 
-      // Trigger timeout when time runs out
-      // Allow timeout to be triggered by:
-      // 1. The active player (isMyTurn)
-      // 2. The table creator for bot players (canTriggerTimeout)
-      if (remaining <= 0 && !hasTimedOut && (isMyTurn || canTriggerTimeout) && onTimeout) {
-        setHasTimedOut(true);
+      // Don't try to claim if already claimed or no callback
+      if (hasClaimedRef.current || !onTimeout || !isAtTable) return;
+
+      // PASSIVE TIMER CLAIM LOGIC:
+      // 1. Active player (or bot handler) can claim immediately when timer hits 0
+      // 2. Any other player can claim after GRACE_PERIOD_SECONDS past deadline
+      //    This prevents hangs when active player disconnects
+
+      const canClaimNow = (
+        // Active player or bot handler can claim at 0
+        (remaining <= 0 && (isMyTurn || canTriggerTimeout)) ||
+        // Any player can claim after grace period (anti-hang protection)
+        (remaining <= -GRACE_PERIOD_SECONDS)
+      );
+
+      if (canClaimNow) {
+        hasClaimedRef.current = true;
         onTimeout();
       }
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [turnDeadline, calculateSecondsLeft, hasTimedOut, isMyTurn, canTriggerTimeout, onTimeout]);
+  }, [turnDeadline, calculateSecondsLeft, isMyTurn, canTriggerTimeout, isAtTable, onTimeout]);
 
-  // Calculate percentage for progress bar
-  const percentage = Math.min(100, Math.max(0, (secondsLeft / TOTAL_TIME) * 100));
+  // Calculate percentage for progress bar (clamp to 0-100)
+  const displaySeconds = Math.max(0, secondsLeft);
+  const percentage = Math.min(100, Math.max(0, (displaySeconds / TOTAL_TIME) * 100));
 
   // Determine color based on time remaining
   let barColor = 'bg-green-500';
@@ -92,7 +115,7 @@ function TurnTimer({ turnDeadline, onTimeout, isMyTurn, canTriggerTimeout = fals
           {isMyTurn ? 'Your turn' : 'Waiting...'}
         </span>
         <span className={`text-sm ${textColor} font-bold tabular-nums`}>
-          {secondsLeft}s
+          {displaySeconds}s
         </span>
       </div>
     </div>

@@ -1542,7 +1542,8 @@ function GameView() {
         </motion.div>
       )}
 
-      {/* Turn Timer */}
+      {/* Turn Timer - Passive Timer System
+          Any player can claim timeout after grace period (anti-hang protection) */}
       {tableData?.turnDeadline && (isBettingPhase || isDrawPhase) && !userIsRailbird && (
         <div className="flex-shrink-0">
           <TurnTimer
@@ -1550,6 +1551,7 @@ function GameView() {
             onTimeout={handleTimeout}
             isMyTurn={myTurn}
             canTriggerTimeout={tableData?.createdBy === currentUser?.uid && activePlayer?.isBot}
+            isAtTable={true}
           />
         </div>
       )}
@@ -2194,7 +2196,8 @@ function GameView() {
               </div>
             )}
 
-            {/* Turn Timer (for betting/draw phases) - compact */}
+            {/* Turn Timer (for betting/draw phases) - compact
+                Passive Timer System: any player can claim after grace period */}
             {tableData?.turnDeadline && (isBettingPhase || isDrawPhase) && !userIsRailbird && (
               <div className="mb-2">
                 <TurnTimer
@@ -2202,6 +2205,7 @@ function GameView() {
                   onTimeout={handleTimeout}
                   isMyTurn={myTurn}
                   canTriggerTimeout={tableData?.createdBy === currentUser?.uid && activePlayer?.isBot}
+                  isAtTable={true}
                 />
               </div>
             )}
