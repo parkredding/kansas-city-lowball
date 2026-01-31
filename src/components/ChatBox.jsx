@@ -26,10 +26,64 @@ function generateColorFromString(str) {
 }
 
 /**
- * Colored dot indicator for a user
+ * Get the color for activity log entries
+ * - Chat messages: Full player color
+ * - Game actions: Lighter hue (higher lightness) of player color to distinguish
+ * - System events (no player): Default purple
+ *
+ * @param {string} playerUid - UID of the player (for generating base color)
+ * @param {boolean} isSystemAction - True for game actions (lighter), false for chat (full color)
+ * @returns {string} - HSL or rgba color string
+ */
+function getLogColor(playerUid, isSystemAction = false) {
+  // Default purple for system events with no player
+  if (!playerUid) {
+    return isSystemAction ? 'rgba(167, 139, 250, 0.6)' : 'hsl(270, 70%, 65%)';
+  }
+
+  // Generate base color from player UID
+  let hash = 0;
+  for (let i = 0; i < playerUid.length; i++) {
+    const char = playerUid.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+
+  const hue = Math.abs(hash) % 360;
+  const saturation = 60 + (Math.abs(hash >> 8) % 20);
+
+  if (isSystemAction) {
+    // For game actions: higher lightness (lighter shade) to distinguish from chat
+    const lightness = 72 + (Math.abs(hash >> 16) % 8); // 72-80% (lighter)
+    return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+  } else {
+    // For chat: standard lightness (full color)
+    const lightness = 55 + (Math.abs(hash >> 16) % 15); // 55-70%
+    return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+  }
+}
+
+/**
+ * Colored dot indicator for a user (for chat messages)
  */
 function UserColorDot({ username, size = 'sm' }) {
   const color = useMemo(() => generateColorFromString(username), [username]);
+  const sizeClasses = size === 'xs' ? 'w-1.5 h-1.5' : size === 'sm' ? 'w-2 h-2' : 'w-3 h-3';
+
+  return (
+    <span
+      className={`${sizeClasses} rounded-full inline-block flex-shrink-0`}
+      style={{ backgroundColor: color }}
+    />
+  );
+}
+
+/**
+ * Colored dot indicator for game events
+ * Uses lighter shade of player color to distinguish from chat messages
+ */
+function GameEventDot({ playerUid, size = 'xs' }) {
+  const color = useMemo(() => getLogColor(playerUid, true), [playerUid]);
   const sizeClasses = size === 'xs' ? 'w-1.5 h-1.5' : size === 'sm' ? 'w-2 h-2' : 'w-3 h-3';
 
   return (
@@ -143,14 +197,16 @@ function ChatBox({ messages = [], onSendMessage, currentUsername, disabled, expa
           </p>
         ) : (
           messages.map((msg, index) => {
-            // Render game events differently
+            // Render game events differently - with dynamic player color coding
             if (isGameEvent(msg)) {
               return (
                 <div
                   key={`${msg.timestamp}-${index}`}
                   className="flex items-start gap-1.5 py-0.5"
                 >
-                  <span className="text-violet-400 text-[8px] mt-0.5">●</span>
+                  <span className="mt-0.5">
+                    <GameEventDot playerUid={msg.playerUid} size="xs" />
+                  </span>
                   <span className="text-slate-400 text-[11px] italic flex-1 leading-tight">
                     {msg.text}
                   </span>
