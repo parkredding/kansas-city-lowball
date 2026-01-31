@@ -220,6 +220,28 @@ export function GameProvider({ children }) {
     }
   }, [currentTableId, currentUser]);
 
+  // Add a bot player to the table (only table creator can do this)
+  // If game is in progress, bot will be flagged to join next hand
+  const addBot = useCallback(async (difficulty = 'hard') => {
+    if (!currentTableId || !currentUser) {
+      setError('Must be at a table to add bots');
+      return null;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const bot = await GameService.addBot(currentTableId, currentUser.uid, difficulty);
+      return bot;
+    } catch (err) {
+      setError(err.message);
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  }, [currentTableId, currentUser]);
+
   // Promote self from railbird to player (when game is IDLE and seats available)
   const joinAsPlayer = useCallback(async () => {
     if (!currentTableId || !currentUser) {
@@ -640,6 +662,7 @@ export function GameProvider({ children }) {
     updateUsername,
     sendChatMessage,
     kickBot,
+    addBot,
     joinAsPlayer,
     requestSitOut,
     cancelSitOut,

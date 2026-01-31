@@ -1372,6 +1372,84 @@ export class GameService {
   }
 
   /**
+   * Add a bot player to the table
+   * If game is in progress, the bot is flagged with waitingForNextHand: true
+   * and will be dealt in when startNextHand is called
+   * @param {string} tableId - The table ID
+   * @param {string} requesterUid - The UID of the user requesting (must be table creator)
+   * @param {string} difficulty - Bot difficulty level ('easy' or 'hard')
+   * @returns {Promise<Object>} - The created bot player object
+   */
+  static async addBot(tableId, requesterUid, difficulty = 'hard') {
+    if (!db) {
+      throw new Error('Firestore not initialized');
+    }
+
+    const tableRef = doc(db, TABLES_COLLECTION, tableId);
+
+    return await runTransaction(db, async (transaction) => {
+      const tableDoc = await transaction.get(tableRef);
+      if (!tableDoc.exists()) {
+        throw new Error('Table not found');
+      }
+
+      const tableData = tableDoc.data();
+
+      // Only table creator can add bots
+      if (tableData.createdBy !== requesterUid) {
+        throw new Error('Only the table creator can add bots');
+      }
+
+      const players = tableData.players || [];
+
+      // Check if table is full
+      if (players.length >= MAX_PLAYERS) {
+        throw new Error('Table is full - cannot add more players');
+      }
+
+      // Generate unique bot ID and name
+      const botNumber = players.filter(p => p.isBot).length + 1;
+      const botNames = ['Ace', 'Duke', 'Lucky', 'Rex', 'Tex', 'Slim', 'Spike', 'Bruno'];
+      const botName = botNames[(botNumber - 1) % botNames.length] + (botNumber > botNames.length ? ` ${Math.floor(botNumber / botNames.length) + 1}` : '');
+      const botUid = `bot_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+      // Determine if bot should wait for next hand
+      const isGameInProgress = tableData.phase !== 'IDLE';
+
+      // Get starting chips from table config or default
+      const startingChips = tableData.config?.buyIn || tableData.minBet * 100 || 5000;
+
+      const newBot = {
+        uid: botUid,
+        displayName: botName,
+        photoURL: null,
+        chips: isGameInProgress ? 0 : startingChips, // No chips if waiting
+        hand: [],
+        status: isGameInProgress ? 'sitting_out' : 'active',
+        cardsToDiscard: [],
+        currentRoundBet: 0,
+        totalContribution: 0,
+        hasActedThisRound: false,
+        lastAction: null,
+        isBot: true,
+        botDifficulty: difficulty,
+        waitingForNextHand: isGameInProgress, // Flag to deal in next hand
+        pendingBuyIn: isGameInProgress ? startingChips : 0, // Store pending chips
+        joinedAt: Date.now(),
+      };
+
+      const updatedPlayers = [...players, newBot];
+
+      transaction.update(tableRef, {
+        players: updatedPlayers,
+        lastUpdated: serverTimestamp(),
+      });
+
+      return newBot;
+    });
+  }
+
+  /**
    * Remove a railbird from the table (when they leave)
    * @param {string} tableId - The table ID
    * @param {string} railbirdUid - The railbird's UID
@@ -1871,10 +1949,21 @@ export class GameService {
 
     if (activeIndices.length === 0) return 0;
 
-    const dealerActivePosition = tableData.dealerIndex || 0;
-    // First to act is the player after the dealer (SB position in standard play)
-    const firstActivePosition = (dealerActivePosition + 1) % activeIndices.length;
-    return activeIndices[firstActivePosition];
+    // Get the dealer's actual seat index
+    const dealerSeatIndex = tableData.dealerSeatIndex ?? tableData.dealerIndex ?? 0;
+
+    // Find the first active player AFTER the dealer's seat
+    // This ensures dealer acts last by making the first player after dealer act first
+    const numPlayers = players.length;
+    for (let offset = 1; offset <= numPlayers; offset++) {
+      const checkIndex = (dealerSeatIndex + offset) % numPlayers;
+      if (activeIndices.includes(checkIndex)) {
+        return checkIndex;
+      }
+    }
+
+    // Fallback to first active player
+    return activeIndices[0];
   }
 
   /**
@@ -1891,19 +1980,21 @@ export class GameService {
 
     if (activeIndices.length === 0) return 0;
 
-    const numActivePlayers = activeIndices.length;
-    const isHeadsUp = numActivePlayers === 2 || tableData.isHeadsUp;
-    const dealerActivePosition = tableData.dealerIndex || 0;
+    // Get the dealer's actual seat index
+    const dealerSeatIndex = tableData.dealerSeatIndex ?? tableData.dealerIndex ?? 0;
+    const numPlayers = players.length;
 
-    if (isHeadsUp) {
-      // HEADS-UP: Post-draw action starts with opponent (BB)
-      const opponentActivePosition = (dealerActivePosition + 1) % activeIndices.length;
-      return activeIndices[opponentActivePosition];
-    } else {
-      // STANDARD: Post-draw action starts at (dealer + 1) - Small Blind position
-      const sbActivePosition = (dealerActivePosition + 1) % activeIndices.length;
-      return activeIndices[sbActivePosition];
+    // Find the first active player AFTER the dealer's seat
+    // This ensures dealer acts last in post-draw betting
+    for (let offset = 1; offset <= numPlayers; offset++) {
+      const checkIndex = (dealerSeatIndex + offset) % numPlayers;
+      if (activeIndices.includes(checkIndex)) {
+        return checkIndex;
+      }
     }
+
+    // Fallback to first active player
+    return activeIndices[0];
   }
 
   // ============================================
@@ -2020,6 +2111,7 @@ export class GameService {
       case BetAction.FOLD:
         player.status = 'folded';
         player.hasActedThisRound = true;
+        player.lastAction = 'Fold';
         actionDescription = `${player.displayName} folded`;
         break;
 
@@ -2029,6 +2121,7 @@ export class GameService {
           throw new Error(`Cannot check - you must call $${currentBet - playerCurrentRoundBet} or raise`);
         }
         player.hasActedThisRound = true;
+        player.lastAction = 'Check';
         actionDescription = `${player.displayName} checked`;
         break;
 
@@ -2038,6 +2131,7 @@ export class GameService {
           if (callAmount <= 0) {
             // Nothing to call, treat as check
             player.hasActedThisRound = true;
+            player.lastAction = 'Check';
             actionDescription = `${player.displayName} checked`;
           } else if (playerChips <= callAmount) {
             // All-in call
@@ -2048,6 +2142,7 @@ export class GameService {
             player.chips = 0;
             player.status = 'all-in';
             player.hasActedThisRound = true;
+            player.lastAction = 'All-In';
             actionDescription = `${player.displayName} called all-in for $${allInAmount}`;
           } else {
             // Regular call
@@ -2056,6 +2151,7 @@ export class GameService {
             player.totalContribution = (player.totalContribution || 0) + callAmount;
             pot += callAmount;
             player.hasActedThisRound = true;
+            player.lastAction = 'Call';
             actionDescription = `${player.displayName} called $${callAmount}`;
           }
         }
@@ -2083,6 +2179,7 @@ export class GameService {
               }
             });
           }
+          player.lastAction = 'All-In';
 
           player.chips = 0;
           player.status = 'all-in';
@@ -2123,6 +2220,7 @@ export class GameService {
             player.chips = 0;
             player.status = 'all-in';
             player.hasActedThisRound = true;
+            player.lastAction = 'All-In';
             actionDescription = `${player.displayName} raised all-in to $${player.currentRoundBet}`;
             // Reset hasActed for other players since there's a raise
             players.forEach((p, i) => {
@@ -2138,6 +2236,7 @@ export class GameService {
             pot += additionalAmount;
             newCurrentBet = totalBetAmount;
             player.hasActedThisRound = true;
+            player.lastAction = currentBet === 0 ? 'Bet' : 'Raise';
             actionDescription = currentBet === 0
               ? `${player.displayName} bet $${totalBetAmount}`
               : `${player.displayName} raised to $${totalBetAmount}`;
@@ -2277,17 +2376,45 @@ export class GameService {
 
         updatedPot = 0;
 
+        // Add revealed hands to activity log (for contested showdowns)
+        updatedActivityLog = [...activityLog];
+        if (showdownResult.isContested && showdownResult.allHands) {
+          // Log each player's revealed hand
+          for (const handInfo of showdownResult.allHands) {
+            const player = players.find(p => p.uid === handInfo.uid);
+            if (player && player.hand) {
+              // Format the hand as card notation (e.g., "7-5-4-3-2")
+              const cardNotation = player.hand
+                .map(c => c.rank)
+                .sort((a, b) => {
+                  const order = { A: 14, K: 13, Q: 12, J: 11, '10': 10, '9': 9, '8': 8, '7': 7, '6': 6, '5': 5, '4': 4, '3': 3, '2': 2 };
+                  return (order[b] || 0) - (order[a] || 0);
+                })
+                .join('-');
+
+              updatedActivityLog.push({
+                type: 'game_event',
+                eventType: 'reveal',
+                text: `${handInfo.displayName} revealed [${cardNotation}] - ${handInfo.handDescription}`,
+                playerUid: handInfo.uid,
+                playerName: handInfo.displayName,
+                timestamp: Date.now(),
+              });
+            }
+          }
+        }
+
         // Add winner message to activity log with winner info for color coding
         if (showdownResult.message) {
           const firstWinner = showdownResult.winners?.[0];
-          updatedActivityLog = [...activityLog, {
+          updatedActivityLog.push({
             type: 'game_event',
             eventType: 'win',
             text: showdownResult.message,
             playerUid: firstWinner?.uid || null,
             playerName: firstWinner?.displayName || null,
             timestamp: Date.now(),
-          }];
+          });
         }
       }
 
@@ -2720,10 +2847,12 @@ export class GameService {
     };
 
     if (roundComplete) {
-      // Reset for next phase - clear lastAction when moving to betting
+      // Reset for next phase
+      // NOTE: We preserve lastAction so opponents can see what each player drew
+      // lastAction will be overwritten when players take betting actions
       players.forEach((p) => {
         p.hasActedThisRound = false;
-        p.lastAction = null;
+        // Keep lastAction visible - it will be cleared when betting actions occur
       });
 
       const nextPhase = phaseAfterDraw[tableData.phase];
@@ -2871,18 +3000,30 @@ export class GameService {
       // Reset remaining players for new hand
       // Destructure pendingSitOut to remove it, then use removeUndefinedValues
       // to filter out any other undefined properties (Firestore doesn't allow undefined values)
-      const players = playersStaying.map(({ pendingSitOut, ...player }) =>
-        removeUndefinedValues({
+      // Also activate any waiting bots (waitingForNextHand flag)
+      const players = playersStaying.map(({ pendingSitOut, waitingForNextHand, pendingBuyIn, ...player }) => {
+        // If bot was waiting for next hand, give them their chips and activate
+        let chips = player.chips;
+        let status = player.chips > 0 ? 'active' : 'sitting_out';
+
+        if (waitingForNextHand && player.isBot && pendingBuyIn > 0) {
+          chips = pendingBuyIn;
+          status = 'active';
+        }
+
+        return removeUndefinedValues({
           ...player,
           hand: [],
-          status: player.chips > 0 ? 'active' : 'sitting_out',
+          chips,
+          status,
           cardsToDiscard: [],
           currentRoundBet: 0,
           totalContribution: 0, // Reset for new hand
           hasActedThisRound: false,
           lastAction: null, // Clear action text for new hand
-        })
-      );
+          // Clear waiting flags (don't include them in update)
+        });
+      });
 
       // Move dealer button - dealerIndex is a position among active players
       const activePlayerCount = players.filter((p) => p.status === 'active').length;
