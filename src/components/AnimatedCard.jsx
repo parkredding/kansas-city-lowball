@@ -1,11 +1,61 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { useState, useEffect } from 'react';
 
+/**
+ * ============================================================================
+ * FOUR-COLOR DECK STANDARD
+ * Professional poker uses 4-color decks for instant suit recognition.
+ *
+ * Standard:
+ * - Spades: Black (traditional)
+ * - Hearts: Red (traditional)
+ * - Diamonds: BLUE (distinguishes from hearts)
+ * - Clubs: GREEN (distinguishes from spades)
+ *
+ * This prevents costly misreads at a glance, especially on mobile screens.
+ * ============================================================================
+ */
 const SUIT_SYMBOLS = {
-  h: { symbol: '\u2665', color: 'text-red-500' },
-  d: { symbol: '\u2666', color: 'text-red-500' },
-  c: { symbol: '\u2663', color: 'text-gray-900' },
-  s: { symbol: '\u2660', color: 'text-gray-900' },
+  // Hearts - Red (traditional)
+  h: {
+    symbol: '\u2665',
+    color: 'text-red-600',
+    bgClass: 'suit-hearts',
+  },
+  // Diamonds - BLUE (4-color standard)
+  d: {
+    symbol: '\u2666',
+    color: 'text-blue-600',
+    bgClass: 'suit-diamonds',
+  },
+  // Clubs - GREEN (4-color standard)
+  c: {
+    symbol: '\u2663',
+    color: 'text-green-600',
+    bgClass: 'suit-clubs',
+  },
+  // Spades - Black (traditional)
+  s: {
+    symbol: '\u2660',
+    color: 'text-gray-900',
+    bgClass: 'suit-spades',
+  },
+};
+
+/**
+ * Animation timing constants - "Goldilocks Zone"
+ * Based on the Ergonomic Sovereignty report recommendations:
+ * - Too fast (< 100ms): Feels cheap, hard to track
+ * - Goldilocks (200-300ms): Professional, trustworthy
+ * - Too slow (> 500ms): Frustrates experienced players
+ */
+const ANIMATION_TIMING = {
+  CARD_DEAL: 250,      // Deal animation duration
+  CARD_FLIP: 200,      // Flip reveal duration
+  CARD_MUCK: 300,      // Discard to muck duration
+  STAGGER_DELAY: 80,   // Delay between sequential card animations
+  SPRING_STIFFNESS: 350,
+  SPRING_DAMPING: 28,
 };
 
 /**
@@ -31,7 +81,7 @@ export function AnimatedCard({
   delay = 0,
   index = 0,
 }) {
-  // Animation variants for different states
+  // Animation variants using Goldilocks timing
   const cardVariants = {
     // Initial position (off-screen, at deck)
     dealing: {
@@ -44,18 +94,18 @@ export function AnimatedCard({
     // Normal position in hand
     idle: {
       x: 0,
-      y: isSelected ? -8 : 0,
+      y: isSelected ? -12 : 0, // Larger lift for selected cards
       opacity: 1,
-      scale: 1,
+      scale: isSelected ? 1.05 : 1,
       rotateY: 0,
       transition: {
         type: 'spring',
-        stiffness: 300,
-        damping: 25,
+        stiffness: ANIMATION_TIMING.SPRING_STIFFNESS,
+        damping: ANIMATION_TIMING.SPRING_DAMPING,
         delay: delay,
       },
     },
-    // Flying to muck (center)
+    // Flying to muck (center) - uses Goldilocks timing
     discarding: {
       x: 0,
       y: -150,
@@ -63,8 +113,8 @@ export function AnimatedCard({
       scale: 0.3,
       rotateY: 180,
       transition: {
-        duration: 0.4,
-        ease: 'easeIn',
+        duration: ANIMATION_TIMING.CARD_MUCK / 1000,
+        ease: [0.4, 0, 1, 1], // easeIn for natural acceleration
       },
     },
     // New card coming in
@@ -74,12 +124,13 @@ export function AnimatedCard({
       opacity: 0,
       scale: 0.5,
     },
-    // Hover effect
+    // Hover effect (desktop only - touch has :active)
     hover: {
-      y: isSelected ? -10 : -4,
-      scale: 1.02,
+      y: isSelected ? -14 : -6,
+      scale: 1.03,
       transition: {
-        duration: 0.15,
+        duration: 0.1,
+        ease: 'easeOut',
       },
     },
   };
@@ -187,8 +238,8 @@ export function AnimatedCardBack({ delay = 0, small = false }) {
         scale: 1,
         transition: {
           type: 'spring',
-          stiffness: 350,
-          damping: 28,
+          stiffness: ANIMATION_TIMING.SPRING_STIFFNESS,
+          damping: ANIMATION_TIMING.SPRING_DAMPING,
           delay: delay,
         },
       }}
@@ -262,7 +313,7 @@ export function AnimatedHand({
             isSelectable={isSelectable}
             onClick={() => onCardClick?.(index)}
             faceDown={!showCards}
-            delay={isDealing ? index * 0.1 : 0}
+            delay={isDealing ? index * (ANIMATION_TIMING.STAGGER_DELAY / 1000) : 0}
             index={index}
           />
         ))}
@@ -384,9 +435,9 @@ function DiscardingCard({
         scale: 0,
       }}
       transition={{
-        duration: 0.3,
+        duration: ANIMATION_TIMING.CARD_MUCK / 1000,
         delay: delay,
-        ease: [0.4, 0, 1, 1], // easeIn
+        ease: [0.4, 0, 1, 1], // easeIn for natural acceleration
       }}
     >
       {/* Render card face for hero, card back for opponents */}

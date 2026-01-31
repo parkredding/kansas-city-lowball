@@ -2,3 +2,9 @@
 
 @source "../index.html";
 @source "./**/*.{js,ts,jsx,tsx}";
+
+/**
+ * PWA Gaming Design System
+ * Import the comprehensive Native Shell and design system styles
+ */
+@import "./styles/pwa-gaming.css";
