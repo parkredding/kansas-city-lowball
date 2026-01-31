@@ -208,8 +208,29 @@ export function calculateShowdownResult(players, pot, gameType = 'lowball_27', c
          p.hand && p.hand.length >= minHandSize
   );
 
+  // Count how many players folded (to determine if win is contested)
+  const foldedCount = players.filter(p => p.status === 'folded').length;
+  const isContested = contenders.length > 1;
+
   if (contenders.length === 0) {
-    return { winners: [], message: 'No showdown' };
+    return { winners: [], message: 'No showdown', isContested: false };
+  }
+
+  // For uncontested wins (everyone else folded), winner doesn't need to show
+  if (contenders.length === 1) {
+    const winner = contenders[0];
+    return {
+      winners: [{
+        uid: winner.uid,
+        displayName: winner.displayName,
+        amount: pot,
+        handDescription: null, // Don't reveal hand description for uncontested
+        handResult: null,
+      }],
+      message: `${winner.displayName} wins $${pot} (others folded)`,
+      allHands: [], // No hands shown for uncontested win
+      isContested: false,
+    };
   }
 
   // Evaluate each contender's hand
@@ -257,6 +278,7 @@ export function calculateShowdownResult(players, pot, gameType = 'lowball_27', c
   // Find all players tied for best hand
   const bestScore = evaluated[0].handResult.score;
   const winners = evaluated.filter(e => e.handResult.score === bestScore);
+  const losers = evaluated.filter(e => e.handResult.score !== bestScore);
 
   // Calculate winnings
   const sharePerWinner = Math.floor(pot / winners.length);
@@ -281,8 +303,10 @@ export function calculateShowdownResult(players, pot, gameType = 'lowball_27', c
 
   return {
     winners: winnersWithAmounts,
+    losers: losers, // Include losers for show/muck UI
     message,
     allHands: evaluated, // Include all hands for display
+    isContested: true, // Showdown with multiple contenders
   };
 }
 
@@ -1604,6 +1628,35 @@ export class GameService {
     });
   }
 
+  /**
+   * Get the first player to act in post-draw betting rounds
+   * Handles heads-up exception where BB acts first post-draw
+   * @param {Array} players - Array of player objects
+   * @param {Object} tableData - Table data with dealer/blind positions
+   * @returns {number} - Seat index of first player to act
+   */
+  static getFirstToActPostDraw(players, tableData) {
+    const activeIndices = players
+      .map((p, i) => (p.status === 'active' || p.status === 'all-in' ? i : -1))
+      .filter((i) => i !== -1);
+
+    if (activeIndices.length === 0) return 0;
+
+    const numActivePlayers = activeIndices.length;
+    const isHeadsUp = numActivePlayers === 2 || tableData.isHeadsUp;
+    const dealerActivePosition = tableData.dealerIndex || 0;
+
+    if (isHeadsUp) {
+      // HEADS-UP: Post-draw action starts with opponent (BB)
+      const opponentActivePosition = (dealerActivePosition + 1) % activeIndices.length;
+      return activeIndices[opponentActivePosition];
+    } else {
+      // STANDARD: Post-draw action starts at (dealer + 1) - Small Blind position
+      const sbActivePosition = (dealerActivePosition + 1) % activeIndices.length;
+      return activeIndices[sbActivePosition];
+    }
+  }
+
   // ============================================
   // BETTING OPERATIONS
   // ============================================
@@ -2383,8 +2436,15 @@ export class GameService {
         }
       } else {
         // Normal case - proceed to betting phase
+        // Use proper post-draw starting position (SB for standard, BB for heads-up)
+        const firstToAct = GameService.getFirstToActPostDraw(players, tableData);
+        // Make sure the first to act is in the bettingActiveIndices list
+        const validFirstToAct = bettingActiveIndices.includes(firstToAct)
+          ? firstToAct
+          : bettingActiveIndices[0];
+
         updates.phase = nextPhase;
-        updates.activePlayerIndex = bettingActiveIndices[0];
+        updates.activePlayerIndex = validFirstToAct;
         updates.currentBet = 0;
         updates.turnDeadline = GameService.calculateTurnDeadline();
         updates.players = players;
@@ -2689,6 +2749,60 @@ export class GameService {
    */
   static markCleanupRun() {
     localStorage.setItem('lastTableCleanup', Date.now().toString());
+  }
+
+  // ============================================
+  // SHOW/MUCK HAND OPERATIONS
+  // ============================================
+
+  /**
+   * Reveal a player's hand at showdown (show instead of muck)
+   * Used when a player chooses to show their cards after winning uncontested
+   * or when a losing player wants to show their hand
+   * @param {string} tableId - The table ID
+   * @param {string} playerUid - The player's UID
+   * @returns {Promise<void>}
+   */
+  static async revealHand(tableId, playerUid) {
+    if (!db) {
+      throw new Error('Firestore not initialized');
+    }
+
+    const tableRef = doc(db, TABLES_COLLECTION, tableId);
+    const tableSnap = await getDoc(tableRef);
+
+    if (!tableSnap.exists()) {
+      throw new Error('Table not found');
+    }
+
+    const tableData = tableSnap.data();
+
+    // Can only reveal hands during showdown phase
+    if (tableData.phase !== 'SHOWDOWN') {
+      throw new Error('Can only reveal hands during showdown');
+    }
+
+    const players = tableData.players.map(p => {
+      if (p.uid === playerUid) {
+        return { ...p, handRevealed: true };
+      }
+      return p;
+    });
+
+    // Add activity event
+    const revealingPlayer = players.find(p => p.uid === playerUid);
+    const activityLog = tableData.chatLog || [];
+    activityLog.push({
+      type: 'game_event',
+      text: `${revealingPlayer?.displayName || 'Player'} shows their hand`,
+      timestamp: Date.now(),
+    });
+
+    await updateDoc(tableRef, {
+      players,
+      chatLog: activityLog,
+      lastUpdated: serverTimestamp(),
+    });
   }
 
   // ============================================
