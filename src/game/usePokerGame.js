@@ -32,6 +32,7 @@ const PHASE_AFTER_DRAW = {
 
 // Human-readable phase names
 export const PHASE_DISPLAY_NAMES = {
+  // Lowball phases
   [PHASES.IDLE]: 'Waiting to Start',
   [PHASES.CUT_FOR_DEALER]: 'Cut for Dealer',
   [PHASES.BETTING_1]: 'First Betting Round',
@@ -42,6 +43,11 @@ export const PHASE_DISPLAY_NAMES = {
   [PHASES.DRAW_3]: 'Third Draw',
   [PHASES.BETTING_4]: 'Final Betting Round',
   [PHASES.SHOWDOWN]: 'Showdown',
+  // Hold'em phases
+  'PREFLOP': 'Pre-Flop',
+  'FLOP': 'Flop',
+  'TURN': 'Turn',
+  'RIVER': 'River',
 };
 
 const STARTING_CHIPS = 1000;

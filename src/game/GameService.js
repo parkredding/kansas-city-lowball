@@ -17,6 +17,7 @@ import {
 import { db } from '../firebase';
 import { Deck } from './Deck';
 import { HandEvaluator } from './HandEvaluator';
+import { TexasHoldemHandEvaluator } from './TexasHoldemHandEvaluator';
 import {
   MAX_PLAYERS,
   CARDS_PER_HAND,
@@ -25,6 +26,8 @@ import {
   TURN_TIME_SECONDS,
   RANK_VALUES,
   SUIT_VALUES,
+  HOLDEM_HOLE_CARDS,
+  GAME_TYPES,
 } from './constants';
 
 const TABLES_COLLECTION = 'tables';
@@ -188,15 +191,21 @@ export function distributePots(pots, players, evaluateHand) {
 
 /**
  * Calculate showdown result - who wins with what hand
+ * Supports both Lowball (lower is better) and Hold'em (higher is better)
  * @param {Array} players - Array of player objects
  * @param {number} pot - Total pot amount
+ * @param {string} gameType - Game type ('lowball_27' or 'holdem')
+ * @param {Array} communityCards - Community cards for Hold'em (optional)
  * @returns {Object} - { winners: [{uid, displayName, amount, handDescription}], message }
  */
-export function calculateShowdownResult(players, pot) {
+export function calculateShowdownResult(players, pot, gameType = 'lowball_27', communityCards = []) {
+  const isHoldem = gameType === 'holdem';
+
   // Find players still in the hand with hands
+  const minHandSize = isHoldem ? 2 : 5;
   const contenders = players.filter(
     p => (p.status === 'active' || p.status === 'all-in') &&
-         p.hand && p.hand.length === 5
+         p.hand && p.hand.length >= minHandSize
   );
 
   if (contenders.length === 0) {
@@ -205,21 +214,45 @@ export function calculateShowdownResult(players, pot) {
 
   // Evaluate each contender's hand
   const evaluated = contenders.map(p => {
-    const result = HandEvaluator.evaluate(p.hand);
-    return {
-      uid: p.uid,
-      displayName: p.displayName,
-      handResult: result,
-      handDescription: HandEvaluator.getHandDescription(result),
-    };
+    let result;
+    if (isHoldem) {
+      // For Hold'em, combine hole cards with community cards
+      const allCards = [...p.hand, ...communityCards];
+      result = TexasHoldemHandEvaluator.evaluate(allCards);
+      return {
+        uid: p.uid,
+        displayName: p.displayName,
+        handResult: result,
+        handDescription: TexasHoldemHandEvaluator.getHandDescription(result),
+      };
+    } else {
+      // For Lowball, evaluate 5-card hand directly
+      result = HandEvaluator.evaluate(p.hand);
+      return {
+        uid: p.uid,
+        displayName: p.displayName,
+        handResult: result,
+        handDescription: HandEvaluator.getHandDescription(result),
+      };
+    }
   });
 
-  // Sort by hand value (lower is better in lowball)
-  evaluated.sort((a, b) => {
-    if (a.handResult.score < b.handResult.score) return -1;
-    if (a.handResult.score > b.handResult.score) return 1;
-    return 0;
-  });
+  // Sort by hand value
+  // In Lowball: lower score is better
+  // In Hold'em: higher score is better
+  if (isHoldem) {
+    evaluated.sort((a, b) => {
+      if (a.handResult.score > b.handResult.score) return -1;
+      if (a.handResult.score < b.handResult.score) return 1;
+      return 0;
+    });
+  } else {
+    evaluated.sort((a, b) => {
+      if (a.handResult.score < b.handResult.score) return -1;
+      if (a.handResult.score > b.handResult.score) return 1;
+      return 0;
+    });
+  }
 
   // Find all players tied for best hand
   const bestScore = evaluated[0].handResult.score;
@@ -1329,6 +1362,180 @@ export class GameService {
     });
   }
 
+  /**
+   * Deal cards for Texas Hold'em - 2 hole cards to each player
+   * @param {string} tableId - The table ID
+   * @param {Object} tableData - Current table data
+   * @returns {Promise<void>}
+   */
+  static async dealHoldemCards(tableId, tableData) {
+    let deck = [...tableData.deck];
+    let muck = [...(tableData.muck || [])];
+    const minBet = tableData.minBet || DEFAULT_MIN_BET;
+    const smallBlind = Math.floor(minBet / 2);
+    const bigBlind = minBet;
+
+    // Filter players with chips and reset their state
+    const activePlayers = tableData.players.filter((p) => p.chips > 0);
+    if (activePlayers.length < 2) {
+      throw new Error('Need at least 2 players with chips to start');
+    }
+
+    const players = tableData.players.map((player) => ({
+      ...player,
+      hand: [],
+      status: player.chips > 0 ? 'active' : 'sitting_out',
+      cardsToDiscard: [],
+      currentRoundBet: 0,
+      totalContribution: 0,
+      hasActedThisRound: false,
+      lastAction: null,
+    }));
+
+    // Calculate cards needed for Hold'em (2 per player + 5 community)
+    const cardsNeeded = HOLDEM_HOLE_CARDS * activePlayers.length + 5;
+
+    // Reshuffle muck into deck if needed
+    const reshuffled = GameService.reshuffleMuckIfNeeded(deck, muck, cardsNeeded);
+    deck = reshuffled.deck;
+    muck = reshuffled.muck;
+
+    // Deal 2 hole cards to each active player
+    for (let i = 0; i < HOLDEM_HOLE_CARDS; i++) {
+      for (let j = 0; j < players.length; j++) {
+        if (players[j].status === 'active' && deck.length > 0) {
+          players[j].hand.push(deck.shift());
+        }
+      }
+    }
+
+    // Find active player indices
+    const activeIndices = players
+      .map((p, i) => (p.status === 'active' ? i : -1))
+      .filter((i) => i !== -1);
+
+    // Determine dealer position
+    const dealerActivePosition = (tableData.dealerIndex || 0) % activeIndices.length;
+    const dealerSeatIndex = activeIndices[dealerActivePosition];
+
+    // Small blind is next active player after dealer
+    const sbActivePosition = (dealerActivePosition + 1) % activeIndices.length;
+    const sbSeatIndex = activeIndices[sbActivePosition];
+
+    // Big blind is next active player after small blind
+    const bbActivePosition = (dealerActivePosition + 2) % activeIndices.length;
+    const bbSeatIndex = activeIndices[bbActivePosition];
+
+    const sbActiveIndex = sbSeatIndex;
+    const bbActiveIndex = bbSeatIndex;
+
+    let pot = 0;
+
+    // Post small blind
+    const sbAmount = Math.min(smallBlind, players[sbActiveIndex].chips);
+    players[sbActiveIndex].chips -= sbAmount;
+    players[sbActiveIndex].currentRoundBet = sbAmount;
+    players[sbActiveIndex].totalContribution = sbAmount;
+    pot += sbAmount;
+
+    // Post big blind
+    const bbAmount = Math.min(bigBlind, players[bbActiveIndex].chips);
+    players[bbActiveIndex].chips -= bbAmount;
+    players[bbActiveIndex].currentRoundBet = bbAmount;
+    players[bbActiveIndex].totalContribution = bbAmount;
+    pot += bbAmount;
+
+    // Action starts with player after big blind (UTG)
+    const utgActivePosition = (dealerActivePosition + 3) % activeIndices.length;
+    const utgActiveIndex = activeIndices[utgActivePosition];
+
+    await GameService.updateTable(tableId, {
+      deck,
+      muck,
+      players,
+      pot,
+      currentBet: bigBlind,
+      phase: 'PREFLOP',
+      activePlayerIndex: utgActiveIndex,
+      dealerIndex: dealerActivePosition,
+      dealerSeatIndex: dealerSeatIndex,
+      smallBlindSeatIndex: sbSeatIndex,
+      bigBlindSeatIndex: bbSeatIndex,
+      communityCards: [], // Initialize empty community cards
+      turnDeadline: GameService.calculateTurnDeadline(),
+      hasHadFirstDeal: true,
+      cutForDealerComplete: null,
+      cutForDealerWinner: null,
+    });
+  }
+
+  /**
+   * Deal community cards for Hold'em (flop, turn, river)
+   * @param {string} tableId - The table ID
+   * @param {Object} tableData - Current table data
+   * @param {string} street - 'FLOP', 'TURN', or 'RIVER'
+   * @returns {Promise<void>}
+   */
+  static async dealCommunityCards(tableId, tableData, street) {
+    let deck = [...tableData.deck];
+    let muck = [...(tableData.muck || [])];
+    const communityCards = [...(tableData.communityCards || [])];
+
+    // Burn a card before dealing community cards
+    if (deck.length > 0) {
+      muck.push(deck.shift());
+    }
+
+    // Deal appropriate number of cards based on street
+    let cardsToDeal = 0;
+    if (street === 'FLOP') {
+      cardsToDeal = 3;
+    } else if (street === 'TURN' || street === 'RIVER') {
+      cardsToDeal = 1;
+    }
+
+    for (let i = 0; i < cardsToDeal && deck.length > 0; i++) {
+      communityCards.push(deck.shift());
+    }
+
+    // Reset betting for new street
+    const players = tableData.players.map((p) => ({
+      ...p,
+      currentRoundBet: 0,
+      hasActedThisRound: false,
+    }));
+
+    // Find first active player after dealer button for post-flop betting
+    const activeIndices = players
+      .map((p, i) => (p.status === 'active' && p.chips > 0 ? i : -1))
+      .filter((i) => i !== -1);
+
+    // Post-flop action starts with first active player after dealer
+    const dealerSeatIndex = tableData.dealerSeatIndex || 0;
+    let firstToAct = -1;
+    for (let i = 1; i <= players.length; i++) {
+      const idx = (dealerSeatIndex + i) % players.length;
+      if (players[idx].status === 'active' && players[idx].chips > 0) {
+        firstToAct = idx;
+        break;
+      }
+    }
+    if (firstToAct === -1 && activeIndices.length > 0) {
+      firstToAct = activeIndices[0];
+    }
+
+    await GameService.updateTable(tableId, {
+      deck,
+      muck,
+      players,
+      communityCards,
+      currentBet: 0,
+      phase: street,
+      activePlayerIndex: firstToAct >= 0 ? firstToAct : 0,
+      turnDeadline: GameService.calculateTurnDeadline(),
+    });
+  }
+
   // ============================================
   // BETTING OPERATIONS
   // ============================================
@@ -1621,7 +1828,17 @@ export class GameService {
     // Check if betting round is complete
     const roundComplete = GameService.isBettingRoundComplete(players, newCurrentBet);
 
-    const phaseAfterBet = {
+    // Determine game type from config
+    const gameType = tableData.config?.gameType || 'lowball_27';
+    const isHoldem = gameType === 'holdem';
+
+    // Phase transitions depend on game type
+    const phaseAfterBet = isHoldem ? {
+      PREFLOP: 'FLOP',
+      FLOP: 'TURN',
+      TURN: 'RIVER',
+      RIVER: 'SHOWDOWN',
+    } : {
       BETTING_1: 'DRAW_1',
       BETTING_2: 'DRAW_2',
       BETTING_3: 'DRAW_3',
@@ -1642,12 +1859,12 @@ export class GameService {
       });
 
       // Find first active player for next phase
-      // For draw phases, include all-in players since they must still draw
       const nextPhase = phaseAfterBet[tableData.phase];
       const isShowdown = nextPhase === 'SHOWDOWN';
-      const isDrawPhase = nextPhase.startsWith('DRAW_');
+      const isDrawPhase = !isHoldem && nextPhase?.startsWith('DRAW_');
+      const isCommunityCardPhase = isHoldem && ['FLOP', 'TURN', 'RIVER'].includes(nextPhase);
 
-      // For draw phases, find first player who can draw (active or all-in)
+      // For draw phases (Lowball), include all-in players since they must still draw
       // For betting phases, only active players with chips can act
       let activeIndices;
       if (isDrawPhase) {
@@ -1668,7 +1885,8 @@ export class GameService {
       let updatedActivityLog = activityLog;
 
       if (isShowdown) {
-        showdownResult = calculateShowdownResult(players, pot);
+        const communityCards = tableData.communityCards || [];
+        showdownResult = calculateShowdownResult(players, pot, gameType, communityCards);
 
         // Award pot to winner(s)
         updatedPlayers = players.map(p => {
@@ -1696,6 +1914,12 @@ export class GameService {
         }
       }
 
+      // For Hold'em community card phases, deal the cards
+      if (isCommunityCardPhase) {
+        await GameService.dealCommunityCards(tableId, { ...tableData, players }, nextPhase);
+        return { success: true, action, actionDescription };
+      }
+
       await GameService.updateTable(tableId, {
         players: updatedPlayers,
         pot: updatedPot,
@@ -1717,15 +1941,22 @@ export class GameService {
         const shouldComplete = GameService.isBettingRoundComplete(players, newCurrentBet);
         if (shouldComplete) {
           // Round is complete, advance to next phase
-          const phaseAfterBet = {
+          // Use game type-specific phase transitions
+          const phaseAfterBetInner = isHoldem ? {
+            PREFLOP: 'FLOP',
+            FLOP: 'TURN',
+            TURN: 'RIVER',
+            RIVER: 'SHOWDOWN',
+          } : {
             BETTING_1: 'DRAW_1',
             BETTING_2: 'DRAW_2',
             BETTING_3: 'DRAW_3',
             BETTING_4: 'SHOWDOWN',
           };
-          const nextPhase = phaseAfterBet[tableData.phase];
+          const nextPhase = phaseAfterBetInner[tableData.phase];
           const isShowdown = nextPhase === 'SHOWDOWN';
-          const isDrawPhase = nextPhase?.startsWith('DRAW_');
+          const isDrawPhase = !isHoldem && nextPhase?.startsWith('DRAW_');
+          const isCommunityCardPhase = isHoldem && ['FLOP', 'TURN', 'RIVER'].includes(nextPhase);
 
           // Find first player for next phase
           let activeIndices;
@@ -1746,7 +1977,8 @@ export class GameService {
           let updatedActivityLog = activityLog;
 
           if (isShowdown) {
-            showdownResult = calculateShowdownResult(players, pot);
+            const communityCards = tableData.communityCards || [];
+            showdownResult = calculateShowdownResult(players, pot, gameType, communityCards);
 
             // Award pot to winner(s)
             updatedPlayers = players.map(p => {
@@ -1772,6 +2004,12 @@ export class GameService {
                 timestamp: Date.now(),
               }];
             }
+          }
+
+          // For Hold'em community card phases, deal the cards
+          if (isCommunityCardPhase) {
+            await GameService.dealCommunityCards(tableId, { ...tableData, players }, nextPhase);
+            return { success: true, action, actionDescription };
           }
 
           await GameService.updateTable(tableId, {
@@ -1858,7 +2096,9 @@ export class GameService {
 
     const phase = tableData.phase;
     const isDrawPhase = phase?.startsWith('DRAW_');
-    const isBettingPhase = phase?.startsWith('BETTING_');
+    // Include both Lowball betting phases and Hold'em phases
+    const isBettingPhase = phase?.startsWith('BETTING_') ||
+                           ['PREFLOP', 'FLOP', 'TURN', 'RIVER'].includes(phase);
 
     if (isDrawPhase) {
       // Auto stand pat (discard nothing) in draw phases
@@ -2129,6 +2369,8 @@ export class GameService {
       // Clear showdown result
       showdownResult: null,
       turnDeadline: null,
+      // Clear community cards for Hold'em
+      communityCards: [],
     });
   }
 
