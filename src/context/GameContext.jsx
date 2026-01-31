@@ -351,7 +351,13 @@ export function GameProvider({ children }) {
     }
   }, [currentTableId, currentUser]);
 
-  // Handle turn timeout (auto-fold/check)
+  // Handle turn timeout via Cloud Function (Passive Timer System)
+  //
+  // ANTI-HANG LOGIC:
+  // - Any player at the table can claim a timeout when timer expires
+  // - Server validates using server time (prevents cheating)
+  // - Atomic transaction ensures exactly one timeout action
+  // - If Cloud Function fails, falls back to client-side handling (legacy)
   const handleTimeout = useCallback(async () => {
     if (!currentTableId || !tableData || !currentUser) return;
     if (timeoutProcessedRef.current) return;
@@ -359,18 +365,31 @@ export function GameProvider({ children }) {
     const activePlayer = tableData.players[tableData.activePlayerIndex];
     if (!activePlayer) return;
 
-    // Allow timeout to be triggered by:
-    // 1. The active player themselves (for human players)
-    // 2. The table creator (for bot players) - since bots don't have their own browser session
-    const isActivePlayer = activePlayer.uid === currentUser.uid;
-    const isCreatorAndBotTurn = tableData.createdBy === currentUser.uid && activePlayer.isBot;
-    
-    if (!isActivePlayer && !isCreatorAndBotTurn) return;
-
+    // Mark as processing to prevent duplicate calls
     timeoutProcessedRef.current = true;
 
     try {
-      await GameService.handleTimeout(currentTableId, tableData, activePlayer.uid);
+      // Try server-validated timeout first (via Cloud Function)
+      const result = await GameService.claimTimeout(currentTableId);
+
+      if (result.success) {
+        // Cloud Function successfully processed the timeout
+        console.log('Timeout claimed:', result.message);
+      } else if (result.error) {
+        // Cloud Function call failed - check if we should fallback
+        console.warn('Timeout claim failed:', result.error);
+
+        // Only fallback if we're the active player (security measure)
+        // This ensures only authorized clients can force actions
+        const isActivePlayer = activePlayer.uid === currentUser.uid;
+        const isCreatorAndBotTurn = tableData.createdBy === currentUser.uid && activePlayer.isBot;
+
+        if (isActivePlayer || isCreatorAndBotTurn) {
+          console.log('Falling back to client-side timeout');
+          await GameService.handleTimeoutFallback(currentTableId, tableData, activePlayer.uid);
+        }
+      }
+      // If result says timeout not valid yet (player acted in time), that's fine
     } catch (err) {
       console.error('Error handling timeout:', err);
       timeoutProcessedRef.current = false;
