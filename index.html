@@ -2,13 +2,66 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!-- ============================================
+         NATIVE SHELL: Technical Lockdown Meta Tags
+         PWA Gaming Design System v1.0
+         ============================================ -->
+
+    <!-- CRITICAL: The viewport meta tag that "seals" the app
+         - width=device-width: Match device width exactly
+         - initial-scale=1.0: No initial zoom
+         - maximum-scale=1.0: Prevent pinch-to-zoom entirely
+         - user-scalable=no: Disable double-tap zoom (removes 300ms delay)
+         - viewport-fit=cover: Extend into iPhone notch/home indicator areas
+         - interactive-widget=resizes-content: Proper keyboard handling on mobile -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content" />
+
+    <!-- iOS Safari: Standalone PWA configuration -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="KC Lowball" />
+
+    <!-- iOS Safari: Disable automatic detection (prevents unwanted link styling) -->
+    <meta name="format-detection" content="telephone=no" />
+    <meta name="format-detection" content="date=no" />
+    <meta name="format-detection" content="email=no" />
+    <meta name="format-detection" content="address=no" />
+
+    <!-- Android Chrome: Theme color for status bar and PWA header -->
+    <meta name="theme-color" content="#0f172a" />
+    <meta name="mobile-web-app-capable" content="yes" />
+
     <!-- Prevent browser caching of this HTML file -->
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
+
+    <!-- Disable Microsoft Edge/IE features -->
+    <meta name="msapplication-tap-highlight" content="no" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="/kansas-city-lowball/manifest.json" />
+
+    <!-- Favicon and App Icons -->
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/kansas-city-lowball/icons/icon-192x192.png" />
+
+    <!-- Preconnect to critical origins for faster loading -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin />
+
     <title>Kansas City Lowball</title>
+
+    <!-- Inline critical CSS for instant paint (prevents flash of unstyled content) -->
+    <style>
+      /* Prevent flash - set background immediately */
+      html, body {
+        background-color: #0f172a;
+        margin: 0;
+        padding: 0;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
