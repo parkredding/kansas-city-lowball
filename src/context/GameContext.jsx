@@ -2,7 +2,8 @@ import { createContext, useContext, useEffect, useState, useCallback, useRef } f
 import { useAuth } from './AuthContext';
 import { GameService, BetAction } from '../game/GameService';
 import { HandEvaluator } from '../game/HandEvaluator';
-import { DEFAULT_MIN_BET } from '../game/constants';
+import { TexasHoldemHandEvaluator } from '../game/TexasHoldemHandEvaluator';
+import { DEFAULT_MIN_BET, GAME_TYPES } from '../game/constants';
 
 const GameContext = createContext();
 
@@ -272,7 +273,13 @@ export function GameProvider({ children }) {
       if (!tableData.hasHadFirstDeal && tableData.phase === 'IDLE') {
         await GameService.startCutForDealer(currentTableId, tableData);
       } else {
-        await GameService.dealCards(currentTableId, tableData);
+        // Deal based on game type
+        const gameType = tableData.config?.gameType || 'lowball_27';
+        if (gameType === 'holdem') {
+          await GameService.dealHoldemCards(currentTableId, tableData);
+        } else {
+          await GameService.dealCards(currentTableId, tableData);
+        }
       }
     } catch (err) {
       setError(err.message);
@@ -416,11 +423,22 @@ export function GameProvider({ children }) {
     return tableData.players[tableData.activePlayerIndex];
   }, [tableData]);
 
-  // Evaluate a hand
-  const evaluateHand = useCallback((hand) => {
-    if (!hand || hand.length !== 5) return null;
-    return HandEvaluator.evaluate(hand);
-  }, []);
+  // Evaluate a hand (game-type aware)
+  const evaluateHand = useCallback((hand, communityCards = null) => {
+    const gameType = tableData?.config?.gameType || 'lowball_27';
+
+    if (gameType === 'holdem') {
+      // For Hold'em, combine hole cards with community cards
+      const community = communityCards || tableData?.communityCards || [];
+      const allCards = [...(hand || []), ...community];
+      if (allCards.length < 5) return null;
+      return TexasHoldemHandEvaluator.evaluate(allCards);
+    } else {
+      // For Lowball, evaluate 5-card hand directly
+      if (!hand || hand.length !== 5) return null;
+      return HandEvaluator.evaluate(hand);
+    }
+  }, [tableData]);
 
   // Calculate call amount
   const getCallAmount = useCallback(() => {
@@ -449,11 +467,23 @@ export function GameProvider({ children }) {
   }, [tableData, currentUser]);
 
   // Determine phase helpers
-  const isBettingPhase = tableData?.phase?.startsWith('BETTING_') || false;
+  const gameType = tableData?.config?.gameType || 'lowball_27';
+  const isHoldem = gameType === 'holdem';
+
+  // Hold'em phases: PREFLOP, FLOP, TURN, RIVER, SHOWDOWN
+  const holdemBettingPhases = ['PREFLOP', 'FLOP', 'TURN', 'RIVER'];
+  const isBettingPhase = tableData?.phase?.startsWith('BETTING_') ||
+                         holdemBettingPhases.includes(tableData?.phase);
   const isDrawPhase = tableData?.phase?.startsWith('DRAW_') || false;
   const isShowdown = tableData?.phase === 'SHOWDOWN';
   const isIdle = tableData?.phase === 'IDLE';
   const isCutForDealer = tableData?.phase === 'CUT_FOR_DEALER';
+
+  // Hold'em specific phases
+  const isPreflop = tableData?.phase === 'PREFLOP';
+  const isFlop = tableData?.phase === 'FLOP';
+  const isTurn = tableData?.phase === 'TURN';
+  const isRiver = tableData?.phase === 'RIVER';
 
   // Check if user needs to set username
   const needsUsername = needsUsernameSetup(userWallet);
@@ -516,6 +546,14 @@ export function GameProvider({ children }) {
     isShowdown,
     isIdle,
     isCutForDealer,
+
+    // Hold'em phase helpers
+    isHoldem,
+    isPreflop,
+    isFlop,
+    isTurn,
+    isRiver,
+    gameType,
 
     // Actions
     createTable,

@@ -119,8 +119,8 @@ function CreateGameModal({ isOpen, onClose, onCreate, loading }) {
               onChange={(e) => setGameType(e.target.value)}
               className="w-full bg-gray-700 border border-gray-600 text-white px-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500"
             >
-              <option value="lowball_27">Kansas City Lowball</option>
-              <option value="holdem" disabled>Texas Hold'em (Coming Soon)</option>
+              <option value="lowball_27">Kansas City Lowball (2-7 Triple Draw)</option>
+              <option value="holdem">Texas Hold'em</option>
               <option value="plo" disabled>PLO (Coming Soon)</option>
             </select>
             <p className="text-xs text-gray-500 mt-1">

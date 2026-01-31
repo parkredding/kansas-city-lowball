@@ -17,6 +17,7 @@ import {
 import { db } from '../firebase';
 import { Deck } from './Deck';
 import { HandEvaluator } from './HandEvaluator';
+import { TexasHoldemHandEvaluator } from './TexasHoldemHandEvaluator';
 import {
   MAX_PLAYERS,
   CARDS_PER_HAND,
@@ -25,6 +26,8 @@ import {
   TURN_TIME_SECONDS,
   RANK_VALUES,
   SUIT_VALUES,
+  HOLDEM_HOLE_CARDS,
+  GAME_TYPES,
 } from './constants';
 
 const TABLES_COLLECTION = 'tables';
@@ -188,16 +191,21 @@ export function distributePots(pots, players, evaluateHand) {
 
 /**
  * Calculate showdown result - who wins with what hand
- * Tracks whether win is contested (multiple contenders) or uncontested (everyone folded)
+ * Supports both Lowball (lower is better) and Hold'em (higher is better)
  * @param {Array} players - Array of player objects
  * @param {number} pot - Total pot amount
- * @returns {Object} - { winners, message, allHands, isContested }
+ * @param {string} gameType - Game type ('lowball_27' or 'holdem')
+ * @param {Array} communityCards - Community cards for Hold'em (optional)
+ * @returns {Object} - { winners: [{uid, displayName, amount, handDescription}], message }
  */
-export function calculateShowdownResult(players, pot) {
+export function calculateShowdownResult(players, pot, gameType = 'lowball_27', communityCards = []) {
+  const isHoldem = gameType === 'holdem';
+
   // Find players still in the hand with hands
+  const minHandSize = isHoldem ? 2 : 5;
   const contenders = players.filter(
     p => (p.status === 'active' || p.status === 'all-in') &&
-         p.hand && p.hand.length === 5
+         p.hand && p.hand.length >= minHandSize
   );
 
   // Count how many players folded (to determine if win is contested)
@@ -227,21 +235,45 @@ export function calculateShowdownResult(players, pot) {
 
   // Evaluate each contender's hand
   const evaluated = contenders.map(p => {
-    const result = HandEvaluator.evaluate(p.hand);
-    return {
-      uid: p.uid,
-      displayName: p.displayName,
-      handResult: result,
-      handDescription: HandEvaluator.getHandDescription(result),
-    };
+    let result;
+    if (isHoldem) {
+      // For Hold'em, combine hole cards with community cards
+      const allCards = [...p.hand, ...communityCards];
+      result = TexasHoldemHandEvaluator.evaluate(allCards);
+      return {
+        uid: p.uid,
+        displayName: p.displayName,
+        handResult: result,
+        handDescription: TexasHoldemHandEvaluator.getHandDescription(result),
+      };
+    } else {
+      // For Lowball, evaluate 5-card hand directly
+      result = HandEvaluator.evaluate(p.hand);
+      return {
+        uid: p.uid,
+        displayName: p.displayName,
+        handResult: result,
+        handDescription: HandEvaluator.getHandDescription(result),
+      };
+    }
   });
 
-  // Sort by hand value (lower is better in lowball)
-  evaluated.sort((a, b) => {
-    if (a.handResult.score < b.handResult.score) return -1;
-    if (a.handResult.score > b.handResult.score) return 1;
-    return 0;
-  });
+  // Sort by hand value
+  // In Lowball: lower score is better
+  // In Hold'em: higher score is better
+  if (isHoldem) {
+    evaluated.sort((a, b) => {
+      if (a.handResult.score > b.handResult.score) return -1;
+      if (a.handResult.score < b.handResult.score) return 1;
+      return 0;
+    });
+  } else {
+    evaluated.sort((a, b) => {
+      if (a.handResult.score < b.handResult.score) return -1;
+      if (a.handResult.score > b.handResult.score) return 1;
+      return 0;
+    });
+  }
 
   // Find all players tied for best hand
   const bestScore = evaluated[0].handResult.score;
@@ -412,134 +444,150 @@ export class GameService {
   /**
    * Start the "Cut for Dealer" phase
    * Deals 1 card face-up to each active player to determine dealer
+   * Uses a transaction to read fresh data and prevent race conditions with concurrent joins
    * @param {string} tableId - The table ID
-   * @param {Object} tableData - Current table data
+   * @param {Object} _tableData - Current table data (unused, we read fresh data in transaction)
    * @returns {Promise<void>}
    */
-  static async startCutForDealer(tableId, tableData) {
-    let deck = [...tableData.deck];
-    let muck = [...(tableData.muck || [])];
-
-    // Filter players with chips
-    const activePlayers = tableData.players.filter((p) => p.chips > 0);
-    if (activePlayers.length < 2) {
-      throw new Error('Need at least 2 players with chips to start');
+  static async startCutForDealer(tableId, _tableData) {
+    if (!db) {
+      throw new Error('Firestore not initialized');
     }
 
-    // Reshuffle if needed
-    const reshuffled = GameService.reshuffleMuckIfNeeded(deck, muck, activePlayers.length);
-    deck = reshuffled.deck;
-    muck = reshuffled.muck;
+    const tableRef = doc(db, TABLES_COLLECTION, tableId);
 
-    // Deal 1 card to each player for dealer cut
-    const players = tableData.players.map((player) => ({
-      ...player,
-      cutCard: null,
-      hand: [],
-      status: player.chips > 0 ? 'active' : 'sitting_out',
-      cardsToDiscard: [],
-      currentRoundBet: 0,
-      totalContribution: 0,
-      hasActedThisRound: false,
-      lastAction: null,
-    }));
-
-    // Deal one card to each active player
-    for (let i = 0; i < players.length; i++) {
-      if (players[i].status === 'active' && deck.length > 0) {
-        players[i].cutCard = deck.shift();
+    await runTransaction(db, async (transaction) => {
+      // Read fresh data inside transaction to avoid race conditions
+      const tableDoc = await transaction.get(tableRef);
+      if (!tableDoc.exists()) {
+        throw new Error('Table not found');
       }
-    }
 
-    await GameService.updateTable(tableId, {
-      deck,
-      muck,
-      players,
-      phase: 'CUT_FOR_DEALER',
-      pot: 0,
-      pots: [],
-      currentBet: 0,
-      turnDeadline: null, // No time limit for cut phase
-      cutForDealerComplete: false,
+      const tableData = tableDoc.data();
+      let deck = [...tableData.deck];
+      let muck = [...(tableData.muck || [])];
+
+      // Filter players with chips
+      const activePlayers = tableData.players.filter((p) => p.chips > 0);
+      if (activePlayers.length < 2) {
+        throw new Error('Need at least 2 players with chips to start');
+      }
+
+      // Reshuffle if needed
+      const reshuffled = GameService.reshuffleMuckIfNeeded(deck, muck, activePlayers.length);
+      deck = reshuffled.deck;
+      muck = reshuffled.muck;
+
+      // Deal 1 card to each player for dealer cut
+      const players = tableData.players.map((player) => ({
+        ...player,
+        cutCard: null,
+        hand: [],
+        status: player.chips > 0 ? 'active' : 'sitting_out',
+        cardsToDiscard: [],
+        currentRoundBet: 0,
+        totalContribution: 0,
+        hasActedThisRound: false,
+        lastAction: null,
+      }));
+
+      // Deal one card to each active player
+      for (let i = 0; i < players.length; i++) {
+        if (players[i].status === 'active' && deck.length > 0) {
+          players[i].cutCard = deck.shift();
+        }
+      }
+
+      transaction.update(tableRef, {
+        deck,
+        muck,
+        players,
+        phase: 'CUT_FOR_DEALER',
+        pot: 0,
+        pots: [],
+        currentBet: 0,
+        turnDeadline: null, // No time limit for cut phase
+        cutForDealerComplete: false,
+        lastUpdated: serverTimestamp(),
+      });
     });
   }
 
   /**
    * Resolve the "Cut for Dealer" phase
    * Determines the winner (highest card) and sets them as dealer
-   * Then AUTOMATICALLY starts the first hand (deals cards and transitions to BETTING_1)
+   * Uses a transaction to read fresh data and prevent race conditions with concurrent joins
    * @param {string} tableId - The table ID
-   * @param {Object} tableData - Current table data
+   * @param {Object} _tableData - Current table data (unused, we read fresh data in transaction)
    * @returns {Promise<number>} - The seat index of the winning dealer
    */
-  static async resolveCutForDealer(tableId, tableData) {
-    const players = tableData.players;
-    let winnerIndex = -1;
-    let winnerCard = null;
+  static async resolveCutForDealer(tableId, _tableData) {
+    if (!db) {
+      throw new Error('Firestore not initialized');
+    }
 
-    // Find the player with the highest card (Ace > King)
-    // Tie-breaker: Spades > Hearts > Diamonds > Clubs
-    for (let i = 0; i < players.length; i++) {
-      const player = players[i];
-      if (player.cutCard && player.status !== 'sitting_out') {
-        if (!winnerCard || GameService.compareDealerCutCards(player.cutCard, winnerCard) > 0) {
-          winnerCard = player.cutCard;
-          winnerIndex = i;
+    const tableRef = doc(db, TABLES_COLLECTION, tableId);
+
+    return await runTransaction(db, async (transaction) => {
+      // Read fresh data inside transaction to avoid race conditions
+      const tableDoc = await transaction.get(tableRef);
+      if (!tableDoc.exists()) {
+        throw new Error('Table not found');
+      }
+
+      const tableData = tableDoc.data();
+      const players = tableData.players;
+      let winnerIndex = -1;
+      let winnerCard = null;
+
+      // Find the player with the highest card
+      for (let i = 0; i < players.length; i++) {
+        const player = players[i];
+        if (player.cutCard && player.status !== 'sitting_out') {
+          if (!winnerCard || GameService.compareDealerCutCards(player.cutCard, winnerCard) > 0) {
+            winnerCard = player.cutCard;
+            winnerIndex = i;
+          }
         }
       }
-    }
 
-    if (winnerIndex === -1) {
-      // Fallback: first active player
-      winnerIndex = players.findIndex(p => p.status === 'active');
-      if (winnerIndex === -1) winnerIndex = 0;
-    }
+      if (winnerIndex === -1) {
+        // Fallback: first active player
+        winnerIndex = players.findIndex(p => p.status === 'active');
+        if (winnerIndex === -1) winnerIndex = 0;
+      }
 
-    // Find active player indices and determine dealer position
-    const activeIndices = players
-      .map((p, i) => (p.status === 'active' ? i : -1))
-      .filter((i) => i !== -1);
+      // Find active player indices and determine dealer position
+      const activeIndices = players
+        .map((p, i) => (p.status === 'active' ? i : -1))
+        .filter((i) => i !== -1);
 
-    const dealerActivePosition = activeIndices.indexOf(winnerIndex);
-    const finalDealerPosition = dealerActivePosition !== -1 ? dealerActivePosition : 0;
+      const dealerActivePosition = activeIndices.indexOf(winnerIndex);
+      const finalDealerPosition = dealerActivePosition !== -1 ? dealerActivePosition : 0;
 
-    // Collect cut cards to muck
-    const cutCards = players
-      .filter(p => p.cutCard)
-      .map(p => p.cutCard);
+      // Collect cut cards to muck
+      const cutCards = players
+        .filter(p => p.cutCard)
+        .map(p => p.cutCard);
 
-    // Clear cut cards from players and prepare for dealing
-    const updatedPlayers = players.map(p => ({
-      ...p,
-      cutCard: null,
-    }));
+      // Clear cut cards from players
+      const updatedPlayers = players.map(p => ({
+        ...p,
+        cutCard: null,
+      }));
 
-    // First, update the table with the dealer determination
-    await GameService.updateTable(tableId, {
-      players: updatedPlayers,
-      muck: [...(tableData.muck || []), ...cutCards],
-      dealerIndex: finalDealerPosition,
-      cutForDealerWinner: winnerIndex,
-      cutForDealerComplete: true,
-      hasHadFirstDeal: true, // Mark that dealer has been determined
-      phase: 'IDLE', // Briefly set to IDLE before dealing
+      transaction.update(tableRef, {
+        players: updatedPlayers,
+        muck: [...(tableData.muck || []), ...cutCards],
+        dealerIndex: finalDealerPosition,
+        cutForDealerWinner: winnerIndex,
+        cutForDealerComplete: true,
+        phase: 'IDLE', // Return to idle for deal
+        lastUpdated: serverTimestamp(),
+      });
+
+      return winnerIndex;
     });
-
-    // AUTOMATIC START: Immediately deal cards for the first real hand
-    // Small delay to allow UI to show the dealer determination
-    const updatedTableData = {
-      ...tableData,
-      players: updatedPlayers,
-      muck: [...(tableData.muck || []), ...cutCards],
-      dealerIndex: finalDealerPosition,
-      deck: tableData.deck,
-    };
-
-    // Auto-deal the first hand after a brief moment
-    await new Promise(resolve => setTimeout(resolve, 800));
-    await GameService.dealCards(tableId, updatedTableData);
-
-    return winnerIndex;
   }
 
   // ============================================
@@ -1266,126 +1314,317 @@ export class GameService {
 
   /**
    * Deal cards to all players and start the game
-   * Handles both standard (>2 players) and heads-up (2 players) positions
+   * Uses a transaction to read fresh data and prevent race conditions with concurrent joins
    * @param {string} tableId - The table ID
-   * @param {Object} tableData - Current table data
+   * @param {Object} _tableData - Current table data (unused, we read fresh data in transaction)
    * @returns {Promise<void>}
    */
-  static async dealCards(tableId, tableData) {
-    let deck = [...tableData.deck];
-    let muck = [...(tableData.muck || [])];
-    const minBet = tableData.minBet || DEFAULT_MIN_BET;
-    const smallBlind = Math.floor(minBet / 2);
-    const bigBlind = minBet;
-
-    // Filter players with chips and reset their state
-    const activePlayers = tableData.players.filter((p) => p.chips > 0);
-    if (activePlayers.length < 2) {
-      throw new Error('Need at least 2 players with chips to start');
+  static async dealCards(tableId, _tableData) {
+    if (!db) {
+      throw new Error('Firestore not initialized');
     }
 
-    const players = tableData.players.map((player) => ({
-      ...player,
-      hand: [],
-      status: player.chips > 0 ? 'active' : 'sitting_out',
-      cardsToDiscard: [],
-      currentRoundBet: 0,
-      totalContribution: 0, // Reset for new hand
-      hasActedThisRound: false,
-      lastAction: null, // Clear any previous action text
-      handRevealed: false, // Track if hand is revealed at showdown
-    }));
+    const tableRef = doc(db, TABLES_COLLECTION, tableId);
 
-    // Calculate cards needed for initial deal
-    const cardsNeeded = CARDS_PER_HAND * activePlayers.length;
+    await runTransaction(db, async (transaction) => {
+      // Read fresh data inside transaction to avoid race conditions
+      const tableDoc = await transaction.get(tableRef);
+      if (!tableDoc.exists()) {
+        throw new Error('Table not found');
+      }
 
-    // Reshuffle muck into deck if needed
-    const reshuffled = GameService.reshuffleMuckIfNeeded(deck, muck, cardsNeeded);
-    deck = reshuffled.deck;
-    muck = reshuffled.muck;
+      const tableData = tableDoc.data();
+      let deck = [...tableData.deck];
+      let muck = [...(tableData.muck || [])];
+      const minBet = tableData.minBet || DEFAULT_MIN_BET;
+      const smallBlind = Math.floor(minBet / 2);
+      const bigBlind = minBet;
 
-    // Deal 5 cards to each active player
-    for (let i = 0; i < CARDS_PER_HAND; i++) {
-      for (let j = 0; j < players.length; j++) {
-        if (players[j].status === 'active' && deck.length > 0) {
-          players[j].hand.push(deck.shift());
+      // Filter players with chips and reset their state
+      const activePlayers = tableData.players.filter((p) => p.chips > 0);
+      if (activePlayers.length < 2) {
+        throw new Error('Need at least 2 players with chips to start');
+      }
+
+      const players = tableData.players.map((player) => ({
+        ...player,
+        hand: [],
+        status: player.chips > 0 ? 'active' : 'sitting_out',
+        cardsToDiscard: [],
+        currentRoundBet: 0,
+        totalContribution: 0, // Reset for new hand
+        hasActedThisRound: false,
+        lastAction: null, // Clear any previous action text
+      }));
+
+      // Calculate cards needed for initial deal
+      const cardsNeeded = CARDS_PER_HAND * activePlayers.length;
+
+      // Reshuffle muck into deck if needed
+      const reshuffled = GameService.reshuffleMuckIfNeeded(deck, muck, cardsNeeded);
+      deck = reshuffled.deck;
+      muck = reshuffled.muck;
+
+      // Deal 5 cards to each active player
+      for (let i = 0; i < CARDS_PER_HAND; i++) {
+        for (let j = 0; j < players.length; j++) {
+          if (players[j].status === 'active' && deck.length > 0) {
+            players[j].hand.push(deck.shift());
+          }
         }
       }
+
+      // Find active player indices (players who can participate in the hand)
+      const activeIndices = players
+        .map((p, i) => (p.status === 'active' ? i : -1))
+        .filter((i) => i !== -1);
+
+      // Determine dealer position within active players, then convert to actual seat index
+      const dealerActivePosition = (tableData.dealerIndex || 0) % activeIndices.length;
+      const dealerSeatIndex = activeIndices[dealerActivePosition];
+
+      // Small blind is next active player after dealer
+      const sbActivePosition = (dealerActivePosition + 1) % activeIndices.length;
+      const sbSeatIndex = activeIndices[sbActivePosition];
+
+      // Big blind is next active player after small blind
+      const bbActivePosition = (dealerActivePosition + 2) % activeIndices.length;
+      const bbSeatIndex = activeIndices[bbActivePosition];
+
+      // For legacy compatibility, use variable names matching existing code
+      const sbActiveIndex = sbSeatIndex;
+      const bbActiveIndex = bbSeatIndex;
+
+      let pot = 0;
+
+      // Post small blind
+      const sbAmount = Math.min(smallBlind, players[sbActiveIndex].chips);
+      players[sbActiveIndex].chips -= sbAmount;
+      players[sbActiveIndex].currentRoundBet = sbAmount;
+      players[sbActiveIndex].totalContribution = sbAmount;
+      pot += sbAmount;
+
+      // Post big blind
+      const bbAmount = Math.min(bigBlind, players[bbActiveIndex].chips);
+      players[bbActiveIndex].chips -= bbAmount;
+      players[bbActiveIndex].currentRoundBet = bbAmount;
+      players[bbActiveIndex].totalContribution = bbAmount;
+      pot += bbAmount;
+
+      // Action starts with player after big blind (UTG)
+      const utgActivePosition = (dealerActivePosition + 3) % activeIndices.length;
+      const utgActiveIndex = activeIndices[utgActivePosition];
+
+      transaction.update(tableRef, {
+        deck,
+        muck, // Include muck in update (cleared or updated from reshuffle)
+        players,
+        pot,
+        currentBet: bigBlind,
+        phase: 'BETTING_1',
+        activePlayerIndex: utgActiveIndex,
+        // Store actual seat indices (full players array indices) for UI
+        dealerIndex: dealerActivePosition, // Keep as position for rotation in startNextHand
+        dealerSeatIndex: dealerSeatIndex,
+        smallBlindSeatIndex: sbSeatIndex,
+        bigBlindSeatIndex: bbSeatIndex,
+        turnDeadline: GameService.calculateTurnDeadline(),
+        hasHadFirstDeal: true, // Mark that dealer has been determined
+        cutForDealerComplete: null, // Clear cut for dealer state
+        cutForDealerWinner: null,
+        lastUpdated: serverTimestamp(),
+      });
+    });
+  }
+
+  /**
+   * Deal cards for Texas Hold'em - 2 hole cards to each player
+   * Uses a transaction to read fresh data and prevent race conditions with concurrent joins
+   * @param {string} tableId - The table ID
+   * @param {Object} _tableData - Current table data (unused, we read fresh data in transaction)
+   * @returns {Promise<void>}
+   */
+  static async dealHoldemCards(tableId, _tableData) {
+    if (!db) {
+      throw new Error('Firestore not initialized');
     }
 
-    // Find active player indices (players who can participate in the hand)
+    const tableRef = doc(db, TABLES_COLLECTION, tableId);
+
+    await runTransaction(db, async (transaction) => {
+      // Read fresh data inside transaction to avoid race conditions
+      const tableDoc = await transaction.get(tableRef);
+      if (!tableDoc.exists()) {
+        throw new Error('Table not found');
+      }
+
+      const tableData = tableDoc.data();
+      let deck = [...tableData.deck];
+      let muck = [...(tableData.muck || [])];
+      const minBet = tableData.minBet || DEFAULT_MIN_BET;
+      const smallBlind = Math.floor(minBet / 2);
+      const bigBlind = minBet;
+
+      // Filter players with chips and reset their state
+      const activePlayers = tableData.players.filter((p) => p.chips > 0);
+      if (activePlayers.length < 2) {
+        throw new Error('Need at least 2 players with chips to start');
+      }
+
+      const players = tableData.players.map((player) => ({
+        ...player,
+        hand: [],
+        status: player.chips > 0 ? 'active' : 'sitting_out',
+        cardsToDiscard: [],
+        currentRoundBet: 0,
+        totalContribution: 0,
+        hasActedThisRound: false,
+        lastAction: null,
+      }));
+
+      // Calculate cards needed for Hold'em (2 per player + 5 community)
+      const cardsNeeded = HOLDEM_HOLE_CARDS * activePlayers.length + 5;
+
+      // Reshuffle muck into deck if needed
+      const reshuffled = GameService.reshuffleMuckIfNeeded(deck, muck, cardsNeeded);
+      deck = reshuffled.deck;
+      muck = reshuffled.muck;
+
+      // Deal 2 hole cards to each active player
+      for (let i = 0; i < HOLDEM_HOLE_CARDS; i++) {
+        for (let j = 0; j < players.length; j++) {
+          if (players[j].status === 'active' && deck.length > 0) {
+            players[j].hand.push(deck.shift());
+          }
+        }
+      }
+
+      // Find active player indices
+      const activeIndices = players
+        .map((p, i) => (p.status === 'active' ? i : -1))
+        .filter((i) => i !== -1);
+
+      // Determine dealer position
+      const dealerActivePosition = (tableData.dealerIndex || 0) % activeIndices.length;
+      const dealerSeatIndex = activeIndices[dealerActivePosition];
+
+      // Small blind is next active player after dealer
+      const sbActivePosition = (dealerActivePosition + 1) % activeIndices.length;
+      const sbSeatIndex = activeIndices[sbActivePosition];
+
+      // Big blind is next active player after small blind
+      const bbActivePosition = (dealerActivePosition + 2) % activeIndices.length;
+      const bbSeatIndex = activeIndices[bbActivePosition];
+
+      const sbActiveIndex = sbSeatIndex;
+      const bbActiveIndex = bbSeatIndex;
+
+      let pot = 0;
+
+      // Post small blind
+      const sbAmount = Math.min(smallBlind, players[sbActiveIndex].chips);
+      players[sbActiveIndex].chips -= sbAmount;
+      players[sbActiveIndex].currentRoundBet = sbAmount;
+      players[sbActiveIndex].totalContribution = sbAmount;
+      pot += sbAmount;
+
+      // Post big blind
+      const bbAmount = Math.min(bigBlind, players[bbActiveIndex].chips);
+      players[bbActiveIndex].chips -= bbAmount;
+      players[bbActiveIndex].currentRoundBet = bbAmount;
+      players[bbActiveIndex].totalContribution = bbAmount;
+      pot += bbAmount;
+
+      // Action starts with player after big blind (UTG)
+      const utgActivePosition = (dealerActivePosition + 3) % activeIndices.length;
+      const utgActiveIndex = activeIndices[utgActivePosition];
+
+      transaction.update(tableRef, {
+        deck,
+        muck,
+        players,
+        pot,
+        currentBet: bigBlind,
+        phase: 'PREFLOP',
+        activePlayerIndex: utgActiveIndex,
+        dealerIndex: dealerActivePosition,
+        dealerSeatIndex: dealerSeatIndex,
+        smallBlindSeatIndex: sbSeatIndex,
+        bigBlindSeatIndex: bbSeatIndex,
+        communityCards: [], // Initialize empty community cards
+        turnDeadline: GameService.calculateTurnDeadline(),
+        hasHadFirstDeal: true,
+        cutForDealerComplete: null,
+        cutForDealerWinner: null,
+        lastUpdated: serverTimestamp(),
+      });
+    });
+  }
+
+  /**
+   * Deal community cards for Hold'em (flop, turn, river)
+   * @param {string} tableId - The table ID
+   * @param {Object} tableData - Current table data
+   * @param {string} street - 'FLOP', 'TURN', or 'RIVER'
+   * @returns {Promise<void>}
+   */
+  static async dealCommunityCards(tableId, tableData, street) {
+    let deck = [...tableData.deck];
+    let muck = [...(tableData.muck || [])];
+    const communityCards = [...(tableData.communityCards || [])];
+
+    // Burn a card before dealing community cards
+    if (deck.length > 0) {
+      muck.push(deck.shift());
+    }
+
+    // Deal appropriate number of cards based on street
+    let cardsToDeal = 0;
+    if (street === 'FLOP') {
+      cardsToDeal = 3;
+    } else if (street === 'TURN' || street === 'RIVER') {
+      cardsToDeal = 1;
+    }
+
+    for (let i = 0; i < cardsToDeal && deck.length > 0; i++) {
+      communityCards.push(deck.shift());
+    }
+
+    // Reset betting for new street
+    const players = tableData.players.map((p) => ({
+      ...p,
+      currentRoundBet: 0,
+      hasActedThisRound: false,
+    }));
+
+    // Find first active player after dealer button for post-flop betting
     const activeIndices = players
-      .map((p, i) => (p.status === 'active' ? i : -1))
+      .map((p, i) => (p.status === 'active' && p.chips > 0 ? i : -1))
       .filter((i) => i !== -1);
 
-    const numActivePlayers = activeIndices.length;
-    const isHeadsUp = numActivePlayers === 2;
-
-    // Determine dealer position within active players, then convert to actual seat index
-    const dealerActivePosition = (tableData.dealerIndex || 0) % activeIndices.length;
-    const dealerSeatIndex = activeIndices[dealerActivePosition];
-
-    let sbSeatIndex, bbSeatIndex, firstToActIndex;
-
-    if (isHeadsUp) {
-      // HEADS-UP EXCEPTION (2 Players):
-      // - Dealer posts Small Blind
-      // - Opponent posts Big Blind
-      // - Pre-draw action starts with Dealer (SB)
-      sbSeatIndex = dealerSeatIndex; // Dealer is SB in heads-up
-      const opponentActivePosition = (dealerActivePosition + 1) % activeIndices.length;
-      bbSeatIndex = activeIndices[opponentActivePosition]; // Opponent is BB in heads-up
-      firstToActIndex = dealerSeatIndex; // Dealer (SB) acts first pre-draw in heads-up
-    } else {
-      // STANDARD RULE (>2 Players):
-      // - SB is next after dealer
-      // - BB is next after SB
-      // - Pre-draw action starts at (dealer + 3) - Under the Gun
-      const sbActivePosition = (dealerActivePosition + 1) % activeIndices.length;
-      sbSeatIndex = activeIndices[sbActivePosition];
-
-      const bbActivePosition = (dealerActivePosition + 2) % activeIndices.length;
-      bbSeatIndex = activeIndices[bbActivePosition];
-
-      // UTG is (dealer + 3) for pre-draw
-      const utgActivePosition = (dealerActivePosition + 3) % activeIndices.length;
-      firstToActIndex = activeIndices[utgActivePosition];
+    // Post-flop action starts with first active player after dealer
+    const dealerSeatIndex = tableData.dealerSeatIndex || 0;
+    let firstToAct = -1;
+    for (let i = 1; i <= players.length; i++) {
+      const idx = (dealerSeatIndex + i) % players.length;
+      if (players[idx].status === 'active' && players[idx].chips > 0) {
+        firstToAct = idx;
+        break;
+      }
     }
-
-    let pot = 0;
-
-    // Post small blind
-    const sbAmount = Math.min(smallBlind, players[sbSeatIndex].chips);
-    players[sbSeatIndex].chips -= sbAmount;
-    players[sbSeatIndex].currentRoundBet = sbAmount;
-    players[sbSeatIndex].totalContribution = sbAmount;
-    pot += sbAmount;
-
-    // Post big blind
-    const bbAmount = Math.min(bigBlind, players[bbSeatIndex].chips);
-    players[bbSeatIndex].chips -= bbAmount;
-    players[bbSeatIndex].currentRoundBet = bbAmount;
-    players[bbSeatIndex].totalContribution = bbAmount;
-    pot += bbAmount;
+    if (firstToAct === -1 && activeIndices.length > 0) {
+      firstToAct = activeIndices[0];
+    }
 
     await GameService.updateTable(tableId, {
       deck,
-      muck, // Include muck in update (cleared or updated from reshuffle)
+      muck,
       players,
-      pot,
-      currentBet: bigBlind,
-      phase: 'BETTING_1',
-      activePlayerIndex: firstToActIndex,
-      // Store actual seat indices (full players array indices) for UI
-      dealerIndex: dealerActivePosition, // Keep as position for rotation in startNextHand
-      dealerSeatIndex: dealerSeatIndex,
-      smallBlindSeatIndex: sbSeatIndex,
-      bigBlindSeatIndex: bbSeatIndex,
-      isHeadsUp: isHeadsUp, // Track if this is a heads-up hand
+      communityCards,
+      currentBet: 0,
+      phase: street,
+      activePlayerIndex: firstToAct >= 0 ? firstToAct : 0,
       turnDeadline: GameService.calculateTurnDeadline(),
-      hasHadFirstDeal: true, // Mark that dealer has been determined
-      cutForDealerComplete: null, // Clear cut for dealer state
-      cutForDealerWinner: null,
     });
   }
 
@@ -1710,7 +1949,17 @@ export class GameService {
     // Check if betting round is complete
     const roundComplete = GameService.isBettingRoundComplete(players, newCurrentBet);
 
-    const phaseAfterBet = {
+    // Determine game type from config
+    const gameType = tableData.config?.gameType || 'lowball_27';
+    const isHoldem = gameType === 'holdem';
+
+    // Phase transitions depend on game type
+    const phaseAfterBet = isHoldem ? {
+      PREFLOP: 'FLOP',
+      FLOP: 'TURN',
+      TURN: 'RIVER',
+      RIVER: 'SHOWDOWN',
+    } : {
       BETTING_1: 'DRAW_1',
       BETTING_2: 'DRAW_2',
       BETTING_3: 'DRAW_3',
@@ -1731,12 +1980,12 @@ export class GameService {
       });
 
       // Find first active player for next phase
-      // For draw phases, include all-in players since they must still draw
       const nextPhase = phaseAfterBet[tableData.phase];
       const isShowdown = nextPhase === 'SHOWDOWN';
-      const isDrawPhase = nextPhase.startsWith('DRAW_');
+      const isDrawPhase = !isHoldem && nextPhase?.startsWith('DRAW_');
+      const isCommunityCardPhase = isHoldem && ['FLOP', 'TURN', 'RIVER'].includes(nextPhase);
 
-      // For draw phases, find first player who can draw (active or all-in)
+      // For draw phases (Lowball), include all-in players since they must still draw
       // For betting phases, only active players with chips can act
       let activeIndices;
       if (isDrawPhase) {
@@ -1757,7 +2006,8 @@ export class GameService {
       let updatedActivityLog = activityLog;
 
       if (isShowdown) {
-        showdownResult = calculateShowdownResult(players, pot);
+        const communityCards = tableData.communityCards || [];
+        showdownResult = calculateShowdownResult(players, pot, gameType, communityCards);
 
         // Award pot to winner(s)
         updatedPlayers = players.map(p => {
@@ -1785,6 +2035,12 @@ export class GameService {
         }
       }
 
+      // For Hold'em community card phases, deal the cards
+      if (isCommunityCardPhase) {
+        await GameService.dealCommunityCards(tableId, { ...tableData, players }, nextPhase);
+        return { success: true, action, actionDescription };
+      }
+
       await GameService.updateTable(tableId, {
         players: updatedPlayers,
         pot: updatedPot,
@@ -1806,15 +2062,22 @@ export class GameService {
         const shouldComplete = GameService.isBettingRoundComplete(players, newCurrentBet);
         if (shouldComplete) {
           // Round is complete, advance to next phase
-          const phaseAfterBet = {
+          // Use game type-specific phase transitions
+          const phaseAfterBetInner = isHoldem ? {
+            PREFLOP: 'FLOP',
+            FLOP: 'TURN',
+            TURN: 'RIVER',
+            RIVER: 'SHOWDOWN',
+          } : {
             BETTING_1: 'DRAW_1',
             BETTING_2: 'DRAW_2',
             BETTING_3: 'DRAW_3',
             BETTING_4: 'SHOWDOWN',
           };
-          const nextPhase = phaseAfterBet[tableData.phase];
+          const nextPhase = phaseAfterBetInner[tableData.phase];
           const isShowdown = nextPhase === 'SHOWDOWN';
-          const isDrawPhase = nextPhase?.startsWith('DRAW_');
+          const isDrawPhase = !isHoldem && nextPhase?.startsWith('DRAW_');
+          const isCommunityCardPhase = isHoldem && ['FLOP', 'TURN', 'RIVER'].includes(nextPhase);
 
           // Find first player for next phase
           let activeIndices;
@@ -1835,7 +2098,8 @@ export class GameService {
           let updatedActivityLog = activityLog;
 
           if (isShowdown) {
-            showdownResult = calculateShowdownResult(players, pot);
+            const communityCards = tableData.communityCards || [];
+            showdownResult = calculateShowdownResult(players, pot, gameType, communityCards);
 
             // Award pot to winner(s)
             updatedPlayers = players.map(p => {
@@ -1861,6 +2125,12 @@ export class GameService {
                 timestamp: Date.now(),
               }];
             }
+          }
+
+          // For Hold'em community card phases, deal the cards
+          if (isCommunityCardPhase) {
+            await GameService.dealCommunityCards(tableId, { ...tableData, players }, nextPhase);
+            return { success: true, action, actionDescription };
           }
 
           await GameService.updateTable(tableId, {
@@ -1947,7 +2217,9 @@ export class GameService {
 
     const phase = tableData.phase;
     const isDrawPhase = phase?.startsWith('DRAW_');
-    const isBettingPhase = phase?.startsWith('BETTING_');
+    // Include both Lowball betting phases and Hold'em phases
+    const isBettingPhase = phase?.startsWith('BETTING_') ||
+                           ['PREFLOP', 'FLOP', 'TURN', 'RIVER'].includes(phase);
 
     if (isDrawPhase) {
       // Auto stand pat (discard nothing) in draw phases
@@ -2188,44 +2460,80 @@ export class GameService {
 
   /**
    * Start a new hand (reset for next round)
+   * Uses a transaction to read fresh data and prevent race conditions
+   * Also auto-promotes waiting railbirds after the phase becomes IDLE
    * @param {string} tableId - The table ID
-   * @param {Object} tableData - Current table data
+   * @param {Object} _tableData - Current table data (unused, we read fresh data in transaction)
    * @returns {Promise<void>}
    */
-  static async startNextHand(tableId, tableData) {
-    const players = tableData.players.map((player) => ({
-      ...player,
-      hand: [],
-      status: player.chips > 0 ? 'active' : 'sitting_out',
-      cardsToDiscard: [],
-      currentRoundBet: 0,
-      totalContribution: 0, // Reset for new hand
-      hasActedThisRound: false,
-      lastAction: null, // Clear action text for new hand
-    }));
+  static async startNextHand(tableId, _tableData) {
+    if (!db) {
+      throw new Error('Firestore not initialized');
+    }
 
-    // Move dealer button - dealerIndex is a position among active players
-    const activePlayerCount = players.filter((p) => p.status === 'active').length;
-    const newDealerIndex = ((tableData.dealerIndex || 0) + 1) % Math.max(activePlayerCount, 1);
+    const tableRef = doc(db, TABLES_COLLECTION, tableId);
 
-    await GameService.updateTable(tableId, {
-      phase: 'IDLE',
-      deck: GameService.createShuffledDeck(),
-      muck: [], // Clear muck for new hand
-      pot: 0,
-      pots: [], // Clear side pots
-      currentBet: 0,
-      players,
-      activePlayerIndex: 0,
-      dealerIndex: newDealerIndex,
-      // Clear seat indices - will be recalculated when dealing
-      dealerSeatIndex: null,
-      smallBlindSeatIndex: null,
-      bigBlindSeatIndex: null,
-      // Clear showdown result
-      showdownResult: null,
-      turnDeadline: null,
+    // Use a transaction to read fresh data and prevent race conditions
+    const freshTableData = await runTransaction(db, async (transaction) => {
+      const tableDoc = await transaction.get(tableRef);
+      if (!tableDoc.exists()) {
+        throw new Error('Table not found');
+      }
+
+      const tableData = tableDoc.data();
+      const players = tableData.players.map((player) => ({
+        ...player,
+        hand: [],
+        status: player.chips > 0 ? 'active' : 'sitting_out',
+        cardsToDiscard: [],
+        currentRoundBet: 0,
+        totalContribution: 0, // Reset for new hand
+        hasActedThisRound: false,
+        lastAction: null, // Clear action text for new hand
+      }));
+
+      // Move dealer button - dealerIndex is a position among active players
+      const activePlayerCount = players.filter((p) => p.status === 'active').length;
+      const newDealerIndex = ((tableData.dealerIndex || 0) + 1) % Math.max(activePlayerCount, 1);
+
+      transaction.update(tableRef, {
+        phase: 'IDLE',
+        deck: GameService.createShuffledDeck(),
+        muck: [], // Clear muck for new hand
+        pot: 0,
+        pots: [], // Clear side pots
+        currentBet: 0,
+        players,
+        activePlayerIndex: 0,
+        dealerIndex: newDealerIndex,
+        // Clear seat indices - will be recalculated when dealing
+        dealerSeatIndex: null,
+        smallBlindSeatIndex: null,
+        bigBlindSeatIndex: null,
+        // Clear showdown result
+        showdownResult: null,
+        turnDeadline: null,
+        // Clear community cards for Hold'em
+        communityCards: [],
+        lastUpdated: serverTimestamp(),
+      });
+
+      // Return the updated data for autoPromoteRailbirds
+      return {
+        ...tableData,
+        players,
+        phase: 'IDLE',
+        railbirds: tableData.railbirds || [],
+      };
     });
+
+    // Auto-promote any waiting railbirds now that the game is IDLE
+    try {
+      await GameService.autoPromoteRailbirds(tableId, freshTableData);
+    } catch (err) {
+      // Log but don't fail the whole operation if promotion fails
+      console.error('Error auto-promoting railbirds:', err);
+    }
   }
 
   /**

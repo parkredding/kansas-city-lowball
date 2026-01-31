@@ -1,4 +1,5 @@
 import { LowballBotStrategy } from './LowballBotStrategy';
+import { HoldemBotStrategy } from './HoldemBotStrategy';
 
 /**
  * Factory to get the appropriate bot strategy based on game type
@@ -8,9 +9,7 @@ export function getBotStrategy(gameType) {
     case 'lowball_27':
       return new LowballBotStrategy();
     case 'holdem':
-      // Placeholder for future Texas Hold'em implementation
-      // return new HoldemBotStrategy();
-      return new LowballBotStrategy(); // Fallback for now
+      return new HoldemBotStrategy();
     case 'plo':
       // Placeholder for future PLO implementation
       // return new PLOBotStrategy();

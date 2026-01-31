@@ -17,6 +17,7 @@ import { useBotOrchestrator } from '../game/ai/useBotOrchestrator';
 import { useTurnNotification, playNotificationSound } from '../hooks/useTurnNotification';
 import { SoundManager } from '../audio/SoundManager';
 import { MuckPile, DiscardAnimationOverlay, OpponentDiscardAnimation, useDiscardAnimation } from '../components/AnimatedCard';
+import { CommunityCards } from '../components/CommunityCards';
 
 /**
  * Error Boundary component to catch rendering errors and prevent white screens
@@ -1193,6 +1194,9 @@ function GameView() {
     resolveCutForDealer,
     // Show/Muck
     revealHand,
+    // Hold'em specific
+    isHoldem,
+    gameType,
   } = useGame();
 
   const [selectedCardIndices, setSelectedCardIndices] = useState(new Set());
@@ -1980,12 +1984,33 @@ function GameView() {
                     animate={{ scale: 1, opacity: 1 }}
                     transition={{ type: 'spring', stiffness: 200, damping: 20 }}
                   >
-                    <PotDisplayWithContribution
-                      totalPot={tableData.pot}
-                      players={tableData?.players || []}
-                      isBettingPhase={isBettingPhase}
-                      playerContribution={currentPlayer?.totalContribution || 0}
-                      size="lg"
+                    <div className="flex flex-col items-center gap-3">
+                      {/* Community Cards for Hold'em */}
+                      {isHoldem && tableData?.communityCards?.length > 0 && (
+                        <CommunityCards
+                          cards={tableData.communityCards}
+                          phase={tableData.phase}
+                        />
+                      )}
+                      <PotDisplayWithContribution
+                        totalPot={tableData.pot}
+                        players={tableData?.players || []}
+                        isBettingPhase={isBettingPhase}
+                        playerContribution={currentPlayer?.totalContribution || 0}
+                        size="lg"
+                      />
+                    </div>
+                  </motion.div>
+                ) : isHoldem && tableData?.communityCards?.length > 0 ? (
+                  <motion.div
+                    className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 z-30"
+                    initial={{ scale: 0, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ type: 'spring', stiffness: 200, damping: 20 }}
+                  >
+                    <CommunityCards
+                      cards={tableData.communityCards}
+                      phase={tableData.phase}
                     />
                   </motion.div>
                 ) : null}
