@@ -2849,7 +2849,8 @@ export class GameService {
       }
 
       // Reset remaining players for new hand
-      const players = playersStaying.map((player) => ({
+      // Destructure pendingSitOut to remove it (Firestore doesn't allow undefined values)
+      const players = playersStaying.map(({ pendingSitOut, ...player }) => ({
         ...player,
         hand: [],
         status: player.chips > 0 ? 'active' : 'sitting_out',
@@ -2858,7 +2859,6 @@ export class GameService {
         totalContribution: 0, // Reset for new hand
         hasActedThisRound: false,
         lastAction: null, // Clear action text for new hand
-        pendingSitOut: undefined, // Clear any lingering flag
       }));
 
       // Move dealer button - dealerIndex is a position among active players
