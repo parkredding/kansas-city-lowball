@@ -1629,6 +1629,33 @@ export class GameService {
   }
 
   /**
+   * Get the first player to act after the dealer (for draw or post-draw phases)
+   * This is the first active player clockwise from the dealer button
+   * @param {Array} players - Array of player objects
+   * @param {Object} tableData - Table data with dealer position
+   * @param {boolean} includeAllIn - Whether to include all-in players (true for draw phases)
+   * @returns {number} - Seat index of first player to act
+   */
+  static getFirstToActAfterDealer(players, tableData, includeAllIn = false) {
+    // Get indices of players who can participate
+    const activeIndices = players
+      .map((p, i) => {
+        if (includeAllIn) {
+          return (p.status === 'active' || p.status === 'all-in') ? i : -1;
+        }
+        return (p.status === 'active' && p.chips > 0) ? i : -1;
+      })
+      .filter((i) => i !== -1);
+
+    if (activeIndices.length === 0) return 0;
+
+    const dealerActivePosition = tableData.dealerIndex || 0;
+    // First to act is the player after the dealer (SB position in standard play)
+    const firstActivePosition = (dealerActivePosition + 1) % activeIndices.length;
+    return activeIndices[firstActivePosition];
+  }
+
+  /**
    * Get the first player to act in post-draw betting rounds
    * Handles heads-up exception where BB acts first post-draw
    * @param {Array} players - Array of player objects
@@ -2041,13 +2068,24 @@ export class GameService {
         return { success: true, action, actionDescription };
       }
 
+      // Determine first player for next phase based on phase type
+      let firstToAct;
+      if (isDrawPhase) {
+        // Draw phases: start with first player after dealer (includes all-in players)
+        firstToAct = GameService.getFirstToActAfterDealer(players, tableData, true);
+      } else if (activeIndices.length > 0) {
+        firstToAct = activeIndices[0];
+      } else {
+        firstToAct = 0;
+      }
+
       await GameService.updateTable(tableId, {
         players: updatedPlayers,
         pot: updatedPot,
         pots: isShowdown ? [] : sidePots,
         currentBet: 0,
         phase: nextPhase,
-        activePlayerIndex: activeIndices.length > 0 ? activeIndices[0] : 0,
+        activePlayerIndex: firstToAct,
         turnDeadline: isShowdown ? null : GameService.calculateTurnDeadline(),
         chatLog: updatedActivityLog,
         showdownResult: isShowdown ? showdownResult : null,
@@ -2133,13 +2171,24 @@ export class GameService {
             return { success: true, action, actionDescription };
           }
 
+          // Determine first player for next phase based on phase type
+          let firstToActInner;
+          if (isDrawPhase) {
+            // Draw phases: start with first player after dealer (includes all-in players)
+            firstToActInner = GameService.getFirstToActAfterDealer(players, tableData, true);
+          } else if (activeIndices.length > 0) {
+            firstToActInner = activeIndices[0];
+          } else {
+            firstToActInner = 0;
+          }
+
           await GameService.updateTable(tableId, {
             players: updatedPlayers,
             pot: updatedPot,
             pots: isShowdown ? [] : calculateSidePots(players),
             currentBet: 0,
             phase: nextPhase,
-            activePlayerIndex: activeIndices.length > 0 ? activeIndices[0] : 0,
+            activePlayerIndex: firstToActInner,
             turnDeadline: isShowdown ? null : GameService.calculateTurnDeadline(),
             chatLog: updatedActivityLog,
             showdownResult: isShowdown ? showdownResult : null,
@@ -2426,12 +2475,9 @@ export class GameService {
           // All-in players still get to draw cards
           updates.phase = phaseAfterSkippedBetting;
           updates.turnDeadline = GameService.calculateTurnDeadline();
-          
-          // Find first player in hand (active or all-in) to act in the draw phase
-          const drawActiveIndices = players
-            .map((p, i) => (p.status === 'active' || p.status === 'all-in' ? i : -1))
-            .filter((i) => i !== -1);
-          updates.activePlayerIndex = drawActiveIndices[0] || 0;
+
+          // Draw phase: start with first player after dealer (includes all-in players)
+          updates.activePlayerIndex = GameService.getFirstToActAfterDealer(players, tableData, true);
           updates.players = players;
         }
       } else {
