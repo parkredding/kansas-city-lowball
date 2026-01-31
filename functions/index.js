@@ -29,6 +29,17 @@ const TURN_TIME_SECONDS = 45;
 const GRACE_PERIOD_MS = 2000; // 2 second grace period for network latency
 
 /**
+ * Remove undefined values from an object (Firestore doesn't allow undefined)
+ * @param {Object} obj - Object to sanitize
+ * @returns {Object} - Object with undefined values removed
+ */
+function removeUndefinedValues(obj) {
+  return Object.fromEntries(
+    Object.entries(obj).filter(([_, v]) => v !== undefined)
+  );
+}
+
+/**
  * handleTimeout - Secure Cloud Function to enforce turn timeouts
  *
  * This function can be triggered by ANY authenticated player when a timer expires.
@@ -132,7 +143,8 @@ exports.handleTimeout = onCall({
       }
 
       // Perform timeout action
-      const updatedPlayers = players.map(p => ({ ...p }));
+      // Use removeUndefinedValues to prevent Firestore "undefined field value" errors
+      const updatedPlayers = players.map(p => removeUndefinedValues({ ...p }));
       const player = updatedPlayers[activePlayerIndex];
       let actionDescription = "";
       let actionTaken = "";
@@ -197,7 +209,8 @@ exports.handleTimeout = onCall({
         updates.currentBet = 0;
 
         // Reset hasActedThisRound for all players
-        updates.players = updatedPlayers.map(p => ({
+        // Use removeUndefinedValues to prevent Firestore errors
+        updates.players = updatedPlayers.map(p => removeUndefinedValues({
           ...p,
           hasActedThisRound: false,
         }));
