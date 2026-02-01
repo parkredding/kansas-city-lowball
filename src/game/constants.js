@@ -156,6 +156,89 @@ export const PRIZE_STRUCTURES = {
   SIX_HANDED: [0.50, 0.30, 0.20],     // 6 players - top 3 paid
 };
 
+// Payout structure types for tournament configuration
+export const PAYOUT_STRUCTURE_TYPES = {
+  WINNER_TAKE_ALL: 'winner_take_all',
+  STANDARD: 'standard',
+  CUSTOM: 'custom',
+};
+
+// Standard payout structures by player count
+// These are used when "Standard" payout type is selected
+export const STANDARD_PAYOUTS = {
+  2: [0.70, 0.30],           // Heads-up: 70/30
+  3: [0.50, 0.30, 0.20],     // 3-handed: 50/30/20
+  4: [0.50, 0.30, 0.20],     // 4-handed: 50/30/20
+  5: [0.45, 0.30, 0.25],     // 5-handed: 45/30/25
+  6: [0.50, 0.30, 0.20],     // 6-handed: 50/30/20 (top 3)
+};
+
+/**
+ * Get payout structure based on type and player count
+ * @param {string} payoutType - PAYOUT_STRUCTURE_TYPES value
+ * @param {number} playerCount - Number of players in tournament
+ * @param {Array<number>} customPayouts - Custom percentages (only used for CUSTOM type)
+ * @returns {Array<number>} - Array of decimal percentages
+ */
+export function getPayoutStructure(payoutType, playerCount, customPayouts = null) {
+  switch (payoutType) {
+    case PAYOUT_STRUCTURE_TYPES.WINNER_TAKE_ALL:
+      return [1.0]; // 100% to 1st place
+    case PAYOUT_STRUCTURE_TYPES.STANDARD:
+      return STANDARD_PAYOUTS[playerCount] || [1.0];
+    case PAYOUT_STRUCTURE_TYPES.CUSTOM:
+      if (customPayouts && customPayouts.length > 0) {
+        // Validate custom payouts add up to 100% (with small tolerance)
+        const total = customPayouts.reduce((sum, pct) => sum + pct, 0);
+        if (Math.abs(total - 1.0) < 0.01) {
+          return customPayouts;
+        }
+      }
+      // Fall back to winner-take-all if invalid
+      return [1.0];
+    default:
+      return getPrizeStructure(playerCount);
+  }
+}
+
+/**
+ * Parse custom payout string (e.g., "50, 30, 20") into decimal array
+ * @param {string} input - Comma-separated percentages
+ * @returns {{valid: boolean, payouts: Array<number>, error: string|null}}
+ */
+export function parseCustomPayouts(input) {
+  if (!input || typeof input !== 'string') {
+    return { valid: false, payouts: [], error: 'Please enter payout percentages' };
+  }
+
+  const parts = input.split(',').map(s => s.trim()).filter(s => s.length > 0);
+
+  if (parts.length === 0) {
+    return { valid: false, payouts: [], error: 'Please enter at least one payout percentage' };
+  }
+
+  const payouts = [];
+  for (const part of parts) {
+    const num = parseFloat(part);
+    if (isNaN(num) || num < 0 || num > 100) {
+      return { valid: false, payouts: [], error: `Invalid percentage: "${part}"` };
+    }
+    payouts.push(num / 100); // Convert to decimal
+  }
+
+  const total = payouts.reduce((sum, pct) => sum + pct, 0);
+  if (Math.abs(total - 1.0) > 0.01) {
+    const totalPercent = (total * 100).toFixed(1);
+    return {
+      valid: false,
+      payouts: [],
+      error: `Percentages must add up to 100% (currently ${totalPercent}%)`
+    };
+  }
+
+  return { valid: true, payouts, error: null };
+}
+
 /**
  * Get game-specific configuration
  * @param {string} gameType - The game type identifier

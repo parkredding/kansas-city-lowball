@@ -11,6 +11,8 @@ import BlindTimer from '../components/BlindTimer';
 import UsernameModal from '../components/UsernameModal';
 import CreateGameModal from '../components/CreateGameModal';
 import JoinTableModal from '../components/JoinTableModal';
+import VictoryModal from '../components/VictoryModal';
+import PrePlayControls, { usePrePlayAction } from '../components/PrePlayControls';
 import ChatBox from '../components/ChatBox';
 import ChipStack, { MiniChipStack, BetChip, PotDisplay } from '../components/ChipStack';
 import { PositionIndicators } from '../components/PositionButtons';
@@ -1310,6 +1312,8 @@ function GameView() {
   const [showBuyInModal, setShowBuyInModal] = useState(false);
   const [hasDismissedBuyIn, setHasDismissedBuyIn] = useState(false);
   const [showUsernameModal, setShowUsernameModal] = useState(false);
+  const [showVictoryModal, setShowVictoryModal] = useState(false);
+  const [victoryModalDismissed, setVictoryModalDismissed] = useState(false);
   const [toast, setToast] = useState(null);
 
   // Toast auto-dismiss
@@ -1350,6 +1354,24 @@ function GameView() {
   const userCanJoinTournament = canJoinTournament();
   const userIsEliminated = isEliminated();
   const userFinishPosition = getFinishPosition();
+
+  // Auto-show victory modal when tournament completes (only if prizes are distributed)
+  useEffect(() => {
+    if (
+      tournamentCompleted &&
+      tournamentInfo?.payouts?.length > 0 &&
+      !victoryModalDismissed &&
+      !showVictoryModal
+    ) {
+      // Small delay to let any final animations complete
+      const timer = setTimeout(() => {
+        setShowVictoryModal(true);
+        // Play victory sound
+        playNotificationSound('win');
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [tournamentCompleted, tournamentInfo?.payouts, victoryModalDismissed, showVictoryModal]);
 
   // Turn notification - plays audio cue when it becomes player's turn
   useTurnNotification(myTurn, tableData?.phase);
@@ -1528,6 +1550,26 @@ function GameView() {
     setShowUsernameModal(false);
   };
 
+  // Victory Modal handlers
+  const handleVictoryModalClose = () => {
+    setShowVictoryModal(false);
+    setVictoryModalDismissed(true);
+  };
+
+  const handleCreateNewTableFromVictory = () => {
+    setShowVictoryModal(false);
+    setVictoryModalDismissed(true);
+    // Leave current table and the user will be redirected to lobby
+    // where they can create a new table
+    leaveTable();
+  };
+
+  const handleReturnToLobbyFromVictory = () => {
+    setShowVictoryModal(false);
+    setVictoryModalDismissed(true);
+    leaveTable();
+  };
+
   // Betting action handlers with toast feedback on error AND sound effects
   const handleFold = async (e) => {
     e?.preventDefault();
@@ -1561,6 +1603,22 @@ function GameView() {
       showToast(result.error);
     }
   };
+
+  // Pre-play action queuing system
+  const {
+    preAction,
+    setPreAction,
+    clearPreAction,
+    isPreActionSet,
+  } = usePrePlayAction({
+    isMyTurn: myTurn,
+    currentBet: tableData?.currentBet || 0,
+    playerCurrentRoundBet: currentPlayer?.currentRoundBet || 0,
+    onFold: handleFold,
+    onCheck: handleCheck,
+    onCall: handleCall,
+    canCheck: playerCanCheck,
+  });
 
   const handleRaise = async (amount, e) => {
     e?.preventDefault();
@@ -1817,6 +1875,23 @@ function GameView() {
             />
           )}
 
+          {/* Pre-Play Controls - shown when NOT player's turn during betting */}
+          {isBettingPhase && !myTurn && currentPlayer?.status === 'active' && (
+            <PrePlayControls
+              isVisible={true}
+              currentBet={tableData?.currentBet || 0}
+              playerCurrentRoundBet={currentPlayer?.currentRoundBet || 0}
+              playerChips={currentPlayer?.chips || 0}
+              phase={tableData?.phase}
+              isBettingPhase={isBettingPhase}
+              isDrawPhase={isDrawPhase}
+              onPreActionSet={setPreAction}
+              onPreActionClear={clearPreAction}
+              preAction={preAction}
+              isDesktop={true}
+            />
+          )}
+
           {isDrawPhase && myTurn && (
             <motion.button
               type="button"
@@ -1881,6 +1956,16 @@ function GameView() {
         currentUsername={userWallet?.username}
         isRequired={false}
         loading={loading}
+      />
+
+      {/* Victory Modal - Tournament Completion */}
+      <VictoryModal
+        isOpen={showVictoryModal}
+        tournamentInfo={tournamentInfo}
+        currentUserUid={currentUser?.uid}
+        onCreateNewTable={handleCreateNewTableFromVictory}
+        onReturnToLobby={handleReturnToLobbyFromVictory}
+        onClose={handleVictoryModalClose}
       />
 
       {/* Toast Notification */}
@@ -2976,6 +3061,23 @@ function GameView() {
                     currentBet={tableData?.currentBet || 0}
                     pot={tableData?.pot || 0}
                     disabled={loading}
+                    isDesktop={false}
+                  />
+                )}
+
+                {/* Pre-Play Controls - shown when NOT player's turn during betting (mobile) */}
+                {isBettingPhase && !myTurn && currentPlayer?.status === 'active' && (
+                  <PrePlayControls
+                    isVisible={true}
+                    currentBet={tableData?.currentBet || 0}
+                    playerCurrentRoundBet={currentPlayer?.currentRoundBet || 0}
+                    playerChips={currentPlayer?.chips || 0}
+                    phase={tableData?.phase}
+                    isBettingPhase={isBettingPhase}
+                    isDrawPhase={isDrawPhase}
+                    onPreActionSet={setPreAction}
+                    onPreActionClear={clearPreAction}
+                    preAction={preAction}
                     isDesktop={false}
                   />
                 )}
