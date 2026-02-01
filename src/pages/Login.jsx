@@ -38,6 +38,9 @@ function Login() {
           <p className="text-gray-500">
             2-7 Triple Draw Poker
           </p>
+          <p className="text-gray-400 text-xs mt-2 italic">
+            From the degenerates that brought you HoldingServe
+          </p>
         </div>
 
         <div className="space-y-4 mb-8">

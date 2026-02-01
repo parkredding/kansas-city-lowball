@@ -915,11 +915,11 @@ function PlayerSlot({ player, isCurrentUser, isActive, showCards, handResult, tu
 
       {/* Player's cards - clean display with safety checks */}
       {/* Cards shown based on showdown rules: winners at contested showdown auto-reveal, others must choose to show */}
-      {/* Railbirds always see card backs to prevent collusion */}
+      {/* Railbirds can see revealed cards at showdown */}
       {player.hand && Array.isArray(player.hand) && player.hand.length > 0 && (
         <div className={`flex gap-0.5 justify-center ${isMobile ? 'scale-90' : ''}`}>
           {player.hand.map((card, index) => (
-            shouldRevealCards && !isViewerRailbird && card && card.rank && card.suit ? (
+            shouldRevealCards && card && card.rank && card.suit ? (
               <Card key={`${index}-${card.rank}-${card.suit}`} card={card} isSelectable={false} size="mini" />
             ) : (
               <ProfessionalCardBack key={index} size="mini" index={index} />
@@ -1953,7 +1953,7 @@ function GameView() {
                   transition={{ duration: 0.5, ease: 'easeOut' }}
                 >
                   {/* Inner felt texture line */}
-                  <div 
+                  <div
                     className="absolute rounded-[50%]"
                     style={{
                       left: '3%',
@@ -1963,6 +1963,20 @@ function GameView() {
                       border: '2px solid rgba(74,222,128,0.2)',
                     }}
                   />
+                  {/* Table felt tagline */}
+                  <div
+                    className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center pointer-events-none select-none"
+                    style={{
+                      color: 'rgba(74,222,128,0.15)',
+                      fontSize: '14px',
+                      fontStyle: 'italic',
+                      fontWeight: '500',
+                      letterSpacing: '0.5px',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    From the degenerates that brought you HoldingServe
+                  </div>
                 </motion.div>
 
                 {/* Opponents positioned radially around the table */}
