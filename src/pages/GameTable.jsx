@@ -2325,6 +2325,23 @@ function GameView() {
             </div>
           </div>
 
+          {/* Add Bot button - at the top, visible to table leader when seats available */}
+          {userIsTableCreator && (tableData?.players?.length || 0) < 6 && (
+            <div className="flex-shrink-0 px-3 py-1.5 bg-slate-800/50 border-b border-slate-700/30">
+              <motion.button
+                type="button"
+                onClick={() => handleAddBot('hard')}
+                disabled={loading}
+                className="w-full bg-slate-600 hover:bg-slate-500 disabled:opacity-50 text-white font-medium py-1.5 px-3 rounded-lg shadow flex items-center justify-center gap-2 text-sm"
+                whileTap={{ scale: 0.98 }}
+              >
+                <span>🤖</span>
+                <span>Add Bot</span>
+                {!isIdle && <span className="text-xs opacity-70">(next hand)</span>}
+              </motion.button>
+            </div>
+          )}
+
           {/* Scrollable Main Content Area */}
           <div className="flex-1 overflow-y-auto overflow-x-hidden px-3 py-2">
             {/* Error display */}
@@ -2348,15 +2365,9 @@ function GameView() {
               </div>
             )}
 
-            {/* Hero Chip Stack Display - More compact for mobile */}
+            {/* Pot and Call info - shown above table */}
             {!userIsRailbird && (
               <div className="flex gap-1.5 flex-wrap justify-center items-center mb-2 px-1">
-                {/* Your Chips - inline compact */}
-                <div className="bg-slate-800/80 rounded-lg px-2 py-1 text-center border border-slate-700/50 flex-shrink-0">
-                  <span className="text-slate-400 text-[9px] uppercase tracking-wider mr-1">Chips:</span>
-                  <span className="text-emerald-400 font-bold text-sm whitespace-nowrap">${(currentPlayer?.chips || 0).toLocaleString()}</span>
-                </div>
-
                 {/* Pot Display */}
                 {tableData?.pot > 0 && (
                   <div className="bg-amber-900/40 rounded-lg px-2 py-1 text-center border border-amber-700/30 flex-shrink-0">
@@ -2685,6 +2696,22 @@ function GameView() {
                     </p>
                   </div>
                 )}
+
+                {/* Hero Stack & Wager Display - Below cards for visibility */}
+                <div className="flex gap-2 flex-wrap justify-center items-center mt-2">
+                  {/* Your Chips */}
+                  <div className="bg-slate-800/80 rounded-lg px-2 py-1 text-center border border-slate-700/50">
+                    <span className="text-slate-400 text-[9px] uppercase tracking-wider mr-1">Stack:</span>
+                    <span className="text-emerald-400 font-bold text-sm">${(currentPlayer?.chips || 0).toLocaleString()}</span>
+                  </div>
+                  {/* Current Wager */}
+                  {currentPlayer?.currentRoundBet > 0 && (
+                    <div className="bg-amber-900/40 rounded-lg px-2 py-1 text-center border border-amber-700/30">
+                      <span className="text-amber-300/80 text-[9px] uppercase tracking-wider mr-1">Wager:</span>
+                      <span className="text-amber-400 font-bold text-sm">${currentPlayer.currentRoundBet.toLocaleString()}</span>
+                    </div>
+                  )}
+                </div>
               </motion.div>
             ) : (
               <motion.div 
@@ -2730,21 +2757,6 @@ function GameView() {
                     whileTap={{ scale: 0.98 }}
                   >
                     Deal Cards
-                  </motion.button>
-                )}
-
-                {/* Add Bot button - visible to table creator when seats available */}
-                {userIsTableCreator && (tableData?.players?.length || 0) < 6 && (
-                  <motion.button
-                    type="button"
-                    onClick={() => handleAddBot('hard')}
-                    disabled={loading}
-                    className="w-full bg-slate-600 hover:bg-slate-500 disabled:opacity-50 text-white font-medium py-2 px-4 rounded-lg shadow flex items-center justify-center gap-2"
-                    whileTap={{ scale: 0.98 }}
-                  >
-                    <span>🤖</span>
-                    <span>Add Bot</span>
-                    {!isIdle && <span className="text-xs opacity-70">(next hand)</span>}
                   </motion.button>
                 )}
 

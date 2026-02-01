@@ -868,6 +868,17 @@ export class GameService {
         updates.pot = 0;
         updates.currentBet = 0;
         updates.deck = GameService.createShuffledDeck();
+      } else if (tableData.createdBy === uid) {
+        // Transfer table leadership to a random non-bot player if creator leaves
+        const humanPlayers = updatedPlayers.filter(p => !p.isBot);
+        if (humanPlayers.length > 0) {
+          // Pick a random human player to be the new table leader
+          const randomIndex = Math.floor(Math.random() * humanPlayers.length);
+          updates.createdBy = humanPlayers[randomIndex].uid;
+        } else if (updatedPlayers.length > 0) {
+          // If only bots remain, assign to first bot (edge case)
+          updates.createdBy = updatedPlayers[0].uid;
+        }
       }
 
       transaction.update(tableRef, updates);
@@ -3231,10 +3242,23 @@ export class GameService {
           activeIndex = 0;
         }
 
-        await GameService.updateTable(tableId, {
+        const updates = {
           players,
           activePlayerIndex: activeIndex,
-        });
+        };
+
+        // Transfer table leadership if the creator leaves
+        if (tableData.createdBy === playerUid) {
+          const humanPlayers = players.filter(p => !p.isBot);
+          if (humanPlayers.length > 0) {
+            const randomIndex = Math.floor(Math.random() * humanPlayers.length);
+            updates.createdBy = humanPlayers[randomIndex].uid;
+          } else if (players.length > 0) {
+            updates.createdBy = players[0].uid;
+          }
+        }
+
+        await GameService.updateTable(tableId, updates);
       }
     }
   }

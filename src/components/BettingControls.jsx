@@ -117,7 +117,7 @@ function BettingControls({
               type="range"
               min={minRaise}
               max={trueMaxRaise}
-              step={Math.max(1, Math.floor((trueMaxRaise - minRaise) / 100))}
+              step={10}
               value={raiseAmount}
               onChange={handleRaiseChange}
               disabled={disabled}
