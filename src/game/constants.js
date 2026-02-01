@@ -97,7 +97,7 @@ export const SEAT_STATES = {
 // Default tournament settings
 export const DEFAULT_TOURNAMENT_CONFIG = {
   buyIn: 1000,           // Default buy-in amount
-  startingChips: 1500,   // Starting stack per player
+  startingChips: 1000,   // Starting stack per player (matches buy-in for SnG)
   totalSeats: 6,         // Number of seats (triggers auto-start when filled)
   prizeStructure: [0.65, 0.35], // Default: 1st gets 65%, 2nd gets 35%
 };
