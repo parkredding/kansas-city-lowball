@@ -2511,17 +2511,45 @@ export class GameService {
 
             updatedPot = 0;
 
+            // Add revealed hands to activity log (for contested showdowns)
+            updatedActivityLog = [...activityLog];
+            if (showdownResult.isContested && showdownResult.allHands) {
+              // Log each player's revealed hand
+              for (const handInfo of showdownResult.allHands) {
+                const player = players.find(p => p.uid === handInfo.uid);
+                if (player && player.hand) {
+                  // Format the hand as card notation (e.g., "7-5-4-3-2")
+                  const cardNotation = player.hand
+                    .map(c => c.rank)
+                    .sort((a, b) => {
+                      const order = { A: 14, K: 13, Q: 12, J: 11, '10': 10, '9': 9, '8': 8, '7': 7, '6': 6, '5': 5, '4': 4, '3': 3, '2': 2 };
+                      return (order[b] || 0) - (order[a] || 0);
+                    })
+                    .join('-');
+
+                  updatedActivityLog.push({
+                    type: 'game_event',
+                    eventType: 'reveal',
+                    text: `${handInfo.displayName} revealed [${cardNotation}] - ${handInfo.handDescription}`,
+                    playerUid: handInfo.uid,
+                    playerName: handInfo.displayName,
+                    timestamp: Date.now(),
+                  });
+                }
+              }
+            }
+
             // Add winner message to activity log with winner info for color coding
             if (showdownResult.message) {
               const firstWinner = showdownResult.winners?.[0];
-              updatedActivityLog = [...activityLog, {
+              updatedActivityLog.push({
                 type: 'game_event',
                 eventType: 'win',
                 text: showdownResult.message,
                 playerUid: firstWinner?.uid || null,
                 playerName: firstWinner?.displayName || null,
                 timestamp: Date.now(),
-              }];
+              });
             }
           }
 
