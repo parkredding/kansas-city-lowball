@@ -202,15 +202,17 @@ export function distributePots(pots, players, evaluateHand) {
 }
 
 /**
- * Calculate showdown result - who wins with what hand
+ * Calculate showdown result with proper reveal order
  * Supports both Lowball (lower is better) and Hold'em (higher is better)
- * @param {Array} players - Array of player objects
+ * @param {Array} players - All players at the table
  * @param {number} pot - Total pot amount
- * @param {string} gameType - Game type ('lowball_27' or 'holdem')
- * @param {Array} communityCards - Community cards for Hold'em (optional)
- * @returns {Object} - { winners: [{uid, displayName, amount, handDescription}], message }
+ * @param {string} gameType - Game type (lowball_27 or holdem)
+ * @param {Array} communityCards - Community cards (for Hold'em)
+ * @param {string|null} lastAggressor - UID of last player to bet/raise (for reveal order)
+ * @param {number} dealerIndex - Index of dealer (for reveal order if all checked)
+ * @returns {Object} Showdown result with winners, losers, and reveal order
  */
-export function calculateShowdownResult(players, pot, gameType = 'lowball_27', communityCards = []) {
+export function calculateShowdownResult(players, pot, gameType = 'lowball_27', communityCards = [], lastAggressor = null, dealerIndex = 0) {
   const isHoldem = gameType === 'holdem';
 
   // Find players still in the hand with hands
@@ -313,11 +315,25 @@ export function calculateShowdownResult(players, pot, gameType = 'lowball_27', c
     message = `${names} split $${pot} with ${winners[0].handDescription}`;
   }
 
+  // Determine reveal order for winners based on last aggressor rule
+  // If lastAggressor made it to showdown and is a winner, they show first
+  // Otherwise, first winner left of dealer shows first
+  let orderedWinners = [...winnersWithAmounts];
+  if (lastAggressor) {
+    const aggressorWinnerIndex = orderedWinners.findIndex(w => w.uid === lastAggressor);
+    if (aggressorWinnerIndex > 0) {
+      // Move aggressor to front
+      const [aggressor] = orderedWinners.splice(aggressorWinnerIndex, 1);
+      orderedWinners.unshift(aggressor);
+    }
+  }
+
   return {
-    winners: winnersWithAmounts,
-    losers: losers, // Include losers for show/muck UI
+    winners: orderedWinners,
+    losers: losers, // Include losers for show/muck UI (not auto-revealed)
     message,
-    allHands: evaluated, // Include all hands for display
+    allHands: evaluated, // Include all hands for UI display (but not for activity log)
+    handsToReveal: orderedWinners, // Only winners are auto-revealed in activity log
     isContested: true, // Showdown with multiple contenders
   };
 }
@@ -939,6 +955,7 @@ export class GameService {
       activePlayerIndex: 0,
       turnDeadline: null,
       dealerIndex: 0,
+      lastAggressor: null, // UID of last player to bet/raise (for showdown order)
       players: players,
       railbirds: [], // Observers watching the game (can chat but can't see card indices)
       chatLog: [], // Chat messages array
@@ -2106,6 +2123,8 @@ export class GameService {
 
     // Track what action was taken for activity log
     let actionDescription = '';
+    // Track if this is an aggressive action (bet/raise) for showdown order
+    let isAggressiveAction = false;
 
     switch (action) {
       case BetAction.FOLD:
@@ -2172,6 +2191,7 @@ export class GameService {
           // If this all-in is a raise (exceeds current bet), update the bet and reset other players
           if (player.currentRoundBet > currentBet) {
             newCurrentBet = Math.floor(player.currentRoundBet);
+            isAggressiveAction = true; // All-in raise is aggressive
             // Reset hasActed for other active players since there's a raise
             players.forEach((p, i) => {
               if (i !== playerIndex && p.status === 'active') {
@@ -2221,6 +2241,7 @@ export class GameService {
             player.status = 'all-in';
             player.hasActedThisRound = true;
             player.lastAction = 'All-In';
+            isAggressiveAction = true; // All-in raise is aggressive
             actionDescription = `${player.displayName} raised all-in to $${player.currentRoundBet}`;
             // Reset hasActed for other players since there's a raise
             players.forEach((p, i) => {
@@ -2237,6 +2258,7 @@ export class GameService {
             newCurrentBet = totalBetAmount;
             player.hasActedThisRound = true;
             player.lastAction = currentBet === 0 ? 'Bet' : 'Raise';
+            isAggressiveAction = true; // Bet/Raise is aggressive
             actionDescription = currentBet === 0
               ? `${player.displayName} bet $${totalBetAmount}`
               : `${player.displayName} raised to $${totalBetAmount}`;
@@ -2358,7 +2380,9 @@ export class GameService {
 
       if (isShowdown) {
         const communityCards = tableData.communityCards || [];
-        showdownResult = calculateShowdownResult(players, pot, gameType, communityCards);
+        // Pass lastAggressor and dealerIndex for proper showdown reveal order
+        const effectiveLastAggressor = isAggressiveAction ? player.uid : tableData.lastAggressor;
+        showdownResult = calculateShowdownResult(players, pot, gameType, communityCards, effectiveLastAggressor, tableData.dealerIndex);
 
         // Award pot to winner(s)
         updatedPlayers = players.map(p => {
@@ -2377,14 +2401,15 @@ export class GameService {
         updatedPot = 0;
 
         // Add revealed hands to activity log (for contested showdowns)
+        // Only auto-reveal WINNER hands - losers can choose to show or muck
         updatedActivityLog = [...activityLog];
-        if (showdownResult.isContested && showdownResult.allHands) {
-          // Log each player's revealed hand
-          for (const handInfo of showdownResult.allHands) {
-            const player = players.find(p => p.uid === handInfo.uid);
-            if (player && player.hand) {
+        if (showdownResult.isContested && showdownResult.handsToReveal) {
+          // Log each winner's revealed hand (in proper showdown order)
+          for (const handInfo of showdownResult.handsToReveal) {
+            const playerData = players.find(p => p.uid === handInfo.uid);
+            if (playerData && playerData.hand) {
               // Format the hand as card notation (e.g., "7-5-4-3-2")
-              const cardNotation = player.hand
+              const cardNotation = playerData.hand
                 .map(c => c.rank)
                 .sort((a, b) => {
                   const order = { A: 14, K: 13, Q: 12, J: 11, '10': 10, '9': 9, '8': 8, '7': 7, '6': 6, '5': 5, '4': 4, '3': 3, '2': 2 };
@@ -2435,6 +2460,14 @@ export class GameService {
         firstToAct = 0;
       }
 
+      // Determine lastAggressor for update:
+      // - For showdown: preserve current lastAggressor (for reveal order)
+      // - For new betting round: reset to null
+      // - For draw phase: preserve (will use in next betting round)
+      const nextLastAggressor = isShowdown ?
+        (isAggressiveAction ? player.uid : tableData.lastAggressor) :
+        (isDrawPhase ? (isAggressiveAction ? player.uid : tableData.lastAggressor) : null);
+
       await GameService.updateTable(tableId, {
         players: updatedPlayers,
         pot: updatedPot,
@@ -2445,6 +2478,7 @@ export class GameService {
         turnDeadline: isShowdown ? null : GameService.calculateTurnDeadline(),
         chatLog: updatedActivityLog,
         showdownResult: isShowdown ? showdownResult : null,
+        lastAggressor: nextLastAggressor,
       });
     } else {
       // Move to next player
@@ -2493,7 +2527,9 @@ export class GameService {
 
           if (isShowdown) {
             const communityCards = tableData.communityCards || [];
-            showdownResult = calculateShowdownResult(players, pot, gameType, communityCards);
+            // Pass lastAggressor and dealerIndex for proper showdown reveal order
+            const effectiveLastAggressorInner = isAggressiveAction ? player.uid : tableData.lastAggressor;
+            showdownResult = calculateShowdownResult(players, pot, gameType, communityCards, effectiveLastAggressorInner, tableData.dealerIndex);
 
             // Award pot to winner(s)
             updatedPlayers = players.map(p => {
@@ -2512,14 +2548,15 @@ export class GameService {
             updatedPot = 0;
 
             // Add revealed hands to activity log (for contested showdowns)
+            // Only auto-reveal WINNER hands - losers can choose to show or muck
             updatedActivityLog = [...activityLog];
-            if (showdownResult.isContested && showdownResult.allHands) {
-              // Log each player's revealed hand
-              for (const handInfo of showdownResult.allHands) {
-                const player = players.find(p => p.uid === handInfo.uid);
-                if (player && player.hand) {
+            if (showdownResult.isContested && showdownResult.handsToReveal) {
+              // Log each winner's revealed hand (in proper showdown order)
+              for (const handInfo of showdownResult.handsToReveal) {
+                const playerData = players.find(p => p.uid === handInfo.uid);
+                if (playerData && playerData.hand) {
                   // Format the hand as card notation (e.g., "7-5-4-3-2")
-                  const cardNotation = player.hand
+                  const cardNotation = playerData.hand
                     .map(c => c.rank)
                     .sort((a, b) => {
                       const order = { A: 14, K: 13, Q: 12, J: 11, '10': 10, '9': 9, '8': 8, '7': 7, '6': 6, '5': 5, '4': 4, '3': 3, '2': 2 };
@@ -2570,6 +2607,11 @@ export class GameService {
             firstToActInner = 0;
           }
 
+          // Determine lastAggressor for update (same logic as main path)
+          const nextLastAggressorInner = isShowdown ?
+            (isAggressiveAction ? player.uid : tableData.lastAggressor) :
+            (isDrawPhase ? (isAggressiveAction ? player.uid : tableData.lastAggressor) : null);
+
           await GameService.updateTable(tableId, {
             players: updatedPlayers,
             pot: updatedPot,
@@ -2580,6 +2622,7 @@ export class GameService {
             turnDeadline: isShowdown ? null : GameService.calculateTurnDeadline(),
             chatLog: updatedActivityLog,
             showdownResult: isShowdown ? showdownResult : null,
+            lastAggressor: nextLastAggressorInner,
           });
         } else {
           // Round not complete but no one can act - this shouldn't happen, but set to 0 as fallback
@@ -2600,6 +2643,7 @@ export class GameService {
           activePlayerIndex: nextPlayerIndex,
           turnDeadline: GameService.calculateTurnDeadline(),
           chatLog: activityLog,
+          ...(isAggressiveAction && { lastAggressor: player.uid }),
         });
       }
     }
@@ -2901,7 +2945,8 @@ export class GameService {
         
         if (phaseAfterSkippedBetting === 'SHOWDOWN') {
           // After DRAW_3, there are no more draw opportunities - go to showdown
-          const showdownResult = calculateShowdownResult(players, tableData.pot);
+          // Use lastAggressor from the table for proper reveal order
+          const showdownResult = calculateShowdownResult(players, tableData.pot, 'lowball_27', [], tableData.lastAggressor, tableData.dealerIndex);
 
           // Award pot to winner(s)
           const updatedPlayers = players.map(p => {
@@ -2925,18 +2970,45 @@ export class GameService {
           updates.pots = [];
           updates.showdownResult = showdownResult;
 
+          // Add revealed hands to activity log (only winners - losers can muck)
+          let updatedLog = [...activityLog];
+          if (showdownResult.isContested && showdownResult.handsToReveal) {
+            for (const handInfo of showdownResult.handsToReveal) {
+              const playerData = players.find(p => p.uid === handInfo.uid);
+              if (playerData && playerData.hand) {
+                const cardNotation = playerData.hand
+                  .map(c => c.rank)
+                  .sort((a, b) => {
+                    const order = { A: 14, K: 13, Q: 12, J: 11, '10': 10, '9': 9, '8': 8, '7': 7, '6': 6, '5': 5, '4': 4, '3': 3, '2': 2 };
+                    return (order[b] || 0) - (order[a] || 0);
+                  })
+                  .join('-');
+
+                updatedLog.push({
+                  type: 'game_event',
+                  eventType: 'reveal',
+                  text: `${handInfo.displayName} revealed [${cardNotation}] - ${handInfo.handDescription}`,
+                  playerUid: handInfo.uid,
+                  playerName: handInfo.displayName,
+                  timestamp: Date.now(),
+                });
+              }
+            }
+          }
+
           // Add winner message to activity log with winner info for color coding
           if (showdownResult.message) {
             const firstWinner = showdownResult.winners?.[0];
-            updates.chatLog = [...activityLog, {
+            updatedLog.push({
               type: 'game_event',
               eventType: 'win',
               text: showdownResult.message,
               playerUid: firstWinner?.uid || null,
               playerName: firstWinner?.displayName || null,
               timestamp: Date.now(),
-            }];
+            });
           }
+          updates.chatLog = updatedLog;
         } else {
           // Skip to next draw phase (DRAW_2 or DRAW_3)
           // All-in players still get to draw cards
@@ -3072,8 +3144,9 @@ export class GameService {
         dealerSeatIndex: null,
         smallBlindSeatIndex: null,
         bigBlindSeatIndex: null,
-        // Clear showdown result
+        // Clear showdown result and aggressor
         showdownResult: null,
+        lastAggressor: null, // Reset for new hand
         turnDeadline: null,
         // Clear community cards for Hold'em
         communityCards: [],
@@ -3344,6 +3417,12 @@ export class GameService {
       throw new Error('Can only reveal hands during showdown');
     }
 
+    // Find the revealing player to get their hand
+    const revealingPlayer = tableData.players.find(p => p.uid === playerUid);
+    if (!revealingPlayer) {
+      throw new Error('Player not found');
+    }
+
     const players = tableData.players.map(p => {
       if (p.uid === playerUid) {
         return { ...p, handRevealed: true };
@@ -3351,15 +3430,34 @@ export class GameService {
       return p;
     });
 
+    // Format the hand as card notation (e.g., "7-5-4-3-2")
+    let revealText = `${revealingPlayer.displayName || 'Player'} shows their hand`;
+    if (revealingPlayer.hand && revealingPlayer.hand.length > 0) {
+      const cardNotation = revealingPlayer.hand
+        .map(c => c.rank)
+        .sort((a, b) => {
+          const order = { A: 14, K: 13, Q: 12, J: 11, '10': 10, '9': 9, '8': 8, '7': 7, '6': 6, '5': 5, '4': 4, '3': 3, '2': 2 };
+          return (order[b] || 0) - (order[a] || 0);
+        })
+        .join('-');
+
+      // Get hand description from showdown result if available
+      const handInfo = tableData.showdownResult?.allHands?.find(h => h.uid === playerUid);
+      const handDescription = handInfo?.handDescription || '';
+
+      revealText = handDescription
+        ? `${revealingPlayer.displayName} revealed [${cardNotation}] - ${handDescription}`
+        : `${revealingPlayer.displayName} revealed [${cardNotation}]`;
+    }
+
     // Add activity event with player info for color coding
-    const revealingPlayer = players.find(p => p.uid === playerUid);
     const activityLog = tableData.chatLog || [];
     activityLog.push({
       type: 'game_event',
       eventType: 'reveal',
-      text: `${revealingPlayer?.displayName || 'Player'} shows their hand`,
+      text: revealText,
       playerUid: playerUid,
-      playerName: revealingPlayer?.displayName || null,
+      playerName: revealingPlayer.displayName || null,
       timestamp: Date.now(),
     });
 
