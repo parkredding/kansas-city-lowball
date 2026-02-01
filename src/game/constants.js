@@ -70,6 +70,47 @@ export const GAME_TYPES = {
   HOLDEM: 'holdem',
 };
 
+// ============================================
+// SIT & GO TOURNAMENT CONFIG
+// ============================================
+
+// Table mode types
+export const TABLE_MODES = {
+  CASH_GAME: 'cash_game',
+  SIT_AND_GO: 'sit_and_go',
+};
+
+// Tournament states
+export const TOURNAMENT_STATES = {
+  REGISTERING: 'REGISTERING',  // Waiting for players to fill seats
+  RUNNING: 'RUNNING',          // Tournament in progress
+  COMPLETED: 'COMPLETED',      // Tournament finished
+};
+
+// Seat states for tournament
+export const SEAT_STATES = {
+  OPEN: 'OPEN',           // Seat available (only in REGISTERING)
+  ACTIVE: 'ACTIVE',       // Player sitting and playing
+  ELIMINATED: 'ELIMINATED', // Player busted - seat is dead
+};
+
+// Default tournament settings
+export const DEFAULT_TOURNAMENT_CONFIG = {
+  buyIn: 1000,           // Default buy-in amount
+  startingChips: 1500,   // Starting stack per player
+  totalSeats: 6,         // Number of seats (triggers auto-start when filled)
+  prizeStructure: [0.65, 0.35], // Default: 1st gets 65%, 2nd gets 35%
+};
+
+// Prize structure presets
+export const PRIZE_STRUCTURES = {
+  HEADS_UP: [1.0],                    // Winner takes all (2 players)
+  THREE_HANDED: [0.65, 0.35],         // 3 players
+  FOUR_HANDED: [0.50, 0.30, 0.20],    // 4 players
+  FIVE_HANDED: [0.45, 0.30, 0.25],    // 5 players
+  SIX_HANDED: [0.50, 0.30, 0.20],     // 6 players - top 3 paid
+};
+
 /**
  * Get game-specific configuration
  * @param {string} gameType - The game type identifier
@@ -94,4 +135,35 @@ export function getGameConfig(gameType) {
         phases: ['BETTING_1', 'DRAW_1', 'BETTING_2', 'DRAW_2', 'BETTING_3', 'DRAW_3', 'BETTING_4', 'SHOWDOWN'],
       };
   }
+}
+
+/**
+ * Get prize structure based on number of tournament players
+ * @param {number} playerCount - Number of players in tournament
+ * @returns {Array<number>} - Array of percentages for each prize position
+ */
+export function getPrizeStructure(playerCount) {
+  switch (playerCount) {
+    case 2:
+      return PRIZE_STRUCTURES.HEADS_UP;
+    case 3:
+      return PRIZE_STRUCTURES.THREE_HANDED;
+    case 4:
+      return PRIZE_STRUCTURES.FOUR_HANDED;
+    case 5:
+      return PRIZE_STRUCTURES.FIVE_HANDED;
+    case 6:
+    default:
+      return PRIZE_STRUCTURES.SIX_HANDED;
+  }
+}
+
+/**
+ * Calculate prize payouts for a tournament
+ * @param {number} totalPrizePool - Total prize pool amount
+ * @param {Array<number>} prizeStructure - Array of percentages
+ * @returns {Array<number>} - Array of actual payout amounts
+ */
+export function calculatePrizePayouts(totalPrizePool, prizeStructure) {
+  return prizeStructure.map(percentage => Math.floor(totalPrizePool * percentage));
 }

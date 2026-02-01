@@ -29,6 +29,11 @@ import {
   SUIT_VALUES,
   HOLDEM_HOLE_CARDS,
   GAME_TYPES,
+  TABLE_MODES,
+  TOURNAMENT_STATES,
+  SEAT_STATES,
+  DEFAULT_TOURNAMENT_CONFIG,
+  calculatePrizePayouts,
 } from './constants';
 
 const TABLES_COLLECTION = 'tables';
@@ -926,13 +931,26 @@ export class GameService {
 
     const finalConfig = config ? { ...defaultConfig, ...config } : defaultConfig;
 
+    // Check if this is a Sit & Go tournament
+    const isSitAndGo = finalConfig.tableMode === TABLE_MODES.SIT_AND_GO;
+    const tournamentConfig = isSitAndGo ? finalConfig.tournament : null;
+
+    // For SNG, validate user has enough balance for buy-in
+    if (isSitAndGo && tournamentConfig) {
+      const userBalance = userWallet?.balance || 0;
+      if (userBalance < tournamentConfig.buyIn) {
+        throw new Error(`Insufficient balance for buy-in. Need $${tournamentConfig.buyIn}, have $${userBalance}`);
+      }
+    }
+
     // Create initial players array with human player
     const players = [
       {
         uid: user.uid,
         displayName: displayName,
         photoURL: user.photoURL || null,
-        chips: 0, // Start with 0, must buy in
+        // For SNG, player starts with tournament starting chips; for cash games, 0
+        chips: isSitAndGo ? tournamentConfig.startingChips : 0,
         hand: [],
         status: 'active',
         cardsToDiscard: [],
@@ -940,17 +958,24 @@ export class GameService {
         totalContribution: 0, // Total contributed to pot this hand
         hasActedThisRound: false,
         lastAction: null, // Track last draw action for display
+        // Tournament-specific fields
+        ...(isSitAndGo && {
+          seatState: SEAT_STATES.ACTIVE,
+          registeredAt: Date.now(),
+        }),
       },
     ];
 
-    // Add bot players if configured
-    const botConfig = finalConfig.bots || defaultConfig.bots;
-    if (botConfig.count > 0) {
-      // Calculate bot starting chips: 20x the minimum bet (2x the minimum buy-in)
-      // This ensures bots have enough chips to play multiple hands
-      const botStartingChips = minBet * 20;
-      for (let i = 0; i < botConfig.count && players.length < finalConfig.maxPlayers; i++) {
-        players.push(GameService.createBotPlayer(botConfig.difficulty, i, botStartingChips));
+    // Add bot players if configured (not for SNG tournaments)
+    if (!isSitAndGo) {
+      const botConfig = finalConfig.bots || defaultConfig.bots;
+      if (botConfig.count > 0) {
+        // Calculate bot starting chips: 20x the minimum bet (2x the minimum buy-in)
+        // This ensures bots have enough chips to play multiple hands
+        const botStartingChips = minBet * 20;
+        for (let i = 0; i < botConfig.count && players.length < finalConfig.maxPlayers; i++) {
+          players.push(GameService.createBotPlayer(botConfig.difficulty, i, botStartingChips));
+        }
       }
     }
 
@@ -973,15 +998,46 @@ export class GameService {
       createdBy: user.uid,
       config: finalConfig, // Store configuration
       lastUpdated: serverTimestamp(),
+      // Tournament-specific fields for Sit & Go
+      ...(isSitAndGo && {
+        tournament: {
+          ...tournamentConfig,
+          state: TOURNAMENT_STATES.REGISTERING,
+          registeredPlayers: [{
+            uid: user.uid,
+            displayName: displayName,
+            registeredAt: Date.now(),
+            buyInAmount: tournamentConfig.buyIn,
+          }],
+          eliminationOrder: [], // Track elimination order (first eliminated is at index 0)
+          prizePool: tournamentConfig.buyIn, // Initial prize pool from creator's buy-in
+        },
+      }),
     };
 
     await setDoc(tableRef, tableData);
+
+    // For SNG, deduct buy-in from user's wallet
+    if (isSitAndGo && tournamentConfig) {
+      const userRef = doc(db, USERS_COLLECTION, user.uid);
+      const userSnap = await getDoc(userRef);
+      if (userSnap.exists()) {
+        const currentBalance = userSnap.data().balance || 0;
+        await updateDoc(userRef, {
+          balance: currentBalance - tournamentConfig.buyIn,
+        });
+      }
+    }
+
     return tableId;
   }
 
   /**
    * Join an existing table
    * If game is in progress, joins as railbird (observer)
+   * For Sit & Go tournaments:
+   *   - During REGISTERING: Players can join if seats available and have buy-in
+   *   - During RUNNING/COMPLETED: Players can only join as railbirds (no re-entry)
    * @param {string} tableId - The table ID to join
    * @param {Object} user - Firebase user object
    * @param {Object} userWallet - User wallet data with username
@@ -1002,6 +1058,9 @@ export class GameService {
     }
 
     const tableData = tableSnap.data();
+    const config = tableData.config || {};
+    const isSitAndGo = config.tableMode === TABLE_MODES.SIT_AND_GO;
+    const tournament = tableData.tournament || null;
 
     // Check if user is already at the table as a player
     const existingPlayer = tableData.players.find((p) => p.uid === user.uid);
@@ -1019,7 +1078,6 @@ export class GameService {
     }
 
     // Check password for private tables
-    const config = tableData.config || {};
     if (config.passwordHash) {
       if (!password || password.trim() !== config.passwordHash) {
         throw new Error('Incorrect password');
@@ -1031,19 +1089,33 @@ export class GameService {
 
     // Determine if we should join as railbird or player
     const gameInProgress = tableData.phase !== 'IDLE';
-    const tableIsFull = tableData.players.length >= MAX_PLAYERS;
-    const shouldJoinAsRailbird = asRailbird || gameInProgress || tableIsFull;
+    const tableIsFull = tableData.players.length >= (config.maxPlayers || MAX_PLAYERS);
+
+    // For SNG tournaments, check tournament state
+    let tournamentAllowsJoin = true;
+    if (isSitAndGo && tournament) {
+      // Only allow joining during REGISTERING phase
+      if (tournament.state !== TOURNAMENT_STATES.REGISTERING) {
+        tournamentAllowsJoin = false;
+      }
+      // Check if user was previously eliminated (no re-entry)
+      const wasEliminated = (tournament.eliminationOrder || []).some(e => e.uid === user.uid);
+      if (wasEliminated) {
+        tournamentAllowsJoin = false;
+      }
+    }
+
+    const shouldJoinAsRailbird = asRailbird || gameInProgress || tableIsFull ||
+                                  (isSitAndGo && !tournamentAllowsJoin);
 
     if (shouldJoinAsRailbird) {
       // Join as railbird (observer)
-      // Note: wantsToPlay is now ALWAYS false - users must explicitly click "Join Game"
-      // This moves us from "Auto-Join" to "Opt-In" model
       const newRailbird = {
         uid: user.uid,
         displayName: displayName,
         photoURL: user.photoURL || null,
         joinedAt: Date.now(),
-        wantsToPlay: false, // Always false - user must explicitly opt-in via "Join Game" button
+        wantsToPlay: false,
       };
 
       await updateDoc(tableRef, {
@@ -1054,25 +1126,80 @@ export class GameService {
       return { joinedAs: 'railbird' };
     }
 
+    // For SNG, validate user has enough balance for buy-in
+    if (isSitAndGo && tournament) {
+      const userBalance = userWallet?.balance || 0;
+      if (userBalance < tournament.buyIn) {
+        throw new Error(`Insufficient balance for buy-in. Need $${tournament.buyIn}, have $${userBalance}`);
+      }
+    }
+
     // Join as player
     const newPlayer = {
       uid: user.uid,
       displayName: displayName,
       photoURL: user.photoURL || null,
-      chips: 0, // Start with 0, must buy in
+      // For SNG, player gets tournament starting chips; for cash games, 0
+      chips: isSitAndGo ? tournament.startingChips : 0,
       hand: [],
       status: 'active',
       cardsToDiscard: [],
       currentRoundBet: 0,
-      totalContribution: 0, // Total contributed to pot this hand
+      totalContribution: 0,
       hasActedThisRound: false,
-      lastAction: null, // Track last draw action for display
+      lastAction: null,
+      // Tournament-specific fields
+      ...(isSitAndGo && {
+        seatState: SEAT_STATES.ACTIVE,
+        registeredAt: Date.now(),
+      }),
     };
 
-    await updateDoc(tableRef, {
+    // Build update object
+    const updateData = {
       players: arrayUnion(newPlayer),
       lastUpdated: serverTimestamp(),
-    });
+    };
+
+    // For SNG, update tournament registration
+    if (isSitAndGo && tournament) {
+      const newRegisteredPlayer = {
+        uid: user.uid,
+        displayName: displayName,
+        registeredAt: Date.now(),
+        buyInAmount: tournament.buyIn,
+      };
+
+      // Update tournament data
+      const updatedTournament = {
+        ...tournament,
+        registeredPlayers: [...(tournament.registeredPlayers || []), newRegisteredPlayer],
+        prizePool: (tournament.prizePool || 0) + tournament.buyIn,
+      };
+
+      // Check if tournament should auto-start (all seats filled)
+      const totalPlayers = tableData.players.length + 1; // +1 for the new player
+      if (totalPlayers >= tournament.totalSeats) {
+        updatedTournament.state = TOURNAMENT_STATES.RUNNING;
+        updatedTournament.startedAt = Date.now();
+      }
+
+      updateData.tournament = updatedTournament;
+    }
+
+    await updateDoc(tableRef, updateData);
+
+    // For SNG, deduct buy-in from user's wallet
+    if (isSitAndGo && tournament) {
+      const userRef = doc(db, USERS_COLLECTION, user.uid);
+      const userSnap = await getDoc(userRef);
+      if (userSnap.exists()) {
+        const currentBalance = userSnap.data().balance || 0;
+        await updateDoc(userRef, {
+          balance: currentBalance - tournament.buyIn,
+        });
+      }
+    }
 
     return { joinedAs: 'player' };
   }
@@ -3058,6 +3185,7 @@ export class GameService {
    * Start a new hand (reset for next round)
    * Uses a transaction to read fresh data and prevent race conditions
    * Also handles pending sit outs and auto-promotes waiting railbirds after the phase becomes IDLE
+   * For Sit & Go tournaments: handles player eliminations and tournament completion
    * @param {string} tableId - The table ID
    * @param {Object} _tableData - Current table data (unused, we read fresh data in transaction)
    * @returns {Promise<void>}
@@ -3070,7 +3198,7 @@ export class GameService {
     const tableRef = doc(db, TABLES_COLLECTION, tableId);
 
     // Use a transaction to read fresh data and prevent race conditions
-    const freshTableData = await runTransaction(db, async (transaction) => {
+    const { freshTableData, tournamentComplete, eliminatedPlayers } = await runTransaction(db, async (transaction) => {
       const tableDoc = await transaction.get(tableRef);
       if (!tableDoc.exists()) {
         throw new Error('Table not found');
@@ -3078,49 +3206,153 @@ export class GameService {
 
       const tableData = tableDoc.data();
       let railbirds = [...(tableData.railbirds || [])];
+      const config = tableData.config || {};
+      const isSitAndGo = config.tableMode === TABLE_MODES.SIT_AND_GO;
+      let tournament = tableData.tournament ? { ...tableData.tournament } : null;
+      let eliminatedInThisHand = [];
+      let isTournamentComplete = false;
 
-      // Handle pending sit outs - demote players with pendingSitOut flag to railbirds
-      const playersWithPendingSitOut = tableData.players.filter((p) => p.pendingSitOut === true);
-      const playersStaying = tableData.players.filter((p) => p.pendingSitOut !== true);
+      // ============================================
+      // TOURNAMENT ELIMINATION HANDLING
+      // ============================================
+      if (isSitAndGo && tournament && tournament.state === TOURNAMENT_STATES.RUNNING) {
+        // Find players with 0 chips who haven't been eliminated yet
+        const playersToEliminate = tableData.players.filter(
+          (p) => p.chips === 0 && p.seatState !== SEAT_STATES.ELIMINATED && p.status !== 'eliminated'
+        );
 
-      // Process pending sit outs - return chips and convert to railbirds
-      for (const player of playersWithPendingSitOut) {
-        // Return chips to wallet
-        if (player.chips > 0) {
-          const userRef = doc(db, USERS_COLLECTION, player.uid);
-          const userSnap = await transaction.get(userRef);
-          if (userSnap.exists()) {
-            const currentBalance = userSnap.data().balance || 0;
-            transaction.update(userRef, {
-              balance: currentBalance + player.chips,
-            });
-          }
+        for (const player of playersToEliminate) {
+          // Calculate finish position
+          const eliminatedCount = (tournament.eliminationOrder || []).length;
+          const totalPlayers = tournament.totalSeats;
+          const finishPosition = totalPlayers - eliminatedCount;
+
+          // Add to elimination order
+          tournament.eliminationOrder = [
+            ...(tournament.eliminationOrder || []),
+            {
+              uid: player.uid,
+              displayName: player.displayName,
+              finishPosition: finishPosition,
+              eliminatedAt: Date.now(),
+            },
+          ];
+
+          // Create railbird entry for eliminated player
+          const newRailbird = {
+            uid: player.uid,
+            displayName: player.displayName,
+            photoURL: player.photoURL || null,
+            joinedAt: Date.now(),
+            wantsToPlay: false,
+            eliminatedAt: Date.now(),
+            finishPosition: finishPosition,
+          };
+          railbirds.push(newRailbird);
+
+          eliminatedInThisHand.push({
+            uid: player.uid,
+            displayName: player.displayName,
+            finishPosition,
+          });
         }
 
-        // Convert to railbird
-        const newRailbird = {
-          uid: player.uid,
-          displayName: player.displayName,
-          photoURL: player.photoURL || null,
-          joinedAt: Date.now(),
-          wantsToPlay: false,
-        };
-        railbirds.push(newRailbird);
+        // Check if tournament is complete (only 1 player with chips remaining)
+        const remainingPlayers = tableData.players.filter(
+          (p) => p.chips > 0 && p.seatState !== SEAT_STATES.ELIMINATED && p.status !== 'eliminated'
+        );
+
+        // If only one player remains (or less due to simultaneous eliminations)
+        if (remainingPlayers.length <= 1 && eliminatedInThisHand.length > 0) {
+          isTournamentComplete = true;
+          tournament.state = TOURNAMENT_STATES.COMPLETED;
+          tournament.completedAt = Date.now();
+
+          if (remainingPlayers.length === 1) {
+            const winner = remainingPlayers[0];
+            tournament.winner = {
+              uid: winner.uid,
+              displayName: winner.displayName,
+              finishPosition: 1,
+            };
+          }
+        }
+      }
+
+      // Handle pending sit outs - demote players with pendingSitOut flag to railbirds
+      // (Skip for tournament tables - no sit out option during tournament)
+      let playersWithPendingSitOut = [];
+      let playersStaying = tableData.players;
+
+      if (!isSitAndGo) {
+        playersWithPendingSitOut = tableData.players.filter((p) => p.pendingSitOut === true);
+        playersStaying = tableData.players.filter((p) => p.pendingSitOut !== true);
+
+        // Process pending sit outs - return chips and convert to railbirds
+        for (const player of playersWithPendingSitOut) {
+          // Return chips to wallet
+          if (player.chips > 0) {
+            const userRef = doc(db, USERS_COLLECTION, player.uid);
+            const userSnap = await transaction.get(userRef);
+            if (userSnap.exists()) {
+              const currentBalance = userSnap.data().balance || 0;
+              transaction.update(userRef, {
+                balance: currentBalance + player.chips,
+              });
+            }
+          }
+
+          // Convert to railbird
+          const newRailbird = {
+            uid: player.uid,
+            displayName: player.displayName,
+            photoURL: player.photoURL || null,
+            joinedAt: Date.now(),
+            wantsToPlay: false,
+          };
+          railbirds.push(newRailbird);
+        }
       }
 
       // Reset remaining players for new hand
-      // Destructure pendingSitOut to remove it, then use removeUndefinedValues
-      // to filter out any other undefined properties (Firestore doesn't allow undefined values)
-      // Also activate any waiting bots (waitingForNextHand flag)
+      // For tournaments, mark eliminated players and keep them in the players array
       const players = playersStaying.map(({ pendingSitOut, waitingForNextHand, pendingBuyIn, ...player }) => {
+        // Check if this player was just eliminated (tournament)
+        const wasEliminated = eliminatedInThisHand.some((e) => e.uid === player.uid);
+
+        if (wasEliminated) {
+          // Mark as eliminated - keep in players array but with ELIMINATED seat state
+          return removeUndefinedValues({
+            ...player,
+            hand: [],
+            seatState: SEAT_STATES.ELIMINATED,
+            status: 'eliminated',
+            finishPosition: eliminatedInThisHand.find((e) => e.uid === player.uid)?.finishPosition,
+            eliminatedAt: Date.now(),
+            cardsToDiscard: [],
+            currentRoundBet: 0,
+            totalContribution: 0,
+            hasActedThisRound: false,
+            lastAction: null,
+          });
+        }
+
         // If bot was waiting for next hand, give them their chips and activate
         let chips = player.chips;
         let status = player.chips > 0 ? 'active' : 'sitting_out';
 
-        if (waitingForNextHand && player.isBot && pendingBuyIn > 0) {
+        // For tournaments, if player has 0 chips but wasn't just eliminated, they're already eliminated
+        if (isSitAndGo && player.seatState === SEAT_STATES.ELIMINATED) {
+          status = 'eliminated';
+        }
+
+        if (!isSitAndGo && waitingForNextHand && player.isBot && pendingBuyIn > 0) {
           chips = pendingBuyIn;
           status = 'active';
         }
+
+        // If this is the tournament winner, mark their position
+        const isWinner = isTournamentComplete && tournament?.winner?.uid === player.uid;
 
         return removeUndefinedValues({
           ...player,
@@ -3129,10 +3361,10 @@ export class GameService {
           status,
           cardsToDiscard: [],
           currentRoundBet: 0,
-          totalContribution: 0, // Reset for new hand
+          totalContribution: 0,
           hasActedThisRound: false,
-          lastAction: null, // Clear action text for new hand
-          // Clear waiting flags (don't include them in update)
+          lastAction: null,
+          ...(isWinner && { finishPosition: 1 }),
         });
       });
 
@@ -3140,45 +3372,68 @@ export class GameService {
       const activePlayerCount = players.filter((p) => p.status === 'active').length;
       const newDealerIndex = ((tableData.dealerIndex || 0) + 1) % Math.max(activePlayerCount, 1);
 
-      transaction.update(tableRef, {
+      // Build update object
+      const updateData = {
         phase: 'IDLE',
         deck: GameService.createShuffledDeck(),
-        muck: [], // Clear muck for new hand
+        muck: [],
         pot: 0,
-        pots: [], // Clear side pots
+        pots: [],
         currentBet: 0,
         players,
         railbirds,
         activePlayerIndex: 0,
         dealerIndex: newDealerIndex,
-        // Clear seat indices - will be recalculated when dealing
         dealerSeatIndex: null,
         smallBlindSeatIndex: null,
         bigBlindSeatIndex: null,
-        // Clear showdown result and aggressor
         showdownResult: null,
-        lastAggressor: null, // Reset for new hand
+        lastAggressor: null,
         turnDeadline: null,
-        // Clear community cards for Hold'em
         communityCards: [],
         lastUpdated: serverTimestamp(),
-      });
+      };
 
-      // Return the updated data for autoPromoteRailbirds
+      // Update tournament data if applicable
+      if (isSitAndGo && tournament) {
+        updateData.tournament = tournament;
+      }
+
+      transaction.update(tableRef, updateData);
+
+      // Return the updated data
       return {
-        ...tableData,
-        players,
-        phase: 'IDLE',
-        railbirds: tableData.railbirds || [],
+        freshTableData: {
+          ...tableData,
+          players,
+          phase: 'IDLE',
+          railbirds: tableData.railbirds || [],
+          tournament,
+        },
+        tournamentComplete: isTournamentComplete,
+        eliminatedPlayers: eliminatedInThisHand,
       };
     });
 
+    // Handle tournament completion - distribute prizes
+    if (tournamentComplete) {
+      try {
+        await GameService.completeTournament(tableId);
+        console.log('Tournament completed, prizes distributed');
+      } catch (err) {
+        console.error('Error completing tournament:', err);
+      }
+    }
+
     // Auto-promote any waiting railbirds now that the game is IDLE
-    try {
-      await GameService.autoPromoteRailbirds(tableId, freshTableData);
-    } catch (err) {
-      // Log but don't fail the whole operation if promotion fails
-      console.error('Error auto-promoting railbirds:', err);
+    // (Only for cash games - tournaments don't allow new players once started)
+    const config = freshTableData.config || {};
+    if (config.tableMode !== TABLE_MODES.SIT_AND_GO) {
+      try {
+        await GameService.autoPromoteRailbirds(tableId, freshTableData);
+      } catch (err) {
+        console.error('Error auto-promoting railbirds:', err);
+      }
     }
   }
 
@@ -3614,5 +3869,360 @@ export class GameService {
       chatLog,
       lastUpdated: serverTimestamp(),
     });
+  }
+
+  // ============================================
+  // SIT & GO TOURNAMENT METHODS
+  // ============================================
+
+  /**
+   * Handle tournament elimination when a player's chips reach 0
+   * This is THE critical method for the Sit & Go lifecycle:
+   * 1. Demotes player to railbird (can watch but not play)
+   * 2. Marks their seat as ELIMINATED (cannot be filled again)
+   * 3. Records their finish position
+   * 4. If only 1 player remains, completes the tournament
+   *
+   * @param {string} tableId - The table ID
+   * @param {string} playerUid - The eliminated player's UID
+   * @returns {Promise<{eliminated: boolean, finishPosition: number, tournamentComplete: boolean}>}
+   */
+  static async handleTournamentElimination(tableId, playerUid) {
+    if (!db) {
+      throw new Error('Firestore not initialized');
+    }
+
+    const tableRef = doc(db, TABLES_COLLECTION, tableId);
+
+    return await runTransaction(db, async (transaction) => {
+      const tableDoc = await transaction.get(tableRef);
+      if (!tableDoc.exists()) {
+        throw new Error('Table not found');
+      }
+
+      const tableData = tableDoc.data();
+      const config = tableData.config || {};
+      const tournament = tableData.tournament;
+
+      // Verify this is a tournament table
+      if (config.tableMode !== TABLE_MODES.SIT_AND_GO || !tournament) {
+        throw new Error('Not a tournament table');
+      }
+
+      // Verify tournament is running
+      if (tournament.state !== TOURNAMENT_STATES.RUNNING) {
+        throw new Error('Tournament is not in running state');
+      }
+
+      const players = tableData.players || [];
+      const playerIndex = players.findIndex((p) => p.uid === playerUid);
+
+      if (playerIndex === -1) {
+        throw new Error('Player not found at this table');
+      }
+
+      const player = players[playerIndex];
+
+      // Verify player has 0 chips
+      if (player.chips > 0) {
+        throw new Error('Player still has chips');
+      }
+
+      // Calculate finish position (total players - already eliminated)
+      const eliminatedCount = (tournament.eliminationOrder || []).length;
+      const totalPlayers = tournament.totalSeats;
+      const finishPosition = totalPlayers - eliminatedCount;
+
+      // Count remaining active players
+      const activePlayers = players.filter(
+        (p) => p.uid !== playerUid && p.chips > 0 && p.seatState !== SEAT_STATES.ELIMINATED
+      );
+      const tournamentComplete = activePlayers.length <= 1;
+
+      // Create railbird entry from player data
+      const newRailbird = {
+        uid: player.uid,
+        displayName: player.displayName,
+        photoURL: player.photoURL || null,
+        joinedAt: Date.now(),
+        wantsToPlay: false,
+        // Tournament-specific: Mark as eliminated player
+        eliminatedAt: Date.now(),
+        finishPosition: finishPosition,
+      };
+
+      // Update player to ELIMINATED status (keep in players array but mark as eliminated)
+      const updatedPlayers = players.map((p) => {
+        if (p.uid === playerUid) {
+          return {
+            ...p,
+            seatState: SEAT_STATES.ELIMINATED,
+            status: 'eliminated', // Custom status for tournament
+            finishPosition: finishPosition,
+            eliminatedAt: Date.now(),
+          };
+        }
+        return p;
+      });
+
+      // Update tournament elimination order
+      const updatedEliminationOrder = [
+        ...(tournament.eliminationOrder || []),
+        {
+          uid: player.uid,
+          displayName: player.displayName,
+          finishPosition: finishPosition,
+          eliminatedAt: Date.now(),
+        },
+      ];
+
+      // Prepare updated tournament data
+      const updatedTournament = {
+        ...tournament,
+        eliminationOrder: updatedEliminationOrder,
+      };
+
+      // If tournament is complete, mark it and determine winner
+      if (tournamentComplete && activePlayers.length === 1) {
+        const winner = activePlayers[0];
+        updatedTournament.state = TOURNAMENT_STATES.COMPLETED;
+        updatedTournament.completedAt = Date.now();
+        updatedTournament.winner = {
+          uid: winner.uid,
+          displayName: winner.displayName,
+          finishPosition: 1,
+        };
+
+        // Mark winner in players array
+        const winnerIndex = updatedPlayers.findIndex((p) => p.uid === winner.uid);
+        if (winnerIndex !== -1) {
+          updatedPlayers[winnerIndex] = {
+            ...updatedPlayers[winnerIndex],
+            finishPosition: 1,
+          };
+        }
+      }
+
+      // Add to railbirds
+      const updatedRailbirds = [...(tableData.railbirds || []), newRailbird];
+
+      // Update the table
+      transaction.update(tableRef, {
+        players: updatedPlayers,
+        railbirds: updatedRailbirds,
+        tournament: updatedTournament,
+        lastUpdated: serverTimestamp(),
+      });
+
+      // If tournament is complete, handle prize distribution
+      if (tournamentComplete) {
+        // Prize distribution happens after transaction
+        // We'll return the completion status and handle payouts separately
+      }
+
+      return {
+        eliminated: true,
+        finishPosition,
+        tournamentComplete,
+        winner: tournamentComplete && activePlayers.length === 1 ? activePlayers[0] : null,
+      };
+    });
+  }
+
+  /**
+   * Complete tournament and distribute prizes
+   * Called after the last player is eliminated (or winner determined)
+   *
+   * @param {string} tableId - The table ID
+   * @returns {Promise<{payouts: Array<{uid, amount, position}>}>}
+   */
+  static async completeTournament(tableId) {
+    if (!db) {
+      throw new Error('Firestore not initialized');
+    }
+
+    const tableRef = doc(db, TABLES_COLLECTION, tableId);
+    const tableSnap = await getDoc(tableRef);
+
+    if (!tableSnap.exists()) {
+      throw new Error('Table not found');
+    }
+
+    const tableData = tableSnap.data();
+    const config = tableData.config || {};
+    const tournament = tableData.tournament;
+
+    // Verify this is a completed tournament
+    if (config.tableMode !== TABLE_MODES.SIT_AND_GO || !tournament) {
+      throw new Error('Not a tournament table');
+    }
+
+    if (tournament.state !== TOURNAMENT_STATES.COMPLETED) {
+      throw new Error('Tournament is not completed');
+    }
+
+    // Calculate payouts
+    const prizePool = tournament.prizePool || 0;
+    const prizeStructure = tournament.prizeStructure || [1.0];
+    const payoutAmounts = calculatePrizePayouts(prizePool, prizeStructure);
+
+    // Build payout list
+    // Position 1 = winner (not in eliminationOrder)
+    // Position 2 = last eliminated (index -1 in eliminationOrder)
+    // Position 3 = second to last eliminated, etc.
+    const payouts = [];
+
+    // Add winner (position 1)
+    if (tournament.winner && payoutAmounts.length > 0) {
+      payouts.push({
+        uid: tournament.winner.uid,
+        displayName: tournament.winner.displayName,
+        position: 1,
+        amount: payoutAmounts[0],
+      });
+    }
+
+    // Add other paid positions from elimination order (reverse order)
+    const eliminationOrder = tournament.eliminationOrder || [];
+    for (let i = 1; i < payoutAmounts.length && i <= eliminationOrder.length; i++) {
+      const eliminated = eliminationOrder[eliminationOrder.length - i];
+      if (eliminated) {
+        payouts.push({
+          uid: eliminated.uid,
+          displayName: eliminated.displayName,
+          position: i + 1,
+          amount: payoutAmounts[i],
+        });
+      }
+    }
+
+    // Distribute prizes to user wallets
+    for (const payout of payouts) {
+      const userRef = doc(db, USERS_COLLECTION, payout.uid);
+      const userSnap = await getDoc(userRef);
+      if (userSnap.exists()) {
+        const currentBalance = userSnap.data().balance || 0;
+        await updateDoc(userRef, {
+          balance: currentBalance + payout.amount,
+        });
+      }
+    }
+
+    // Update tournament with payout info
+    await updateDoc(tableRef, {
+      'tournament.payouts': payouts,
+      'tournament.prizeDistributed': true,
+      'tournament.prizeDistributedAt': Date.now(),
+      lastUpdated: serverTimestamp(),
+    });
+
+    return { payouts };
+  }
+
+  /**
+   * Check if a player should be eliminated (chips === 0 in tournament)
+   * This is called after each hand to check for eliminations
+   *
+   * @param {Object} tableData - Current table data
+   * @returns {Array<string>} - Array of player UIDs to eliminate
+   */
+  static getPlayersToEliminate(tableData) {
+    const config = tableData.config || {};
+    const tournament = tableData.tournament;
+
+    // Only for running tournaments
+    if (config.tableMode !== TABLE_MODES.SIT_AND_GO || !tournament) {
+      return [];
+    }
+
+    if (tournament.state !== TOURNAMENT_STATES.RUNNING) {
+      return [];
+    }
+
+    const players = tableData.players || [];
+    return players
+      .filter((p) => p.chips === 0 && p.seatState !== SEAT_STATES.ELIMINATED)
+      .map((p) => p.uid);
+  }
+
+  /**
+   * Check if tournament is in registration phase
+   * @param {Object} tableData - Current table data
+   * @returns {boolean}
+   */
+  static isTournamentRegistering(tableData) {
+    const config = tableData?.config || {};
+    const tournament = tableData?.tournament;
+    return (
+      config.tableMode === TABLE_MODES.SIT_AND_GO &&
+      tournament?.state === TOURNAMENT_STATES.REGISTERING
+    );
+  }
+
+  /**
+   * Check if tournament is running
+   * @param {Object} tableData - Current table data
+   * @returns {boolean}
+   */
+  static isTournamentRunning(tableData) {
+    const config = tableData?.config || {};
+    const tournament = tableData?.tournament;
+    return (
+      config.tableMode === TABLE_MODES.SIT_AND_GO &&
+      tournament?.state === TOURNAMENT_STATES.RUNNING
+    );
+  }
+
+  /**
+   * Check if tournament is completed
+   * @param {Object} tableData - Current table data
+   * @returns {boolean}
+   */
+  static isTournamentCompleted(tableData) {
+    const config = tableData?.config || {};
+    const tournament = tableData?.tournament;
+    return (
+      config.tableMode === TABLE_MODES.SIT_AND_GO &&
+      tournament?.state === TOURNAMENT_STATES.COMPLETED
+    );
+  }
+
+  /**
+   * Check if table is a Sit & Go tournament
+   * @param {Object} tableData - Current table data
+   * @returns {boolean}
+   */
+  static isSitAndGo(tableData) {
+    const config = tableData?.config || {};
+    return config.tableMode === TABLE_MODES.SIT_AND_GO;
+  }
+
+  /**
+   * Get tournament info for display
+   * @param {Object} tableData - Current table data
+   * @returns {Object|null} - Tournament info or null if not a tournament
+   */
+  static getTournamentInfo(tableData) {
+    if (!GameService.isSitAndGo(tableData)) {
+      return null;
+    }
+
+    const tournament = tableData.tournament || {};
+    const config = tableData.config || {};
+
+    return {
+      state: tournament.state,
+      buyIn: tournament.buyIn,
+      totalSeats: tournament.totalSeats,
+      registeredCount: (tournament.registeredPlayers || []).length,
+      prizePool: tournament.prizePool || 0,
+      prizeStructure: tournament.prizeStructure || [],
+      eliminationOrder: tournament.eliminationOrder || [],
+      winner: tournament.winner || null,
+      payouts: tournament.payouts || [],
+      startedAt: tournament.startedAt,
+      completedAt: tournament.completedAt,
+      gameType: config.gameType,
+    };
   }
 }

@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
+import { TABLE_MODES, DEFAULT_TOURNAMENT_CONFIG, getPrizeStructure } from '../game/constants';
 
 /**
  * Modal for configuring a new poker table
  * Allows players to customize game settings before creating a table
+ * Supports both Cash Game and Sit & Go tournament modes
  */
 function CreateGameModal({ isOpen, onClose, onCreate, loading }) {
   const [gameType, setGameType] = useState('lowball_27');
@@ -15,6 +17,13 @@ function CreateGameModal({ isOpen, onClose, onCreate, loading }) {
   const [botDifficulty, setBotDifficulty] = useState('medium');
   const [fillStrategy, setFillStrategy] = useState('fixed');
   const [error, setError] = useState('');
+
+  // Sit & Go tournament settings
+  const [tableMode, setTableMode] = useState(TABLE_MODES.CASH_GAME);
+  const [sngBuyIn, setSngBuyIn] = useState(DEFAULT_TOURNAMENT_CONFIG.buyIn);
+  const [sngTotalSeats, setSngTotalSeats] = useState(DEFAULT_TOURNAMENT_CONFIG.totalSeats);
+
+  const isSitAndGo = tableMode === TABLE_MODES.SIT_AND_GO;
 
   // Reset state when modal opens
   useEffect(() => {
@@ -29,6 +38,10 @@ function CreateGameModal({ isOpen, onClose, onCreate, loading }) {
       setBotDifficulty('medium');
       setFillStrategy('fixed');
       setError('');
+      // Reset SNG settings
+      setTableMode(TABLE_MODES.CASH_GAME);
+      setSngBuyIn(DEFAULT_TOURNAMENT_CONFIG.buyIn);
+      setSngTotalSeats(DEFAULT_TOURNAMENT_CONFIG.totalSeats);
     }
   }, [isOpen]);
 
@@ -42,16 +55,36 @@ function CreateGameModal({ isOpen, onClose, onCreate, loading }) {
       return;
     }
 
-    // Validate bot count
-    if (botCount < 0 || botCount > 5) {
-      setError('Bot count must be between 0 and 5');
+    // For Sit & Go mode, bots are not allowed
+    if (isSitAndGo && botCount > 0) {
+      setError('Bots are not allowed in Sit & Go tournaments');
       return;
     }
 
-    // Validate bot count doesn't exceed max players
-    if (botCount >= maxPlayers) {
-      setError('Bot count must be less than max players');
-      return;
+    // Validate bot count (only for cash games)
+    if (!isSitAndGo) {
+      if (botCount < 0 || botCount > 5) {
+        setError('Bot count must be between 0 and 5');
+        return;
+      }
+
+      // Validate bot count doesn't exceed max players
+      if (botCount >= maxPlayers) {
+        setError('Bot count must be less than max players');
+        return;
+      }
+    }
+
+    // Validate SNG settings
+    if (isSitAndGo) {
+      if (sngBuyIn < 100 || sngBuyIn > 100000) {
+        setError('Buy-in must be between $100 and $100,000');
+        return;
+      }
+      if (sngTotalSeats < 2 || sngTotalSeats > 6) {
+        setError('Total seats must be between 2 and 6');
+        return;
+      }
     }
 
     // Calculate turn time limit based on game speed
@@ -61,14 +94,28 @@ function CreateGameModal({ isOpen, onClose, onCreate, loading }) {
     const config = {
       gameType,
       bettingType,
-      maxPlayers,
+      maxPlayers: isSitAndGo ? sngTotalSeats : maxPlayers, // SNG uses totalSeats as maxPlayers
       turnTimeLimit,
       passwordHash: privacy === 'private' ? password.trim() : null, // For MVP, store plain text
-      bots: {
+      bots: isSitAndGo ? { count: 0, difficulty: 'medium', fillStrategy: 'fixed' } : {
         count: botCount,
         difficulty: botDifficulty,
         fillStrategy, // 'fixed' or 'fill_empty'
       },
+      // Table mode (cash game vs sit & go)
+      tableMode,
+      // Sit & Go tournament config (only included if SNG mode)
+      ...(isSitAndGo && {
+        tournament: {
+          buyIn: sngBuyIn,
+          totalSeats: sngTotalSeats,
+          startingChips: DEFAULT_TOURNAMENT_CONFIG.startingChips,
+          prizeStructure: getPrizeStructure(sngTotalSeats),
+          state: 'REGISTERING', // Initial tournament state
+          registeredPlayers: [], // Track registered players for payout
+          eliminationOrder: [], // Track order of elimination (last eliminated = 2nd place, etc.)
+        },
+      }),
     };
 
     try {
@@ -108,6 +155,48 @@ function CreateGameModal({ isOpen, onClose, onCreate, loading }) {
         </p>
 
         <form onSubmit={handleSubmit}>
+          {/* Table Mode Toggle */}
+          <div className="mb-5">
+            <label className="block text-sm font-medium text-gray-300 mb-2">
+              Table Mode
+            </label>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setTableMode(TABLE_MODES.CASH_GAME);
+                  setBotCount(0);
+                }}
+                className={`flex-1 py-3 px-4 rounded-lg font-medium transition-colors ${
+                  tableMode === TABLE_MODES.CASH_GAME
+                    ? 'bg-green-600 text-white ring-2 ring-green-400'
+                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                }`}
+              >
+                Cash Game
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setTableMode(TABLE_MODES.SIT_AND_GO);
+                  setBotCount(0); // No bots in SNG
+                }}
+                className={`flex-1 py-3 px-4 rounded-lg font-medium transition-colors ${
+                  tableMode === TABLE_MODES.SIT_AND_GO
+                    ? 'bg-purple-600 text-white ring-2 ring-purple-400'
+                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                }`}
+              >
+                Sit & Go
+              </button>
+            </div>
+            <p className="text-xs text-gray-500 mt-1">
+              {tableMode === TABLE_MODES.SIT_AND_GO
+                ? 'Tournament mode: Fixed buy-in, winner-takes-format, no re-entries'
+                : 'Standard cash game: Buy-in anytime, leave anytime'}
+            </p>
+          </div>
+
           {/* Game Type */}
           <div className="mb-5">
             <label htmlFor="gameType" className="block text-sm font-medium text-gray-300 mb-2">
@@ -128,31 +217,105 @@ function CreateGameModal({ isOpen, onClose, onCreate, loading }) {
             </p>
           </div>
 
-          {/* Max Players */}
-          <div className="mb-5">
-            <label htmlFor="maxPlayers" className="block text-sm font-medium text-gray-300 mb-2">
-              Max Players: {maxPlayers}
-            </label>
-            <div className="flex gap-2 mb-2">
-              {[2, 3, 4, 5, 6].map((num) => (
-                <button
-                  key={num}
-                  type="button"
-                  onClick={() => setMaxPlayers(num)}
-                  className={`flex-1 py-2 px-3 rounded-lg font-medium transition-colors ${
-                    maxPlayers === num
-                      ? 'bg-yellow-600 text-white'
-                      : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                  }`}
-                >
-                  {num}
-                </button>
-              ))}
+          {/* Sit & Go Tournament Settings */}
+          {isSitAndGo && (
+            <div className="mb-5 p-4 bg-purple-900/30 border border-purple-700/50 rounded-lg">
+              <h3 className="text-sm font-semibold text-purple-300 mb-4">Tournament Settings</h3>
+
+              {/* Buy-in Amount */}
+              <div className="mb-4">
+                <label htmlFor="sngBuyIn" className="block text-sm font-medium text-gray-300 mb-2">
+                  Buy-in Amount: ${sngBuyIn.toLocaleString()}
+                </label>
+                <input
+                  type="range"
+                  id="sngBuyIn"
+                  min="100"
+                  max="10000"
+                  step="100"
+                  value={sngBuyIn}
+                  onChange={(e) => setSngBuyIn(parseInt(e.target.value))}
+                  className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-purple-600"
+                />
+                <div className="flex justify-between text-xs text-gray-500 mt-1">
+                  <span>$100</span>
+                  <span>$10,000</span>
+                </div>
+              </div>
+
+              {/* Total Seats */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Total Seats: {sngTotalSeats}
+                </label>
+                <div className="flex gap-2">
+                  {[2, 3, 4, 5, 6].map((num) => (
+                    <button
+                      key={num}
+                      type="button"
+                      onClick={() => setSngTotalSeats(num)}
+                      className={`flex-1 py-2 px-3 rounded-lg font-medium transition-colors ${
+                        sngTotalSeats === num
+                          ? 'bg-purple-600 text-white'
+                          : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                      }`}
+                    >
+                      {num}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  Tournament starts automatically when all seats are filled
+                </p>
+              </div>
+
+              {/* Prize Pool Preview */}
+              <div className="bg-gray-800/50 rounded-lg p-3">
+                <p className="text-xs text-gray-400 mb-2">Prize Pool Preview:</p>
+                <p className="text-lg font-bold text-purple-300">
+                  ${(sngBuyIn * sngTotalSeats).toLocaleString()} Total
+                </p>
+                <div className="mt-2 space-y-1">
+                  {getPrizeStructure(sngTotalSeats).map((pct, idx) => (
+                    <div key={idx} className="flex justify-between text-xs">
+                      <span className="text-gray-400">{idx + 1}{idx === 0 ? 'st' : idx === 1 ? 'nd' : 'rd'} Place:</span>
+                      <span className="text-green-400">
+                        ${Math.floor(sngBuyIn * sngTotalSeats * pct).toLocaleString()} ({(pct * 100).toFixed(0)}%)
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
-            <p className="text-xs text-gray-500">
-              Number of players allowed at this table (2-6)
-            </p>
-          </div>
+          )}
+
+          {/* Max Players (Cash Game only) */}
+          {!isSitAndGo && (
+            <div className="mb-5">
+              <label htmlFor="maxPlayers" className="block text-sm font-medium text-gray-300 mb-2">
+                Max Players: {maxPlayers}
+              </label>
+              <div className="flex gap-2 mb-2">
+                {[2, 3, 4, 5, 6].map((num) => (
+                  <button
+                    key={num}
+                    type="button"
+                    onClick={() => setMaxPlayers(num)}
+                    className={`flex-1 py-2 px-3 rounded-lg font-medium transition-colors ${
+                      maxPlayers === num
+                        ? 'bg-yellow-600 text-white'
+                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                    }`}
+                  >
+                    {num}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-gray-500">
+                Number of players allowed at this table (2-6)
+              </p>
+            </div>
+          )}
 
           {/* Betting Structure */}
           <div className="mb-5">
@@ -174,94 +337,98 @@ function CreateGameModal({ isOpen, onClose, onCreate, loading }) {
             </p>
           </div>
 
-          {/* Bot Configuration */}
-          <div className="mb-5">
-            <label htmlFor="botCount" className="block text-sm font-medium text-gray-300 mb-2">
-              Bot Players: {botCount}
-            </label>
-            <input
-              type="range"
-              id="botCount"
-              min="0"
-              max="5"
-              value={botCount}
-              onChange={(e) => {
-                const newCount = parseInt(e.target.value);
-                setBotCount(newCount);
-                // Ensure bot count doesn't exceed max players
-                if (newCount >= maxPlayers) {
-                  setMaxPlayers(Math.min(6, newCount + 1));
-                }
-              }}
-              className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-yellow-600"
-            />
-            <div className="flex justify-between text-xs text-gray-500 mt-1">
-              <span>0</span>
-              <span>5</span>
-            </div>
-            <p className="text-xs text-gray-500 mt-1">
-              Add AI opponents to fill the table
-            </p>
-          </div>
-
-          {/* Bot Difficulty */}
-          {botCount > 0 && (
-            <div className="mb-5">
-              <label htmlFor="botDifficulty" className="block text-sm font-medium text-gray-300 mb-2">
-                Bot Difficulty
-              </label>
-              <select
-                id="botDifficulty"
-                value={botDifficulty}
-                onChange={(e) => setBotDifficulty(e.target.value)}
-                className="w-full bg-gray-700 border border-gray-600 text-white px-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500"
-              >
-                <option value="easy">Easy (Tourist)</option>
-                <option value="medium">Medium</option>
-                <option value="hard">Hard (Pro)</option>
-              </select>
-              <p className="text-xs text-gray-500 mt-1">
-                AI skill level for all bots
-              </p>
-            </div>
-          )}
-
-          {/* Fill Strategy */}
-          {botCount > 0 && (
-            <div className="mb-5">
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Bot Fill Strategy
-              </label>
-              <div className="flex gap-4">
-                <label className="flex items-center cursor-pointer">
-                  <input
-                    type="radio"
-                    name="fillStrategy"
-                    value="fixed"
-                    checked={fillStrategy === 'fixed'}
-                    onChange={(e) => setFillStrategy(e.target.value)}
-                    className="w-4 h-4 text-yellow-600 bg-gray-700 border-gray-600 focus:ring-yellow-500"
-                  />
-                  <span className="ml-2 text-gray-300">Fixed Count</span>
+          {/* Bot Configuration (Cash Game only) */}
+          {!isSitAndGo && (
+            <>
+              <div className="mb-5">
+                <label htmlFor="botCount" className="block text-sm font-medium text-gray-300 mb-2">
+                  Bot Players: {botCount}
                 </label>
-                <label className="flex items-center cursor-pointer">
-                  <input
-                    type="radio"
-                    name="fillStrategy"
-                    value="fill_empty"
-                    checked={fillStrategy === 'fill_empty'}
-                    onChange={(e) => setFillStrategy(e.target.value)}
-                    className="w-4 h-4 text-yellow-600 bg-gray-700 border-gray-600 focus:ring-yellow-500"
-                  />
-                  <span className="ml-2 text-gray-300">Fill Empty Seats</span>
-                </label>
+                <input
+                  type="range"
+                  id="botCount"
+                  min="0"
+                  max="5"
+                  value={botCount}
+                  onChange={(e) => {
+                    const newCount = parseInt(e.target.value);
+                    setBotCount(newCount);
+                    // Ensure bot count doesn't exceed max players
+                    if (newCount >= maxPlayers) {
+                      setMaxPlayers(Math.min(6, newCount + 1));
+                    }
+                  }}
+                  className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-yellow-600"
+                />
+                <div className="flex justify-between text-xs text-gray-500 mt-1">
+                  <span>0</span>
+                  <span>5</span>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  Add AI opponents to fill the table
+                </p>
               </div>
-              <p className="text-xs text-gray-500 mt-1">
-                {fillStrategy === 'fixed'
-                  ? 'Add exactly this many bots when table is created'
-                  : 'Automatically add bots to fill empty seats up to max players'}
-              </p>
-            </div>
+
+              {/* Bot Difficulty */}
+              {botCount > 0 && (
+                <div className="mb-5">
+                  <label htmlFor="botDifficulty" className="block text-sm font-medium text-gray-300 mb-2">
+                    Bot Difficulty
+                  </label>
+                  <select
+                    id="botDifficulty"
+                    value={botDifficulty}
+                    onChange={(e) => setBotDifficulty(e.target.value)}
+                    className="w-full bg-gray-700 border border-gray-600 text-white px-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                  >
+                    <option value="easy">Easy (Tourist)</option>
+                    <option value="medium">Medium</option>
+                    <option value="hard">Hard (Pro)</option>
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">
+                    AI skill level for all bots
+                  </p>
+                </div>
+              )}
+
+              {/* Fill Strategy */}
+              {botCount > 0 && (
+                <div className="mb-5">
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Bot Fill Strategy
+                  </label>
+                  <div className="flex gap-4">
+                    <label className="flex items-center cursor-pointer">
+                      <input
+                        type="radio"
+                        name="fillStrategy"
+                        value="fixed"
+                        checked={fillStrategy === 'fixed'}
+                        onChange={(e) => setFillStrategy(e.target.value)}
+                        className="w-4 h-4 text-yellow-600 bg-gray-700 border-gray-600 focus:ring-yellow-500"
+                      />
+                      <span className="ml-2 text-gray-300">Fixed Count</span>
+                    </label>
+                    <label className="flex items-center cursor-pointer">
+                      <input
+                        type="radio"
+                        name="fillStrategy"
+                        value="fill_empty"
+                        checked={fillStrategy === 'fill_empty'}
+                        onChange={(e) => setFillStrategy(e.target.value)}
+                        className="w-4 h-4 text-yellow-600 bg-gray-700 border-gray-600 focus:ring-yellow-500"
+                      />
+                      <span className="ml-2 text-gray-300">Fill Empty Seats</span>
+                    </label>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {fillStrategy === 'fixed'
+                      ? 'Add exactly this many bots when table is created'
+                      : 'Automatically add bots to fill empty seats up to max players'}
+                  </p>
+                </div>
+              )}
+            </>
           )}
 
           {/* Privacy Settings */}
