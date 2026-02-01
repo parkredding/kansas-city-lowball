@@ -7,6 +7,7 @@ import { MAX_PLAYERS } from '../game/constants';
 import BuyInModal from '../components/BuyInModal';
 import BettingControls from '../components/BettingControls';
 import TurnTimer, { CircularTimer } from '../components/TurnTimer';
+import BlindTimer from '../components/BlindTimer';
 import UsernameModal from '../components/UsernameModal';
 import CreateGameModal from '../components/CreateGameModal';
 import JoinTableModal from '../components/JoinTableModal';
@@ -1208,6 +1209,7 @@ function GameView() {
     isTournamentRunning,
     isTournamentCompleted,
     getTournamentInfo,
+    increaseBlindLevel,
     canJoinTournament,
     isEliminated,
     getFinishPosition,
@@ -1906,6 +1908,15 @@ function GameView() {
                     )}
                   </span>
                 </div>
+              )}
+              {/* Blind Timer for running tournaments */}
+              {isTournament && tournamentRunning && tournamentInfo?.blindTimer && (
+                <BlindTimer
+                  blindTimer={tournamentInfo.blindTimer}
+                  tournamentRunning={tournamentRunning}
+                  onLevelUp={increaseBlindLevel}
+                  canTriggerLevelUp={userIsTableCreator}
+                />
               )}
             </div>
             <div className="flex items-center gap-2">

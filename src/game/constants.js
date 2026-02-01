@@ -97,10 +97,55 @@ export const SEAT_STATES = {
 // Default tournament settings
 export const DEFAULT_TOURNAMENT_CONFIG = {
   buyIn: 1000,           // Default buy-in amount
-  startingChips: 1500,   // Starting stack per player
+  startingChips: 1000,   // Starting stack per player (matches buy-in for SnG)
   totalSeats: 6,         // Number of seats (triggers auto-start when filled)
   prizeStructure: [0.65, 0.35], // Default: 1st gets 65%, 2nd gets 35%
 };
+
+// ============================================
+// SIT & GO BLIND TIMER CONFIG
+// ============================================
+
+// Blind level duration in milliseconds (5 minutes)
+export const BLIND_LEVEL_DURATION_MS = 5 * 60 * 1000;
+
+// Blind structure for SnG tournaments with 1000 starting stack
+// Each level has { smallBlind, bigBlind }
+// Blinds double each level
+export const SNG_BLIND_STRUCTURE = [
+  { level: 1, smallBlind: 10, bigBlind: 20 },
+  { level: 2, smallBlind: 20, bigBlind: 40 },
+  { level: 3, smallBlind: 40, bigBlind: 80 },
+  { level: 4, smallBlind: 80, bigBlind: 160 },
+  { level: 5, smallBlind: 160, bigBlind: 320 },
+  { level: 6, smallBlind: 320, bigBlind: 640 },
+  { level: 7, smallBlind: 640, bigBlind: 1280 },
+  { level: 8, smallBlind: 1280, bigBlind: 2560 },
+];
+
+/**
+ * Get blind structure for a given starting stack
+ * For 1000 starting stack, uses default structure starting at 10/20
+ * @param {number} startingChips - Tournament starting stack
+ * @returns {Array} - Array of blind levels
+ */
+export function getBlindStructure(startingChips = 1000) {
+  // For now, use the same structure for all starting stacks
+  // Can be extended later to support different structures based on stack size
+  return SNG_BLIND_STRUCTURE;
+}
+
+/**
+ * Get the current blind level info based on level index
+ * @param {number} levelIndex - Current blind level (0-indexed)
+ * @returns {Object} - { level, smallBlind, bigBlind }
+ */
+export function getBlindLevel(levelIndex) {
+  const structure = SNG_BLIND_STRUCTURE;
+  // Cap at the last level if we've exceeded the structure
+  const cappedIndex = Math.min(levelIndex, structure.length - 1);
+  return structure[cappedIndex];
+}
 
 // Prize structure presets
 export const PRIZE_STRUCTURES = {

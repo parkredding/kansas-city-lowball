@@ -105,11 +105,12 @@ function CreateGameModal({ isOpen, onClose, onCreate, loading }) {
       // Table mode (cash game vs sit & go)
       tableMode,
       // Sit & Go tournament config (only included if SNG mode)
+      // Starting chips equals buy-in amount for SnG tournaments
       ...(isSitAndGo && {
         tournament: {
           buyIn: sngBuyIn,
           totalSeats: sngTotalSeats,
-          startingChips: DEFAULT_TOURNAMENT_CONFIG.startingChips,
+          startingChips: sngBuyIn, // Starting chips = buy-in amount
           prizeStructure: getPrizeStructure(sngTotalSeats),
           state: 'REGISTERING', // Initial tournament state
           registeredPlayers: [], // Track registered players for payout
