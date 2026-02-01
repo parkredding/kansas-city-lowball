@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 /**
@@ -253,29 +253,10 @@ export function usePrePlayAction({
   canCheck,
 }) {
   const [preAction, setPreAction] = useState({ type: PRE_ACTION_TYPES.NONE, amount: 0 });
-  const [wasExecuted, setWasExecuted] = useState(false);
+  // Use ref instead of state to prevent re-render from clearing the timeout
+  const wasExecutedRef = useRef(false);
 
   const callAmount = Math.max(0, currentBet - playerCurrentRoundBet);
-
-  // Execute pre-action when turn starts
-  useEffect(() => {
-    if (isMyTurn && preAction.type !== PRE_ACTION_TYPES.NONE && !wasExecuted) {
-      // Mark as executed to prevent duplicate actions
-      setWasExecuted(true);
-
-      // Small delay to let the UI update first
-      const timer = setTimeout(() => {
-        executePreAction();
-      }, 100);
-
-      return () => clearTimeout(timer);
-    }
-
-    // Reset execution flag when turn ends
-    if (!isMyTurn && wasExecuted) {
-      setWasExecuted(false);
-    }
-  }, [isMyTurn, preAction, wasExecuted]);
 
   // Execute the queued pre-action
   const executePreAction = useCallback(() => {
@@ -321,16 +302,37 @@ export function usePrePlayAction({
     setPreAction({ type: PRE_ACTION_TYPES.NONE, amount: 0 });
   }, [preAction, canCheck, callAmount, onCheck, onFold, onCall]);
 
+  // Execute pre-action when turn starts
+  useEffect(() => {
+    // Reset execution flag when turn ends
+    if (!isMyTurn) {
+      wasExecutedRef.current = false;
+      return;
+    }
+
+    if (preAction.type !== PRE_ACTION_TYPES.NONE && !wasExecutedRef.current) {
+      // Mark as executed to prevent duplicate actions
+      wasExecutedRef.current = true;
+
+      // Small delay to let the UI update first
+      const timer = setTimeout(() => {
+        executePreAction();
+      }, 100);
+
+      return () => clearTimeout(timer);
+    }
+  }, [isMyTurn, preAction.type, executePreAction]);
+
   // Set a new pre-action
   const setPreActionHandler = useCallback((action) => {
     setPreAction(action);
-    setWasExecuted(false);
+    wasExecutedRef.current = false;
   }, []);
 
   // Clear the pre-action
   const clearPreAction = useCallback(() => {
     setPreAction({ type: PRE_ACTION_TYPES.NONE, amount: 0 });
-    setWasExecuted(false);
+    wasExecutedRef.current = false;
   }, []);
 
   return {
