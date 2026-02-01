@@ -668,6 +668,21 @@ export function GameProvider({ children }) {
     }
   }, [currentTableId]);
 
+  // Increase blind level when timer expires
+  const increaseBlindLevel = useCallback(async () => {
+    if (!currentTableId) {
+      return { success: false, error: 'Not connected to table' };
+    }
+
+    try {
+      const result = await GameService.increaseBlindLevel(currentTableId);
+      return result;
+    } catch (err) {
+      console.error('Failed to increase blind level:', err);
+      return { success: false, error: err.message };
+    }
+  }, [currentTableId]);
+
   // Check for players that need to be eliminated
   const getPlayersToEliminate = useCallback(() => {
     return GameService.getPlayersToEliminate(tableData);
@@ -794,6 +809,7 @@ export function GameProvider({ children }) {
     isTournamentCompleted,
     getTournamentInfo,
     handleTournamentElimination,
+    increaseBlindLevel,
     getPlayersToEliminate,
     canJoinTournament,
     isEliminated,

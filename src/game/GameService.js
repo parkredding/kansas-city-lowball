@@ -34,6 +34,8 @@ import {
   SEAT_STATES,
   DEFAULT_TOURNAMENT_CONFIG,
   calculatePrizePayouts,
+  BLIND_LEVEL_DURATION_MS,
+  getBlindLevel,
 } from './constants';
 
 const TABLES_COLLECTION = 'tables';
@@ -1182,6 +1184,11 @@ export class GameService {
       if (totalPlayers >= tournament.totalSeats) {
         updatedTournament.state = TOURNAMENT_STATES.RUNNING;
         updatedTournament.startedAt = Date.now();
+        // Initialize blind timer - starts at level 0 (10/20 blinds)
+        updatedTournament.blindTimer = {
+          currentLevel: 0,
+          nextLevelAt: Timestamp.fromMillis(Date.now() + BLIND_LEVEL_DURATION_MS),
+        };
       }
 
       updateData.tournament = updatedTournament;
@@ -1791,9 +1798,21 @@ export class GameService {
       const tableData = tableDoc.data();
       let deck = [...tableData.deck];
       let muck = [...(tableData.muck || [])];
-      const minBet = tableData.minBet || DEFAULT_MIN_BET;
-      const smallBlind = Math.floor(minBet / 2);
-      const bigBlind = minBet;
+
+      // Determine blinds: use blind timer for SnG tournaments, minBet for cash games
+      const isSitAndGo = tableData.config?.tableMode === TABLE_MODES.SIT_AND_GO;
+      const blindTimer = tableData.tournament?.blindTimer;
+      let smallBlind, bigBlind;
+
+      if (isSitAndGo && blindTimer) {
+        const blindInfo = getBlindLevel(blindTimer.currentLevel || 0);
+        smallBlind = blindInfo.smallBlind;
+        bigBlind = blindInfo.bigBlind;
+      } else {
+        const minBet = tableData.minBet || DEFAULT_MIN_BET;
+        smallBlind = Math.floor(minBet / 2);
+        bigBlind = minBet;
+      }
 
       // Filter players with chips and reset their state
       const activePlayers = tableData.players.filter((p) => p.chips > 0);
@@ -1916,9 +1935,21 @@ export class GameService {
       const tableData = tableDoc.data();
       let deck = [...tableData.deck];
       let muck = [...(tableData.muck || [])];
-      const minBet = tableData.minBet || DEFAULT_MIN_BET;
-      const smallBlind = Math.floor(minBet / 2);
-      const bigBlind = minBet;
+
+      // Determine blinds: use blind timer for SnG tournaments, minBet for cash games
+      const isSitAndGo = tableData.config?.tableMode === TABLE_MODES.SIT_AND_GO;
+      const blindTimer = tableData.tournament?.blindTimer;
+      let smallBlind, bigBlind;
+
+      if (isSitAndGo && blindTimer) {
+        const blindInfo = getBlindLevel(blindTimer.currentLevel || 0);
+        smallBlind = blindInfo.smallBlind;
+        bigBlind = blindInfo.bigBlind;
+      } else {
+        const minBet = tableData.minBet || DEFAULT_MIN_BET;
+        smallBlind = Math.floor(minBet / 2);
+        bigBlind = minBet;
+      }
 
       // Filter players with chips and reset their state
       const activePlayers = tableData.players.filter((p) => p.chips > 0);
@@ -2248,7 +2279,18 @@ export class GameService {
 
     // Use Math.floor() for all chip values to avoid floating-point errors
     const currentBet = Math.floor(tableData.currentBet || 0);
-    const minBet = Math.floor(tableData.minBet || DEFAULT_MIN_BET);
+
+    // Determine min bet: use blind level for SnG tournaments, minBet for cash games
+    let minBet;
+    const isSitAndGo = tableData.config?.tableMode === TABLE_MODES.SIT_AND_GO;
+    const blindTimer = tableData.tournament?.blindTimer;
+    if (isSitAndGo && blindTimer) {
+      const blindInfo = getBlindLevel(blindTimer.currentLevel || 0);
+      minBet = blindInfo.bigBlind;
+    } else {
+      minBet = Math.floor(tableData.minBet || DEFAULT_MIN_BET);
+    }
+
     const playerChips = Math.floor(player.chips || 0);
     const playerCurrentRoundBet = Math.floor(player.currentRoundBet || 0);
 
@@ -4223,6 +4265,110 @@ export class GameService {
       startedAt: tournament.startedAt,
       completedAt: tournament.completedAt,
       gameType: config.gameType,
+      blindTimer: tournament.blindTimer || null,
     };
+  }
+
+  /**
+   * Increase the blind level for a Sit & Go tournament
+   * Called by clients when the blind timer expires
+   * Uses transactions to ensure only one client performs the increase
+   * @param {string} tableId - The table ID
+   * @returns {Promise<{success: boolean, newLevel?: number, error?: string}>}
+   */
+  static async increaseBlindLevel(tableId) {
+    if (!db) {
+      throw new Error('Firestore not initialized');
+    }
+
+    const tableRef = doc(db, TABLES_COLLECTION, tableId);
+
+    try {
+      const result = await runTransaction(db, async (transaction) => {
+        const tableDoc = await transaction.get(tableRef);
+        if (!tableDoc.exists()) {
+          return { success: false, error: 'Table not found' };
+        }
+
+        const tableData = tableDoc.data();
+        const config = tableData.config || {};
+        const tournament = tableData.tournament;
+
+        // Verify this is a running SnG tournament
+        if (config.tableMode !== TABLE_MODES.SIT_AND_GO) {
+          return { success: false, error: 'Not a tournament table' };
+        }
+
+        if (!tournament || tournament.state !== TOURNAMENT_STATES.RUNNING) {
+          return { success: false, error: 'Tournament not running' };
+        }
+
+        const blindTimer = tournament.blindTimer;
+        if (!blindTimer) {
+          return { success: false, error: 'No blind timer found' };
+        }
+
+        // Check if it's actually time to increase (server-side validation)
+        let nextLevelMs;
+        if (blindTimer.nextLevelAt.toDate) {
+          nextLevelMs = blindTimer.nextLevelAt.toDate().getTime();
+        } else if (blindTimer.nextLevelAt.seconds) {
+          nextLevelMs = blindTimer.nextLevelAt.seconds * 1000;
+        } else {
+          nextLevelMs = new Date(blindTimer.nextLevelAt).getTime();
+        }
+
+        const now = Date.now();
+        // Allow a small buffer (2 seconds) for network latency
+        if (now < nextLevelMs - 2000) {
+          return { success: false, error: 'Not time to increase yet' };
+        }
+
+        // Increase the level
+        const newLevel = (blindTimer.currentLevel || 0) + 1;
+        const newBlindTimer = {
+          currentLevel: newLevel,
+          nextLevelAt: Timestamp.fromMillis(Date.now() + BLIND_LEVEL_DURATION_MS),
+        };
+
+        // Update the tournament blind timer
+        transaction.update(tableRef, {
+          'tournament.blindTimer': newBlindTimer,
+          lastUpdated: serverTimestamp(),
+        });
+
+        const newBlindInfo = getBlindLevel(newLevel);
+        return {
+          success: true,
+          newLevel,
+          smallBlind: newBlindInfo.smallBlind,
+          bigBlind: newBlindInfo.bigBlind,
+        };
+      });
+
+      return result;
+    } catch (error) {
+      console.error('Error increasing blind level:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Get current blind level info for a tournament
+   * @param {Object} tableData - Current table data
+   * @returns {Object|null} - { level, smallBlind, bigBlind } or null if not a tournament
+   */
+  static getBlindInfo(tableData) {
+    if (!GameService.isSitAndGo(tableData)) {
+      return null;
+    }
+
+    const blindTimer = tableData.tournament?.blindTimer;
+    if (!blindTimer) {
+      // Default to level 0 if no blind timer yet
+      return getBlindLevel(0);
+    }
+
+    return getBlindLevel(blindTimer.currentLevel || 0);
   }
 }
