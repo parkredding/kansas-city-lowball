@@ -3,7 +3,7 @@ import { useAuth } from './AuthContext';
 import { GameService, BetAction } from '../game/GameService';
 import { HandEvaluator } from '../game/HandEvaluator';
 import { TexasHoldemHandEvaluator } from '../game/TexasHoldemHandEvaluator';
-import { DEFAULT_MIN_BET, GAME_TYPES, TABLE_MODES, TOURNAMENT_STATES } from '../game/constants';
+import { DEFAULT_MIN_BET, GAME_TYPES, TABLE_MODES, TOURNAMENT_STATES, getBlindLevel } from '../game/constants';
 
 const GameContext = createContext();
 
@@ -542,11 +542,36 @@ export function GameProvider({ children }) {
   }, [tableData, currentUser]);
 
   // Calculate minimum raise
+  // For No Limit / Pot Limit: minimum raise = current bet + big blind
+  // For Fixed Limit: retain existing fixed-limit logic
   const getMinRaise = useCallback(() => {
     if (!tableData) return 0;
     const currentBet = tableData.currentBet || 0;
-    const minBet = tableData.minBet || 50;
-    return currentBet + minBet;
+    const bettingType = tableData.config?.bettingType || 'no_limit';
+
+    // Determine the big blind amount based on game mode
+    let bigBlind;
+    const isSitAndGo = tableData.config?.tableMode === TABLE_MODES.SIT_AND_GO;
+    const blindTimer = tableData.tournament?.blindTimer;
+
+    if (isSitAndGo && blindTimer) {
+      // For SnG tournaments, use the current blind level
+      const blindInfo = getBlindLevel(blindTimer.currentLevel || 0);
+      bigBlind = blindInfo.bigBlind;
+    } else {
+      // For cash games, minBet represents the big blind
+      bigBlind = tableData.minBet || DEFAULT_MIN_BET;
+    }
+
+    // For No Limit and Pot Limit: min raise = currentBet + bigBlind
+    // For Fixed Limit: use fixed bet sizing (retain existing logic)
+    if (bettingType === 'fixed_limit') {
+      // In Fixed Limit, raises are in fixed increments of the big blind
+      return currentBet + bigBlind;
+    }
+
+    // No Limit / Pot Limit: minimum raise is the big blind
+    return currentBet + bigBlind;
   }, [tableData]);
 
   // Check if player can check

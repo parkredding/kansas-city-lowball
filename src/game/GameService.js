@@ -2461,7 +2461,7 @@ export class GameService {
     // Check if only one player remains
     const activePlayersCount = GameService.countActivePlayers(players);
     if (activePlayersCount === 1) {
-      // Hand is over, award pot to winner
+      // Hand is over, award pot to winner (uncontested)
       const winner = players.find((p) => p.status === 'active' || p.status === 'all-in');
       let winnerDescription = '';
       if (winner) {
@@ -2487,6 +2487,26 @@ export class GameService {
         });
       }
 
+      // Create showdown result for uncontested win (allows "Show Bluff" feature)
+      const uncontestedShowdownResult = winner ? {
+        winners: [{
+          uid: winner.uid,
+          displayName: winner.displayName,
+          amount: pot,
+          handDescription: null, // Don't reveal hand description for uncontested
+          handResult: null,
+        }],
+        losers: [],
+        message: winnerDescription,
+        allHands: [],
+        handsToReveal: [],
+        isContested: false,
+      } : null;
+
+      // Set showBluffDeadline: 5 seconds for winner to optionally show their hand
+      const SHOW_BLUFF_DELAY_MS = 5000;
+      const showBluffDeadline = Date.now() + SHOW_BLUFF_DELAY_MS;
+
       await GameService.updateTable(tableId, {
         players,
         pot: 0,
@@ -2494,6 +2514,8 @@ export class GameService {
         currentBet: 0,
         phase: 'SHOWDOWN',
         turnDeadline: null,
+        showdownResult: uncontestedShowdownResult,
+        showBluffDeadline, // Deadline for "Show Bluff" option
         chatLog: activityLog,
       });
       return { success: true, action, actionDescription };
@@ -3430,6 +3452,7 @@ export class GameService {
         smallBlindSeatIndex: null,
         bigBlindSeatIndex: null,
         showdownResult: null,
+        showBluffDeadline: null, // Clear the "Show Bluff" delay
         lastAggressor: null,
         turnDeadline: null,
         communityCards: [],
