@@ -1,5 +1,13 @@
 import { useState, useEffect } from 'react';
-import { TABLE_MODES, DEFAULT_TOURNAMENT_CONFIG, getPrizeStructure } from '../game/constants';
+import {
+  TABLE_MODES,
+  DEFAULT_TOURNAMENT_CONFIG,
+  getPrizeStructure,
+  PAYOUT_STRUCTURE_TYPES,
+  getPayoutStructure,
+  parseCustomPayouts,
+  STANDARD_PAYOUTS,
+} from '../game/constants';
 
 /**
  * Modal for configuring a new poker table
@@ -23,7 +31,24 @@ function CreateGameModal({ isOpen, onClose, onCreate, loading }) {
   const [sngBuyIn, setSngBuyIn] = useState(DEFAULT_TOURNAMENT_CONFIG.buyIn);
   const [sngTotalSeats, setSngTotalSeats] = useState(DEFAULT_TOURNAMENT_CONFIG.totalSeats);
 
+  // Payout structure settings
+  const [payoutStructureType, setPayoutStructureType] = useState(PAYOUT_STRUCTURE_TYPES.WINNER_TAKE_ALL);
+  const [customPayoutInput, setCustomPayoutInput] = useState('');
+  const [customPayoutError, setCustomPayoutError] = useState('');
+
   const isSitAndGo = tableMode === TABLE_MODES.SIT_AND_GO;
+
+  // Get current payout structure based on selection
+  const getCurrentPayoutStructure = () => {
+    if (payoutStructureType === PAYOUT_STRUCTURE_TYPES.CUSTOM) {
+      const parsed = parseCustomPayouts(customPayoutInput);
+      if (parsed.valid) {
+        return parsed.payouts;
+      }
+      return [1.0]; // Fallback
+    }
+    return getPayoutStructure(payoutStructureType, sngTotalSeats);
+  };
 
   // Reset state when modal opens
   useEffect(() => {
@@ -42,6 +67,10 @@ function CreateGameModal({ isOpen, onClose, onCreate, loading }) {
       setTableMode(TABLE_MODES.CASH_GAME);
       setSngBuyIn(DEFAULT_TOURNAMENT_CONFIG.buyIn);
       setSngTotalSeats(DEFAULT_TOURNAMENT_CONFIG.totalSeats);
+      // Reset payout structure settings
+      setPayoutStructureType(PAYOUT_STRUCTURE_TYPES.WINNER_TAKE_ALL);
+      setCustomPayoutInput('');
+      setCustomPayoutError('');
     }
   }, [isOpen]);
 
@@ -85,6 +114,14 @@ function CreateGameModal({ isOpen, onClose, onCreate, loading }) {
         setError('Total seats must be between 2 and 6');
         return;
       }
+      // Validate custom payouts if selected
+      if (payoutStructureType === PAYOUT_STRUCTURE_TYPES.CUSTOM) {
+        const parsed = parseCustomPayouts(customPayoutInput);
+        if (!parsed.valid) {
+          setError(parsed.error);
+          return;
+        }
+      }
     }
 
     // Calculate turn time limit based on game speed
@@ -111,7 +148,8 @@ function CreateGameModal({ isOpen, onClose, onCreate, loading }) {
           buyIn: sngBuyIn,
           totalSeats: sngTotalSeats,
           startingChips: sngBuyIn, // Starting chips = buy-in amount
-          prizeStructure: getPrizeStructure(sngTotalSeats),
+          prizeStructure: getCurrentPayoutStructure(),
+          payoutStructureType: payoutStructureType, // Store the type for reference
           state: 'REGISTERING', // Initial tournament state
           registeredPlayers: [], // Track registered players for payout
           eliminationOrder: [], // Track order of elimination (last eliminated = 2nd place, etc.)
@@ -270,6 +308,66 @@ function CreateGameModal({ isOpen, onClose, onCreate, loading }) {
                 </p>
               </div>
 
+              {/* Payout Structure */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Payout Structure
+                </label>
+                <select
+                  value={payoutStructureType}
+                  onChange={(e) => {
+                    setPayoutStructureType(e.target.value);
+                    setCustomPayoutError('');
+                  }}
+                  className="w-full bg-gray-700 border border-gray-600 text-white px-4 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                >
+                  <option value={PAYOUT_STRUCTURE_TYPES.WINNER_TAKE_ALL}>
+                    Winner Take All (1st: 100%)
+                  </option>
+                  <option value={PAYOUT_STRUCTURE_TYPES.STANDARD}>
+                    Standard (Top {STANDARD_PAYOUTS[sngTotalSeats]?.length || 1} Paid)
+                  </option>
+                  <option value={PAYOUT_STRUCTURE_TYPES.CUSTOM}>
+                    Custom
+                  </option>
+                </select>
+                <p className="text-xs text-gray-500 mt-1">
+                  {payoutStructureType === PAYOUT_STRUCTURE_TYPES.WINNER_TAKE_ALL && 'First place takes the entire prize pool'}
+                  {payoutStructureType === PAYOUT_STRUCTURE_TYPES.STANDARD && `Standard payout: ${STANDARD_PAYOUTS[sngTotalSeats]?.map(p => `${(p * 100).toFixed(0)}%`).join(' / ') || '100%'}`}
+                  {payoutStructureType === PAYOUT_STRUCTURE_TYPES.CUSTOM && 'Enter custom payout percentages below'}
+                </p>
+              </div>
+
+              {/* Custom Payout Input */}
+              {payoutStructureType === PAYOUT_STRUCTURE_TYPES.CUSTOM && (
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Custom Percentages (comma-separated)
+                  </label>
+                  <input
+                    type="text"
+                    value={customPayoutInput}
+                    onChange={(e) => {
+                      setCustomPayoutInput(e.target.value);
+                      const parsed = parseCustomPayouts(e.target.value);
+                      setCustomPayoutError(parsed.valid ? '' : parsed.error);
+                    }}
+                    placeholder="e.g., 50, 30, 20"
+                    className={`w-full bg-gray-700 border text-white px-4 py-2 rounded-lg focus:outline-none focus:ring-2 ${
+                      customPayoutError
+                        ? 'border-red-500 focus:ring-red-500'
+                        : 'border-gray-600 focus:ring-purple-500'
+                    }`}
+                  />
+                  {customPayoutError && (
+                    <p className="text-xs text-red-400 mt-1">{customPayoutError}</p>
+                  )}
+                  <p className="text-xs text-gray-500 mt-1">
+                    Enter percentages for each place (must add up to 100%)
+                  </p>
+                </div>
+              )}
+
               {/* Prize Pool Preview */}
               <div className="bg-gray-800/50 rounded-lg p-3">
                 <p className="text-xs text-gray-400 mb-2">Prize Pool Preview:</p>
@@ -277,9 +375,11 @@ function CreateGameModal({ isOpen, onClose, onCreate, loading }) {
                   ${(sngBuyIn * sngTotalSeats).toLocaleString()} Total
                 </p>
                 <div className="mt-2 space-y-1">
-                  {getPrizeStructure(sngTotalSeats).map((pct, idx) => (
+                  {getCurrentPayoutStructure().map((pct, idx) => (
                     <div key={idx} className="flex justify-between text-xs">
-                      <span className="text-gray-400">{idx + 1}{idx === 0 ? 'st' : idx === 1 ? 'nd' : 'rd'} Place:</span>
+                      <span className="text-gray-400">
+                        {idx + 1}{idx === 0 ? 'st' : idx === 1 ? 'nd' : idx === 2 ? 'rd' : 'th'} Place:
+                      </span>
                       <span className="text-green-400">
                         ${Math.floor(sngBuyIn * sngTotalSeats * pct).toLocaleString()} ({(pct * 100).toFixed(0)}%)
                       </span>
