@@ -445,6 +445,85 @@ function ShowMuckButtons({
 }
 
 /**
+ * ShowdownControls Component
+ * Handles the showdown UI including "Show Bluff", "Next Hand" with proper POST_WIN_DELAY
+ * For uncontested wins: Shows "Show Bluff" button and delays "Next Hand" for 5 seconds
+ */
+function ShowdownControls({
+  tableData,
+  currentUser,
+  currentPlayer,
+  onRevealHand,
+  onStartNextHand,
+  loading,
+  isDesktop
+}) {
+  const [delayRemaining, setDelayRemaining] = useState(0);
+
+  const showdownResult = tableData?.showdownResult;
+  const showBluffDeadline = tableData?.showBluffDeadline;
+  const isUncontested = showdownResult?.isContested === false;
+  const isWinner = showdownResult?.winners?.some(w => w.uid === currentUser?.uid);
+  const handRevealed = currentPlayer?.handRevealed || false;
+
+  // Timer to track remaining delay for Next Hand button
+  useEffect(() => {
+    if (!showBluffDeadline) {
+      setDelayRemaining(0);
+      return;
+    }
+
+    const updateRemaining = () => {
+      const remaining = Math.max(0, Math.ceil((showBluffDeadline - Date.now()) / 1000));
+      setDelayRemaining(remaining);
+    };
+
+    updateRemaining();
+    const interval = setInterval(updateRemaining, 250);
+    return () => clearInterval(interval);
+  }, [showBluffDeadline]);
+
+  // Next Hand is disabled during the show bluff delay (for uncontested wins)
+  // unless the winner has already revealed their hand
+  const isDelayActive = isUncontested && delayRemaining > 0 && !handRevealed;
+
+  return (
+    <div className="flex flex-col gap-2">
+      {/* Show/Muck buttons for showdown */}
+      <ShowMuckButtons
+        showdownResult={showdownResult}
+        currentUserUid={currentUser?.uid}
+        currentPlayer={currentPlayer}
+        onRevealHand={onRevealHand}
+        isDesktop={isDesktop}
+      />
+
+      {/* Next Hand button - disabled during show bluff delay for uncontested wins */}
+      <motion.button
+        type="button"
+        onClick={onStartNextHand}
+        disabled={loading || isDelayActive}
+        className={`
+          w-full font-bold py-3 px-4 rounded-xl shadow-lg transition-all
+          ${isDelayActive
+            ? 'bg-gradient-to-r from-slate-600 to-slate-700 text-slate-300 cursor-not-allowed'
+            : 'bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 disabled:from-amber-900 disabled:to-amber-950 text-white'
+          }
+        `}
+        whileHover={!isDelayActive ? { scale: 1.02 } : undefined}
+        whileTap={!isDelayActive ? { scale: 0.98 } : undefined}
+      >
+        {isDelayActive ? (
+          <span>Next Hand ({delayRemaining}s)</span>
+        ) : (
+          <span>Next Hand</span>
+        )}
+      </motion.button>
+    </div>
+  );
+}
+
+/**
  * Showdown Result Display - Shows the winner announcement prominently
  * Shows total pot won and actual gain (pot minus their own contribution)
  * Winners at contested showdowns have cards auto-revealed
@@ -769,19 +848,31 @@ function getBetChipPosition(relativeIndex, totalPlayers) {
   return { x: `${betX}%`, y: `${betY}%` };
 }
 
-function PlayerSlot({ player, isCurrentUser, isActive, showCards, handResult, turnDeadline, isDealer, isSmallBlind, isBigBlind, isViewerRailbird = false, canKick = false, onKick, showdownResult = null, isMobile = false }) {
+function PlayerSlot({ player, isCurrentUser, isActive, showCards, handResult, turnDeadline, isDealer, isSmallBlind, isBigBlind, isViewerRailbird = false, canKick = false, onKick, showdownResult = null, isMobile = false, allPlayers = [] }) {
   // Determine if this player's cards should actually be shown at showdown
+  // PRIVACY ENFORCEMENT: "Winner Shows, Loser Mucks" rule
   const isWinner = showdownResult?.winners?.some(w => w.uid === player.uid);
   const isContested = showdownResult?.isContested;
 
+  // Check for "All-In Showdown" exception: when all contenders are all-in, all hands are revealed
+  // This is standard poker rules - no one can muck when no more betting is possible
+  const isAllInShowdown = showCards && isContested && (() => {
+    const contenders = allPlayers.filter(p => p.status === 'active' || p.status === 'all-in');
+    // All-in showdown if all remaining contenders are all-in (no one is 'active' with chips)
+    return contenders.length > 0 && contenders.every(p => p.status === 'all-in');
+  })();
+
   // Cards are visible if:
   // 1. General showCards is true (showdown phase)
-  // 2. AND either:
+  // 2. AND one of the following:
   //    a. Winner at contested showdown (auto-reveal)
-  //    b. Player manually revealed their hand (handRevealed)
+  //    b. All-In Showdown (all hands forced up - standard poker rules)
+  //    c. Player manually revealed their hand (handRevealed)
+  // NOTE: Losers' cards remain FACE DOWN by default to enforce "Loser Mucks" privacy
   const shouldRevealCards = showCards && (
     (isWinner && isContested) || // Winner at contested showdown
-    player.handRevealed // Player chose to show
+    isAllInShowdown ||           // All-In Showdown: all hands forced up
+    player.handRevealed          // Player chose to show
   );
 
   const statusConfig = {
@@ -1691,7 +1782,8 @@ function GameView() {
           )}
 
           {/* Add Bot button - visible to table creator when seats available */}
-          {userIsTableCreator && (tableData?.players?.length || 0) < 6 && (
+          {/* Hidden for SIT_AND_GO tournaments - hosts should not inject bots into competitive tournaments */}
+          {userIsTableCreator && !isTournament && (tableData?.players?.length || 0) < 6 && (
             <motion.button
               type="button"
               onClick={() => handleAddBot('hard')}
@@ -1742,26 +1834,15 @@ function GameView() {
           )}
 
           {isShowdown && (
-            <div className="flex flex-col gap-2">
-              {/* Show/Muck buttons for showdown */}
-              <ShowMuckButtons
-                showdownResult={tableData?.showdownResult}
-                currentUserUid={currentUser?.uid}
-                currentPlayer={currentPlayer}
-                onRevealHand={handleRevealHand}
-                isDesktop={true}
-              />
-              <motion.button
-                type="button"
-                onClick={startNextHand}
-                disabled={loading}
-                className="w-full bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 disabled:from-amber-900 disabled:to-amber-950 text-white font-bold py-3 px-4 rounded-xl shadow-lg transition-all"
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-              >
-                Next Hand
-              </motion.button>
-            </div>
+            <ShowdownControls
+              tableData={tableData}
+              currentUser={currentUser}
+              currentPlayer={currentPlayer}
+              onRevealHand={handleRevealHand}
+              onStartNextHand={startNextHand}
+              loading={loading}
+              isDesktop={true}
+            />
           )}
 
           {needsBuyIn && isIdle && (
@@ -2063,6 +2144,7 @@ function GameView() {
                         canKick={userIsTableCreator && isIdle && player.isBot}
                         onKick={handleKickBot}
                         showdownResult={tableData?.showdownResult}
+                        allPlayers={tableData?.players || []}
                         isMobile={false}
                       />
                     </motion.div>
@@ -2442,7 +2524,8 @@ function GameView() {
           </div>
 
           {/* Add Bot button - at the top, visible to table leader when seats available */}
-          {userIsTableCreator && (tableData?.players?.length || 0) < 6 && (
+          {/* Hidden for SIT_AND_GO tournaments - hosts should not inject bots into competitive tournaments */}
+          {userIsTableCreator && !isTournament && (tableData?.players?.length || 0) < 6 && (
             <div className="flex-shrink-0 px-3 py-1.5 bg-slate-800/50 border-b border-slate-700/30">
               <motion.button
                 type="button"
@@ -2588,6 +2671,7 @@ function GameView() {
                 canKick={userIsTableCreator && isIdle && player.isBot}
                 onKick={handleKickBot}
                 showdownResult={tableData?.showdownResult}
+                allPlayers={tableData?.players || []}
                 isMobile={true}
               />
             </motion.div>
@@ -2912,27 +2996,17 @@ function GameView() {
                   </motion.button>
                 )}
 
-                {/* SHOWDOWN: Show/Muck buttons and Next Hand */}
+                {/* SHOWDOWN: Show/Muck buttons and Next Hand with POST_WIN_DELAY */}
                 {isShowdown && (
-                  <div className="flex flex-col gap-2">
-                    {/* Show/Muck buttons - touch-friendly */}
-                    <ShowMuckButtons
-                      showdownResult={tableData?.showdownResult}
-                      currentUserUid={currentUser?.uid}
-                      currentPlayer={currentPlayer}
-                      onRevealHand={handleRevealHand}
-                      isDesktop={false}
-                    />
-                    <motion.button
-                      type="button"
-                      onClick={startNextHand}
-                      disabled={loading}
-                      className="w-full bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 disabled:opacity-50 text-white font-bold py-4 rounded-xl shadow-lg text-lg min-h-[56px]"
-                      whileTap={{ scale: 0.98 }}
-                    >
-                      Next Hand
-                    </motion.button>
-                  </div>
+                  <ShowdownControls
+                    tableData={tableData}
+                    currentUser={currentUser}
+                    currentPlayer={currentPlayer}
+                    onRevealHand={handleRevealHand}
+                    onStartNextHand={startNextHand}
+                    loading={loading}
+                    isDesktop={false}
+                  />
                 )}
 
                 {/* Waiting indicator when not player's turn */}
