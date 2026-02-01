@@ -3,7 +3,7 @@ import { useAuth } from './AuthContext';
 import { GameService, BetAction } from '../game/GameService';
 import { HandEvaluator } from '../game/HandEvaluator';
 import { TexasHoldemHandEvaluator } from '../game/TexasHoldemHandEvaluator';
-import { DEFAULT_MIN_BET, GAME_TYPES } from '../game/constants';
+import { DEFAULT_MIN_BET, GAME_TYPES, TABLE_MODES, TOURNAMENT_STATES } from '../game/constants';
 
 const GameContext = createContext();
 
@@ -618,6 +618,108 @@ export function GameProvider({ children }) {
     return GameService.getDisplayName(userWallet);
   }, [userWallet]);
 
+  // ============================================
+  // TOURNAMENT STATE & HELPERS
+  // ============================================
+
+  // Check if table is a Sit & Go tournament
+  const isSitAndGo = useCallback(() => {
+    return GameService.isSitAndGo(tableData);
+  }, [tableData]);
+
+  // Check tournament state
+  const isTournamentRegistering = useCallback(() => {
+    return GameService.isTournamentRegistering(tableData);
+  }, [tableData]);
+
+  const isTournamentRunning = useCallback(() => {
+    return GameService.isTournamentRunning(tableData);
+  }, [tableData]);
+
+  const isTournamentCompleted = useCallback(() => {
+    return GameService.isTournamentCompleted(tableData);
+  }, [tableData]);
+
+  // Get tournament info for display
+  const getTournamentInfo = useCallback(() => {
+    return GameService.getTournamentInfo(tableData);
+  }, [tableData]);
+
+  // Handle tournament elimination
+  const handleTournamentElimination = useCallback(async (playerUid) => {
+    if (!currentTableId) {
+      setError('Not connected to table');
+      return null;
+    }
+
+    try {
+      const result = await GameService.handleTournamentElimination(currentTableId, playerUid);
+
+      // If tournament completed, distribute prizes
+      if (result.tournamentComplete) {
+        await GameService.completeTournament(currentTableId);
+      }
+
+      return result;
+    } catch (err) {
+      console.error('Failed to handle elimination:', err);
+      setError(err.message);
+      return null;
+    }
+  }, [currentTableId]);
+
+  // Check for players that need to be eliminated
+  const getPlayersToEliminate = useCallback(() => {
+    return GameService.getPlayersToEliminate(tableData);
+  }, [tableData]);
+
+  // Check if current user can join the tournament (railbird wanting to become player)
+  const canJoinTournament = useCallback(() => {
+    if (!tableData || !currentUser) return false;
+
+    const tournament = tableData.tournament;
+    if (!tournament) return false;
+
+    // Must be in REGISTERING state
+    if (tournament.state !== TOURNAMENT_STATES.REGISTERING) return false;
+
+    // Must be a railbird
+    const userIsRailbird = (tableData.railbirds || []).some((r) => r.uid === currentUser.uid);
+    if (!userIsRailbird) return false;
+
+    // Must have available seats
+    const seatsAvailable = tableData.players.length < tournament.totalSeats;
+    if (!seatsAvailable) return false;
+
+    // Must have sufficient balance
+    const userBalance = userWallet?.balance || 0;
+    if (userBalance < tournament.buyIn) return false;
+
+    // Must not have been previously eliminated
+    const wasEliminated = (tournament.eliminationOrder || []).some(e => e.uid === currentUser.uid);
+    if (wasEliminated) return false;
+
+    return true;
+  }, [tableData, currentUser, userWallet]);
+
+  // Check if current player is eliminated in tournament
+  const isEliminated = useCallback(() => {
+    if (!tableData || !currentUser) return false;
+    if (!GameService.isSitAndGo(tableData)) return false;
+
+    const player = tableData.players.find((p) => p.uid === currentUser.uid);
+    return player?.seatState === 'ELIMINATED' || player?.status === 'eliminated';
+  }, [tableData, currentUser]);
+
+  // Get current player's finish position in tournament
+  const getFinishPosition = useCallback(() => {
+    if (!tableData || !currentUser) return null;
+    if (!GameService.isSitAndGo(tableData)) return null;
+
+    const player = tableData.players.find((p) => p.uid === currentUser.uid);
+    return player?.finishPosition || null;
+  }, [tableData, currentUser]);
+
   const value = {
     // State
     currentTableId,
@@ -684,6 +786,18 @@ export function GameProvider({ children }) {
     canBecomePlayer,
     isTableCreator,
     hasPendingSitOut,
+
+    // Tournament state & helpers
+    isSitAndGo,
+    isTournamentRegistering,
+    isTournamentRunning,
+    isTournamentCompleted,
+    getTournamentInfo,
+    handleTournamentElimination,
+    getPlayersToEliminate,
+    canJoinTournament,
+    isEliminated,
+    getFinishPosition,
 
     // Export BetAction for use in components
     BetAction,

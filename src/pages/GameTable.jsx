@@ -1202,6 +1202,15 @@ function GameView() {
     // Hold'em specific
     isHoldem,
     gameType,
+    // Tournament-related
+    isSitAndGo,
+    isTournamentRegistering,
+    isTournamentRunning,
+    isTournamentCompleted,
+    getTournamentInfo,
+    canJoinTournament,
+    isEliminated,
+    getFinishPosition,
   } = useGame();
 
   const [selectedCardIndices, setSelectedCardIndices] = useState(new Set());
@@ -1238,6 +1247,16 @@ function GameView() {
 
   // Sit out status
   const playerHasPendingSitOut = hasPendingSitOut();
+
+  // Tournament status
+  const isTournament = isSitAndGo();
+  const tournamentRegistering = isTournamentRegistering();
+  const tournamentRunning = isTournamentRunning();
+  const tournamentCompleted = isTournamentCompleted();
+  const tournamentInfo = getTournamentInfo();
+  const userCanJoinTournament = canJoinTournament();
+  const userIsEliminated = isEliminated();
+  const userFinishPosition = getFinishPosition();
 
   // Turn notification - plays audio cue when it becomes player's turn
   useTurnNotification(myTurn, tableData?.phase);
@@ -1833,8 +1852,8 @@ function GameView() {
               >
                 Leave Table
               </motion.button>
-              {/* Sit Out Toggle - Only show for players (not railbirds) */}
-              {!userIsRailbird && currentPlayer && (
+              {/* Sit Out Toggle - Only show for players in cash games (not railbirds, not tournaments) */}
+              {!userIsRailbird && currentPlayer && !isTournament && (
                 playerHasPendingSitOut ? (
                   <motion.button
                     type="button"
@@ -1868,6 +1887,26 @@ function GameView() {
                 <span className="text-slate-100 font-mono font-bold text-sm">{currentTableId}</span>
               </div>
               <PhaseIndicator phase={tableData?.phase} />
+              {/* Tournament badge */}
+              {isTournament && tournamentInfo && (
+                <div className={`px-3 py-1.5 rounded-lg border ${
+                  tournamentCompleted
+                    ? 'bg-green-900/50 border-green-500/50'
+                    : tournamentRunning
+                    ? 'bg-purple-900/50 border-purple-500/50'
+                    : 'bg-amber-900/50 border-amber-500/50'
+                }`}>
+                  <span className="text-sm font-medium">
+                    {tournamentCompleted ? (
+                      <span className="text-green-300">🏆 Complete</span>
+                    ) : tournamentRunning ? (
+                      <span className="text-purple-300">🎮 ${tournamentInfo.prizePool?.toLocaleString()} Pool</span>
+                    ) : (
+                      <span className="text-amber-300">📝 {tournamentInfo.registeredCount}/{tournamentInfo.totalSeats}</span>
+                    )}
+                  </span>
+                </div>
+              )}
             </div>
             <div className="flex items-center gap-2">
               <div className="bg-slate-800/80 px-3 py-1.5 rounded-lg flex items-center gap-2 border border-slate-700/50">
@@ -2158,20 +2197,65 @@ function GameView() {
                 
                 {/* Railbird View */}
                 {userIsRailbird ? (
-                  <motion.div 
+                  <motion.div
                     className="flex flex-col items-center gap-3 py-4 relative z-10"
                     initial={{ opacity: 0, y: 15 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.35 }}
                   >
+                    {/* Tournament Status Banner */}
+                    {isTournament && tournamentInfo && (
+                      <div className="mb-2 bg-purple-900/40 border border-purple-500/30 rounded-lg px-4 py-2 text-center">
+                        <div className="flex items-center justify-center gap-2 mb-1">
+                          <span className="text-lg">🏆</span>
+                          <span className="text-purple-200 font-semibold">Sit & Go Tournament</span>
+                        </div>
+                        <div className="text-xs text-purple-300/80">
+                          {tournamentRegistering && (
+                            <span>Registering: {tournamentInfo.registeredCount}/{tournamentInfo.totalSeats} players</span>
+                          )}
+                          {tournamentRunning && (
+                            <span>In Progress - Prize Pool: ${tournamentInfo.prizePool?.toLocaleString()}</span>
+                          )}
+                          {tournamentCompleted && (
+                            <span className="text-green-400">Tournament Complete!</span>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Eliminated player message */}
+                    {isTournament && userIsEliminated && (
+                      <div className="mb-2 bg-red-900/30 border border-red-500/30 rounded-lg px-4 py-2 text-center">
+                        <div className="flex items-center justify-center gap-2">
+                          <span className="text-xl">💥</span>
+                          <span className="text-red-200 font-semibold">Eliminated</span>
+                        </div>
+                        {userFinishPosition && (
+                          <p className="text-red-300/80 text-sm">
+                            You finished in {userFinishPosition}{userFinishPosition === 1 ? 'st' : userFinishPosition === 2 ? 'nd' : userFinishPosition === 3 ? 'rd' : 'th'} place
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Standard railbird message */}
                     <div className="flex items-center gap-2">
                       <span className="text-3xl">👁️</span>
-                      <span className="text-violet-200 font-semibold text-lg">Watching the Game</span>
+                      <span className="text-violet-200 font-semibold text-lg">
+                        {isTournament && userIsEliminated ? 'Watching as Spectator' : 'Watching the Game'}
+                      </span>
                     </div>
                     <p className="text-violet-300/70 text-sm text-center max-w-md">
-                      You're observing as a railbird. Card values are hidden to prevent collusion.
+                      {isTournament && tournamentRunning && !userIsEliminated
+                        ? 'Tournament in progress. No new players allowed.'
+                        : isTournament && userIsEliminated
+                        ? 'You can continue watching the tournament.'
+                        : "You're observing as a railbird. Card values are hidden to prevent collusion."}
                     </p>
-                    {userCanBecomePlayer && (
+
+                    {/* Join/Register button */}
+                    {!isTournament && userCanBecomePlayer && (
                       <motion.button
                         type="button"
                         onClick={handleJoinAsPlayer}
@@ -2183,9 +2267,30 @@ function GameView() {
                         Join as Player
                       </motion.button>
                     )}
-                    {!userCanBecomePlayer && !isIdle && (
+
+                    {/* Tournament register button */}
+                    {isTournament && userCanJoinTournament && (
+                      <motion.button
+                        type="button"
+                        onClick={handleJoinAsPlayer}
+                        disabled={loading}
+                        className="bg-purple-600 hover:bg-purple-500 disabled:bg-purple-800 text-white font-bold py-2 px-6 rounded-lg transition-all"
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                      >
+                        Register (${tournamentInfo?.buyIn?.toLocaleString()} Buy-in)
+                      </motion.button>
+                    )}
+
+                    {/* Cannot join messages */}
+                    {!isTournament && !userCanBecomePlayer && !isIdle && (
                       <p className="text-violet-300/60 text-xs italic">
                         Wait for the hand to end to join as a player
+                      </p>
+                    )}
+                    {isTournament && tournamentRunning && !userIsEliminated && (
+                      <p className="text-purple-300/60 text-xs italic">
+                        Tournament has started. No new registrations allowed.
                       </p>
                     )}
                   </motion.div>
