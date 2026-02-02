@@ -858,10 +858,12 @@ function PlayerSlot({ player, isCurrentUser, isActive, showCards, handResult, tu
 
   // Check for "All-In Showdown" exception: when all contenders are all-in, all hands are revealed
   // This is standard poker rules - no one can muck when no more betting is possible
+  // IMPORTANT: Requires BOTH isContested AND 2+ contenders to prevent false positives on uncontested wins
   const isAllInShowdown = showCards && isContested && (() => {
     const contenders = allPlayers.filter(p => p.status === 'active' || p.status === 'all-in');
-    // All-in showdown if all remaining contenders are all-in (no one is 'active' with chips)
-    return contenders.length > 0 && contenders.every(p => p.status === 'all-in');
+    // All-in showdown requires 2+ contenders (contested) AND all must be all-in
+    // Single player all-in (uncontested win) should NOT trigger card reveal
+    return contenders.length >= 2 && contenders.every(p => p.status === 'all-in');
   })();
 
   // Cards are visible if:
