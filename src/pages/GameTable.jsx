@@ -1311,6 +1311,8 @@ function GameView() {
   } = useGame();
 
   const [selectedCardIndices, setSelectedCardIndices] = useState(new Set());
+  // Staged cards for discard - allows pre-selecting before player's turn
+  const [stagedCardIndices, setStagedCardIndices] = useState(new Set());
   const [showBuyInModal, setShowBuyInModal] = useState(false);
   const [hasDismissedBuyIn, setHasDismissedBuyIn] = useState(false);
   const [showUsernameModal, setShowUsernameModal] = useState(false);
@@ -1413,6 +1415,24 @@ function GameView() {
     prevPhaseRef.current = currentPhase;
   }, [tableData?.phase, tableData?.showdownResult, currentUser, currentPlayer?.status]);
 
+  // Clear staged cards when a new hand starts (IDLE or new deal)
+  useEffect(() => {
+    const phase = tableData?.phase;
+    if (phase === 'IDLE' || phase === 'BETTING_1') {
+      setStagedCardIndices(new Set());
+      setSelectedCardIndices(new Set());
+    }
+  }, [tableData?.phase]);
+
+  // Apply staged cards when it becomes player's draw turn
+  useEffect(() => {
+    if (isDrawPhase && myTurn && stagedCardIndices.size > 0) {
+      // Transfer staged cards to selected cards when turn starts
+      setSelectedCardIndices(new Set(stagedCardIndices));
+      setStagedCardIndices(new Set());
+    }
+  }, [isDrawPhase, myTurn, stagedCardIndices]);
+
   // Bot orchestrator - runs in table creator's browser
   useBotOrchestrator(
     tableData,
@@ -1479,18 +1499,42 @@ function GameView() {
     }
   }, [needsBuyIn, isIdle, showBuyInModal, hasDismissedBuyIn]);
 
-  const toggleCardSelection = (index) => {
-    if (!isDrawPhase || !myTurn) return;
+  // Check if game supports draw phases (not Hold'em)
+  const supportsDiscard = !isHoldem;
 
-    setSelectedCardIndices((prev) => {
-      const newSet = new Set(prev);
-      if (newSet.has(index)) {
-        newSet.delete(index);
-      } else {
-        newSet.add(index);
-      }
-      return newSet;
-    });
+  // Check if we're in an active hand (not idle or showdown)
+  const isActiveHand = tableData?.phase && !['IDLE', 'SHOWDOWN', 'CUT_FOR_DEALER'].includes(tableData.phase);
+
+  // Can stage cards: game supports discard, active hand, not player's turn, player is active
+  const canStageCards = supportsDiscard && isActiveHand && !myTurn && currentPlayer?.status === 'active';
+
+  const toggleCardSelection = (index) => {
+    // During draw phase on player's turn - use selected cards
+    if (isDrawPhase && myTurn) {
+      setSelectedCardIndices((prev) => {
+        const newSet = new Set(prev);
+        if (newSet.has(index)) {
+          newSet.delete(index);
+        } else {
+          newSet.add(index);
+        }
+        return newSet;
+      });
+      return;
+    }
+
+    // Between turns - stage cards for discard
+    if (canStageCards) {
+      setStagedCardIndices((prev) => {
+        const newSet = new Set(prev);
+        if (newSet.has(index)) {
+          newSet.delete(index);
+        } else {
+          newSet.add(index);
+        }
+        return newSet;
+      });
+    }
   };
 
   const handleSubmitDraw = async (e) => {
@@ -1606,6 +1650,12 @@ function GameView() {
     }
   };
 
+  // Callback when pre-play Check action is blocked by a bet
+  const handleCheckBlocked = useCallback((betAmount) => {
+    showToast(`There's a bet of $${betAmount.toLocaleString()} - you must call, raise, or fold`, 'warning');
+    playNotificationSound('turn');
+  }, []);
+
   // Pre-play action queuing system
   const {
     preAction,
@@ -1620,6 +1670,7 @@ function GameView() {
     onCheck: handleCheck,
     onCall: handleCall,
     canCheck: playerCanCheck,
+    onCheckBlocked: handleCheckBlocked,
   });
 
   const handleRaise = async (amount, e) => {
@@ -1841,23 +1892,6 @@ function GameView() {
             </motion.button>
           )}
 
-          {/* Add Bot button - visible to table creator when seats available */}
-          {/* Hidden for SIT_AND_GO tournaments - hosts should not inject bots into competitive tournaments */}
-          {userIsTableCreator && !isTournament && (tableData?.players?.length || 0) < 6 && (
-            <motion.button
-              type="button"
-              onClick={() => handleAddBot('hard')}
-              disabled={loading}
-              className="w-full bg-gradient-to-r from-slate-600 to-slate-700 hover:from-slate-500 hover:to-slate-600 disabled:from-slate-800 disabled:to-slate-900 text-white font-medium py-2 px-4 rounded-lg shadow transition-all flex items-center justify-center gap-2"
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-            >
-              <span className="text-lg">🤖</span>
-              <span>Add Bot</span>
-              {!isIdle && <span className="text-xs opacity-70">(joins next hand)</span>}
-            </motion.button>
-          )}
-
           {isBettingPhase && myTurn && currentPlayer?.status === 'active' && (
             <BettingControls
               onFold={handleFold}
@@ -2049,6 +2083,22 @@ function GameView() {
                     Sit Out
                   </motion.button>
                 )
+              )}
+              {/* Add Bot button - moved to header to keep away from betting buttons */}
+              {/* Hidden for SIT_AND_GO tournaments - hosts should not inject bots into competitive tournaments */}
+              {userIsTableCreator && !isTournament && (tableData?.players?.length || 0) < 6 && (
+                <motion.button
+                  type="button"
+                  onClick={() => handleAddBot('hard')}
+                  disabled={loading}
+                  className="bg-slate-700/80 hover:bg-slate-600/80 text-slate-200 px-3 py-1.5 rounded-lg text-sm font-medium transition-all border border-slate-600/50 flex items-center gap-1.5"
+                  whileHover={{ scale: 1.03 }}
+                  whileTap={{ scale: 0.97 }}
+                  title={isIdle ? "Add bot player" : "Bot will join next hand"}
+                >
+                  <span>🤖</span>
+                  <span>Add Bot</span>
+                </motion.button>
               )}
             </div>
             <div className="flex items-center gap-3">
@@ -2510,8 +2560,8 @@ function GameView() {
                               >
                                 <Card
                                   card={card}
-                                  isSelected={selectedCardIndices.has(index)}
-                                  isSelectable={isDrawPhase && myTurn}
+                                  isSelected={selectedCardIndices.has(index) || stagedCardIndices.has(index)}
+                                  isSelectable={(isDrawPhase && myTurn) || canStageCards}
                                   onClick={() => toggleCardSelection(index)}
                                   index={index}
                                   isDealing={isIdle && currentPlayer.hand.length === 5}
@@ -2524,6 +2574,20 @@ function GameView() {
                         {isDrawPhase && myTurn && (
                           <p className="text-emerald-200/80 text-xs">
                             Click cards to discard ({selectedCardIndices.size} selected)
+                          </p>
+                        )}
+
+                        {/* Show staged cards hint when between turns */}
+                        {canStageCards && stagedCardIndices.size > 0 && (
+                          <p className="text-amber-200/80 text-xs">
+                            {stagedCardIndices.size} card{stagedCardIndices.size !== 1 ? 's' : ''} staged for discard
+                          </p>
+                        )}
+
+                        {/* Hint to stage cards when between turns */}
+                        {canStageCards && stagedCardIndices.size === 0 && (
+                          <p className="text-slate-300/60 text-xs">
+                            Click cards to stage for discard
                           </p>
                         )}
 
@@ -2950,8 +3014,8 @@ function GameView() {
                       >
                         <Card
                           card={card}
-                          isSelected={selectedCardIndices.has(index)}
-                          isSelectable={isDrawPhase && myTurn}
+                          isSelected={selectedCardIndices.has(index) || stagedCardIndices.has(index)}
+                          isSelectable={(isDrawPhase && myTurn) || canStageCards}
                           onClick={() => toggleCardSelection(index)}
                           index={index}
                           isDealing={isIdle && currentPlayer.hand.length === 5}
@@ -2965,6 +3029,20 @@ function GameView() {
                 {isDrawPhase && myTurn && (
                   <p className="text-emerald-200/80 text-xs">
                     Click cards to discard ({selectedCardIndices.size} selected)
+                  </p>
+                )}
+
+                {/* Show staged cards hint when between turns */}
+                {canStageCards && stagedCardIndices.size > 0 && (
+                  <p className="text-amber-200/80 text-xs">
+                    {stagedCardIndices.size} card{stagedCardIndices.size !== 1 ? 's' : ''} staged for discard
+                  </p>
+                )}
+
+                {/* Hint to stage cards when between turns */}
+                {canStageCards && stagedCardIndices.size === 0 && (
+                  <p className="text-slate-300/60 text-xs">
+                    Click cards to stage for discard
                   </p>
                 )}
 

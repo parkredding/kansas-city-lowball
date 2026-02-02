@@ -101,56 +101,43 @@ function BlindTimer({ blindTimer, tournamentRunning, onLevelUp, canTriggerLevelU
   const pulseClass = percentage <= 20 ? 'animate-pulse' : '';
 
   return (
-    <div className={`bg-slate-800/90 rounded-lg border border-slate-600/50 p-3 min-w-[180px] ${pulseClass}`}>
-      {/* Header */}
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-slate-400 text-xs font-medium uppercase tracking-wider">Blinds</span>
-        <span className="text-slate-300 text-xs">Level {blindInfo.level}</span>
-      </div>
+    <div className={`bg-slate-800/90 rounded-lg border border-slate-600/50 px-3 py-1.5 ${pulseClass}`}>
+      {/* Compact single-row layout to match other header elements */}
+      <div className="flex items-center gap-3">
+        {/* Level indicator */}
+        <span className="text-slate-400 text-xs">Lvl {blindInfo.level}</span>
 
-      {/* Current Blinds */}
-      <div className="flex items-center justify-center gap-1 mb-2">
-        <span className="text-amber-400 font-bold text-lg">
-          {blindInfo.smallBlind.toLocaleString()}
-        </span>
-        <span className="text-slate-500">/</span>
-        <span className="text-amber-400 font-bold text-lg">
-          {blindInfo.bigBlind.toLocaleString()}
-        </span>
-      </div>
-
-      {/* Timer countdown */}
-      {!isMaxLevel && (
-        <>
-          <div className="flex items-center justify-between text-xs mb-1">
-            <span className="text-slate-400">Next level in</span>
-            <span className={`font-mono font-bold ${timerColor}`}>{timeDisplay}</span>
-          </div>
-
-          {/* Progress bar */}
-          <div className="h-1.5 bg-slate-700 rounded-full overflow-hidden mb-2">
-            <div
-              className={`h-full ${progressColor} transition-all duration-1000 ease-linear`}
-              style={{ width: `${percentage}%` }}
-            />
-          </div>
-
-          {/* Next level preview */}
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-slate-500">Next:</span>
-            <span className="text-slate-400">
-              {nextBlindInfo.smallBlind.toLocaleString()} / {nextBlindInfo.bigBlind.toLocaleString()}
-            </span>
-          </div>
-        </>
-      )}
-
-      {/* Max level indicator */}
-      {isMaxLevel && (
-        <div className="text-center text-xs text-slate-500">
-          Maximum blind level reached
+        {/* Current Blinds */}
+        <div className="flex items-center gap-1">
+          <span className="text-amber-400 font-bold text-sm">
+            {blindInfo.smallBlind.toLocaleString()}
+          </span>
+          <span className="text-slate-500 text-sm">/</span>
+          <span className="text-amber-400 font-bold text-sm">
+            {blindInfo.bigBlind.toLocaleString()}
+          </span>
         </div>
-      )}
+
+        {/* Timer countdown */}
+        {!isMaxLevel && (
+          <>
+            <span className="text-slate-600">|</span>
+            <span className={`font-mono font-bold text-sm ${timerColor}`}>{timeDisplay}</span>
+            {/* Mini progress bar */}
+            <div className="w-12 h-1 bg-slate-700 rounded-full overflow-hidden">
+              <div
+                className={`h-full ${progressColor} transition-all duration-1000 ease-linear`}
+                style={{ width: `${percentage}%` }}
+              />
+            </div>
+          </>
+        )}
+
+        {/* Max level indicator */}
+        {isMaxLevel && (
+          <span className="text-slate-500 text-xs">Max</span>
+        )}
+      </div>
     </div>
   );
 }
