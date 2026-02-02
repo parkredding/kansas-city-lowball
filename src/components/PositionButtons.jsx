@@ -6,19 +6,17 @@
 /**
  * Dealer Button - White "D" button
  */
-export function DealerButton({ className = '' }) {
+export function DealerButton({ className = '', compact = false }) {
+  const sizeClass = compact ? 'w-5 h-5 text-[9px]' : 'w-7 h-7 text-sm';
   return (
     <div
       className={`
-        w-7 h-7 rounded-full flex items-center justify-center
-        bg-white text-gray-900 font-bold text-sm
-        border-2 border-gray-400
-        shadow-lg
+        ${sizeClass} rounded-full flex items-center justify-center
+        bg-white text-gray-900 font-bold
+        border border-gray-400
+        shadow
         ${className}
       `}
-      style={{
-        boxShadow: '0 2px 8px rgba(0,0,0,0.4), inset 0 1px 2px rgba(255,255,255,0.8)',
-      }}
       title="Dealer"
     >
       D
@@ -29,19 +27,17 @@ export function DealerButton({ className = '' }) {
 /**
  * Small Blind Button - Blue "SB" button
  */
-export function SmallBlindButton({ className = '' }) {
+export function SmallBlindButton({ className = '', compact = false }) {
+  const sizeClass = compact ? 'w-5 h-5 text-[7px]' : 'w-7 h-7 text-[10px]';
   return (
     <div
       className={`
-        w-7 h-7 rounded-full flex items-center justify-center
-        bg-blue-500 text-white font-bold text-[10px]
-        border-2 border-blue-700
-        shadow-lg
+        ${sizeClass} rounded-full flex items-center justify-center
+        bg-blue-500 text-white font-bold
+        border border-blue-700
+        shadow
         ${className}
       `}
-      style={{
-        boxShadow: '0 2px 8px rgba(0,0,0,0.4), inset 0 1px 2px rgba(255,255,255,0.3)',
-      }}
       title="Small Blind"
     >
       SB
@@ -52,19 +48,17 @@ export function SmallBlindButton({ className = '' }) {
 /**
  * Big Blind Button - Yellow/Gold "BB" button
  */
-export function BigBlindButton({ className = '' }) {
+export function BigBlindButton({ className = '', compact = false }) {
+  const sizeClass = compact ? 'w-5 h-5 text-[7px]' : 'w-7 h-7 text-[10px]';
   return (
     <div
       className={`
-        w-7 h-7 rounded-full flex items-center justify-center
-        bg-yellow-500 text-gray-900 font-bold text-[10px]
-        border-2 border-yellow-600
-        shadow-lg
+        ${sizeClass} rounded-full flex items-center justify-center
+        bg-yellow-500 text-gray-900 font-bold
+        border border-yellow-600
+        shadow
         ${className}
       `}
-      style={{
-        boxShadow: '0 2px 8px rgba(0,0,0,0.4), inset 0 1px 2px rgba(255,255,255,0.5)',
-      }}
       title="Big Blind"
     >
       BB
@@ -75,17 +69,18 @@ export function BigBlindButton({ className = '' }) {
 /**
  * Combined position indicators component
  * Renders all applicable position buttons for a player
+ * @param {boolean} compact - Use smaller buttons for tight layouts
  */
-export function PositionIndicators({ isDealer, isSmallBlind, isBigBlind, className = '' }) {
+export function PositionIndicators({ isDealer, isSmallBlind, isBigBlind, className = '', compact = false }) {
   const hasAnyPosition = isDealer || isSmallBlind || isBigBlind;
 
   if (!hasAnyPosition) return null;
 
   return (
-    <div className={`flex gap-1 ${className}`}>
-      {isDealer && <DealerButton />}
-      {isSmallBlind && <SmallBlindButton />}
-      {isBigBlind && <BigBlindButton />}
+    <div className={`flex ${compact ? 'flex-col gap-0.5' : 'gap-1'} ${className}`}>
+      {isDealer && <DealerButton compact={compact} />}
+      {isSmallBlind && <SmallBlindButton compact={compact} />}
+      {isBigBlind && <BigBlindButton compact={compact} />}
     </div>
   );
 }
