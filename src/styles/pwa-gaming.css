@@ -1260,3 +1260,493 @@ a, button {
     0 2px 4px rgba(0, 0, 0, 0.3),
     inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
+
+
+/* ============================================================================
+   12. FIXED VIEWPORT LAYOUT SYSTEM
+   App-like fixed layout with dvh/svh support for mobile browser toolbars
+   ============================================================================ */
+
+/**
+ * VIEWPORT HEIGHT UNITS:
+ * - 100vh: Traditional viewport height (may be obscured by mobile browser chrome)
+ * - 100dvh: Dynamic viewport height (adjusts when browser chrome shows/hides)
+ * - 100svh: Small viewport height (smallest possible, accounts for all browser chrome)
+ * - 100lvh: Large viewport height (largest possible, when browser chrome is hidden)
+ *
+ * We use 100dvh as the primary unit with fallbacks for older browsers.
+ */
+
+.game-layout-fixed {
+  /* Fallback for browsers without dvh support */
+  height: 100vh;
+  height: 100dvh;
+  height: -webkit-fill-available;
+
+  /* Prevent any scrolling */
+  overflow: hidden;
+  overscroll-behavior: none;
+
+  /* Flex container for zone layout */
+  display: flex;
+  flex-direction: column;
+
+  /* Background gradient */
+  background: linear-gradient(180deg,
+    var(--color-bg-primary) 0%,
+    var(--color-felt-secondary) 30%,
+    var(--color-felt-primary) 50%,
+    var(--color-felt-secondary) 70%,
+    var(--color-bg-primary) 100%
+  );
+}
+
+/* Header Zone - Fixed at top (10% of viewport) */
+.zone-header-fixed {
+  flex: 0 0 10%;
+  max-height: 64px;
+  min-height: 48px;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-sm) var(--space-md);
+  padding-top: max(var(--space-sm), env(safe-area-inset-top, 0px));
+
+  background: linear-gradient(180deg,
+    rgba(15, 23, 42, 0.95) 0%,
+    rgba(15, 23, 42, 0.7) 100%
+  );
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+
+  border-bottom: 1px solid var(--glass-border);
+  z-index: var(--z-sticky);
+}
+
+/* Table Zone - Flexible middle area (65% of viewport) */
+.zone-table-container {
+  flex: 1 1 65%;
+  min-height: 0; /* Allow flex shrinking */
+  position: relative;
+  overflow: hidden;
+}
+
+/* Table felt background */
+.table-felt-background {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse 100% 80% at 50% 40%,
+    var(--color-felt-primary) 0%,
+    var(--color-felt-secondary) 60%,
+    var(--color-bg-primary) 100%
+  );
+  z-index: 0;
+}
+
+/* Interaction Zone - Fixed at bottom (25% of viewport) */
+.zone-interaction-fixed {
+  flex: 0 0 25%;
+  max-height: 200px;
+  min-height: 120px;
+
+  display: flex;
+  flex-direction: column;
+
+  background: linear-gradient(0deg,
+    rgba(15, 23, 42, 0.98) 0%,
+    rgba(15, 23, 42, 0.85) 100%
+  );
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+
+  border-top: 1px solid var(--glass-border);
+  z-index: var(--z-dropdown);
+}
+
+/* Action bar container with safe area padding */
+.action-bar-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: var(--space-sm) var(--space-md);
+  padding-bottom: max(var(--space-md), env(safe-area-inset-bottom, 0px));
+}
+
+
+/* ============================================================================
+   13. MOBILE ACTION BAR STYLES
+   Unified styling for live action and pre-action buttons
+   ============================================================================ */
+
+/**
+ * LIVE ACTION BUTTONS
+ * Solid, vibrant colors for immediate actions during player's turn
+ */
+
+.action-btn-live {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--touch-target-comfortable);
+
+  font-weight: 700;
+  text-align: center;
+
+  border: none;
+  cursor: pointer;
+
+  transition:
+    transform var(--duration-instant) ease,
+    background-color var(--duration-fast) ease,
+    box-shadow var(--duration-fast) ease;
+}
+
+.action-btn-live:active {
+  transform: scale(0.96);
+}
+
+.action-btn-live:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Fold Button - Red */
+.action-btn-fold {
+  background: linear-gradient(180deg, #ef4444 0%, #dc2626 100%);
+  color: white;
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.4);
+}
+
+.action-btn-fold:hover:not(:disabled) {
+  background: linear-gradient(180deg, #f87171 0%, #ef4444 100%);
+}
+
+/* Check Button - Green */
+.action-btn-check {
+  background: linear-gradient(180deg, #22c55e 0%, #16a34a 100%);
+  color: white;
+  box-shadow: 0 4px 12px rgba(22, 163, 74, 0.4);
+}
+
+.action-btn-check:hover:not(:disabled) {
+  background: linear-gradient(180deg, #4ade80 0%, #22c55e 100%);
+}
+
+/* Call Button - Sky Blue */
+.action-btn-call {
+  background: linear-gradient(180deg, #0ea5e9 0%, #0284c7 100%);
+  color: white;
+  box-shadow: 0 4px 12px rgba(14, 165, 233, 0.4);
+}
+
+.action-btn-call:hover:not(:disabled) {
+  background: linear-gradient(180deg, #38bdf8 0%, #0ea5e9 100%);
+}
+
+/* Raise/Bet Button - Amber */
+.action-btn-raise {
+  background: linear-gradient(180deg, #f59e0b 0%, #d97706 100%);
+  color: var(--color-bg-primary);
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.4);
+}
+
+.action-btn-raise:hover:not(:disabled) {
+  background: linear-gradient(180deg, #fbbf24 0%, #f59e0b 100%);
+}
+
+.action-btn-raise-active {
+  background: linear-gradient(180deg, #d97706 0%, #b45309 100%);
+  color: white;
+  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3);
+}
+
+/* All-In Button - Violet/Purple */
+.action-btn-allin {
+  background: linear-gradient(180deg, #8b5cf6 0%, #7c3aed 100%);
+  color: white;
+  box-shadow: 0 4px 12px rgba(139, 92, 246, 0.4);
+}
+
+.action-btn-allin:hover:not(:disabled) {
+  background: linear-gradient(180deg, #a78bfa 0%, #8b5cf6 100%);
+}
+
+
+/**
+ * PRE-ACTION BUTTONS
+ * Desaturated/outlined style to differentiate from live actions
+ * Prevents accidental mis-clicks by using distinct visual treatment
+ */
+
+.preaction-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--touch-target-min);
+
+  font-weight: 500;
+  text-align: center;
+
+  border: 2px solid transparent;
+  cursor: pointer;
+
+  transition:
+    transform var(--duration-instant) ease,
+    background-color var(--duration-fast) ease,
+    border-color var(--duration-fast) ease,
+    box-shadow var(--duration-fast) ease;
+}
+
+.preaction-btn:active {
+  transform: scale(0.96);
+}
+
+/* Default state - Desaturated, outlined */
+.preaction-btn-default {
+  background: rgba(51, 65, 85, 0.5);
+  border-color: rgba(71, 85, 105, 0.6);
+  color: var(--color-text-secondary);
+}
+
+.preaction-btn-default:hover {
+  background: rgba(51, 65, 85, 0.7);
+  border-color: rgba(100, 116, 139, 0.8);
+}
+
+/* Selected state - Ring highlight */
+.preaction-btn-selected {
+  transform: scale(1.02);
+  box-shadow: 0 0 0 2px var(--color-bg-primary), 0 0 0 4px currentColor;
+}
+
+/* Pre-Fold - Desaturated red */
+.preaction-btn-fold {
+  border-color: rgba(239, 68, 68, 0.3);
+  color: rgba(248, 113, 113, 0.7);
+}
+
+.preaction-btn-fold:hover {
+  border-color: rgba(239, 68, 68, 0.5);
+  background: rgba(127, 29, 29, 0.3);
+}
+
+.preaction-btn-fold-selected {
+  background: rgba(127, 29, 29, 0.5);
+  border-color: #ef4444;
+  color: #fca5a5;
+  box-shadow: 0 0 0 2px var(--color-bg-primary), 0 0 0 4px #ef4444;
+}
+
+/* Pre-Check - Desaturated green */
+.preaction-btn-check {
+  border-color: rgba(34, 197, 94, 0.3);
+  color: rgba(74, 222, 128, 0.7);
+}
+
+.preaction-btn-check:hover {
+  border-color: rgba(34, 197, 94, 0.5);
+  background: rgba(20, 83, 45, 0.3);
+}
+
+.preaction-btn-check-selected {
+  background: rgba(20, 83, 45, 0.5);
+  border-color: #22c55e;
+  color: #86efac;
+  box-shadow: 0 0 0 2px var(--color-bg-primary), 0 0 0 4px #22c55e;
+}
+
+/* Pre-Call - Desaturated sky blue */
+.preaction-btn-call {
+  border-color: rgba(14, 165, 233, 0.3);
+  color: rgba(56, 189, 248, 0.7);
+}
+
+.preaction-btn-call:hover {
+  border-color: rgba(14, 165, 233, 0.5);
+  background: rgba(12, 74, 110, 0.3);
+}
+
+.preaction-btn-call-selected {
+  background: rgba(12, 74, 110, 0.5);
+  border-color: #0ea5e9;
+  color: #7dd3fc;
+  box-shadow: 0 0 0 2px var(--color-bg-primary), 0 0 0 4px #0ea5e9;
+}
+
+/* Pre-Check/Fold - Desaturated blue */
+.preaction-btn-checkfold {
+  border-color: rgba(59, 130, 246, 0.3);
+  color: rgba(96, 165, 250, 0.7);
+}
+
+.preaction-btn-checkfold:hover {
+  border-color: rgba(59, 130, 246, 0.5);
+  background: rgba(30, 64, 175, 0.3);
+}
+
+.preaction-btn-checkfold-selected {
+  background: rgba(30, 64, 175, 0.5);
+  border-color: #3b82f6;
+  color: #93c5fd;
+  box-shadow: 0 0 0 2px var(--color-bg-primary), 0 0 0 4px #3b82f6;
+}
+
+/* Pre-Call Any - Desaturated amber (warning style) */
+.preaction-btn-callany {
+  border-color: rgba(245, 158, 11, 0.3);
+  color: rgba(251, 191, 36, 0.7);
+}
+
+.preaction-btn-callany:hover {
+  border-color: rgba(245, 158, 11, 0.5);
+  background: rgba(120, 53, 15, 0.3);
+}
+
+.preaction-btn-callany-selected {
+  background: rgba(120, 53, 15, 0.5);
+  border-color: #f59e0b;
+  color: #fcd34d;
+  box-shadow: 0 0 0 2px var(--color-bg-primary), 0 0 0 4px #f59e0b;
+}
+
+
+/* ============================================================================
+   14. STATUS OVERLAY STYLES
+   Dynamic HUD for betting information display
+   ============================================================================ */
+
+.status-overlay {
+  /* Container styles handled inline for flexibility */
+}
+
+.status-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+}
+
+.status-label {
+  font-size: 0.625rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}
+
+.status-value {
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.status-call-indicator,
+.status-check-indicator {
+  animation: subtle-pulse 2s ease-in-out infinite;
+}
+
+@keyframes subtle-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.8;
+  }
+}
+
+.turn-indicator-line {
+  height: 2px;
+  background: linear-gradient(90deg,
+    transparent 0%,
+    var(--color-accent-primary) 20%,
+    var(--color-accent-primary) 80%,
+    transparent 100%
+  );
+  animation: turn-line-glow 1.5s ease-in-out infinite;
+}
+
+@keyframes turn-line-glow {
+  0%, 100% {
+    opacity: 0.7;
+    box-shadow: 0 0 4px var(--color-accent-primary);
+  }
+  50% {
+    opacity: 1;
+    box-shadow: 0 0 8px var(--color-accent-primary);
+  }
+}
+
+
+/* ============================================================================
+   15. RAISE PANEL STYLES
+   Sliding panel for bet amount selection
+   ============================================================================ */
+
+.raise-panel {
+  background: rgba(30, 41, 59, 0.95);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(71, 85, 105, 0.5);
+  border-radius: var(--radius-lg);
+
+  /* Slide up animation handled by Framer Motion */
+}
+
+.raise-panel input::-webkit-outer-spin-button,
+.raise-panel input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.raise-panel input[type=number] {
+  -moz-appearance: textfield;
+}
+
+
+/* ============================================================================
+   16. Z-INDEX HIERARCHY SYSTEM
+   Consistent layering for proper element stacking
+   ============================================================================ */
+
+/**
+ * Z-INDEX LAYERS (from bottom to top):
+ *
+ * 0      : Table felt background
+ * 10     : Opponent avatars
+ * 15     : Pot display (under cards)
+ * 20-25  : Community cards
+ * 30     : Hero cards
+ * 40     : Active player highlights
+ * 50     : Betting chips animation
+ * 100    : Interaction zone (action bar)
+ * 110    : Status overlay
+ * 120    : Action buttons
+ * 150    : Raise panel (slides up)
+ * 200    : Header zone
+ * 500    : Modals and dialogs
+ * 600    : Overlays (backdrop)
+ * 700    : Toast notifications
+ * 9999   : Landscape warning
+ */
+
+:root {
+  --z-felt: 0;
+  --z-opponents: 10;
+  --z-pot: 15;
+  --z-community-cards: 25;
+  --z-hero-cards: 30;
+  --z-player-highlight: 40;
+  --z-chip-animation: 50;
+  --z-interaction: 100;
+  --z-status-overlay: 110;
+  --z-action-buttons: 120;
+  --z-raise-panel: 150;
+  --z-header: 200;
+  --z-modal: 500;
+  --z-overlay: 600;
+  --z-toast: 700;
+  --z-landscape-warning: 9999;
+}
