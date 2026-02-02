@@ -618,7 +618,18 @@ function ShowdownResultDisplay({ showdownResult, isDesktop, currentUserUid, play
 }
 
 function PhaseIndicator({ phase }) {
-  const displayName = PHASE_DISPLAY_NAMES[phase] || phase;
+  // Compact abbreviated labels for mobile
+  const PHASE_ABBREV = {
+    'IDLE': 'Wait',
+    'DEALING': 'Deal',
+    'BETTING_PRE_DRAW': 'Bet1',
+    'BETTING_POST_DRAW': 'Bet2',
+    'DRAW_FIRST': 'Draw',
+    'DRAW_SECOND': 'Draw2',
+    'SHOWDOWN': 'Show',
+    'CUT_FOR_DEALER': 'Cut',
+  };
+  const displayName = PHASE_ABBREV[phase] || phase?.replace('BETTING_', 'Bet').replace('DRAW_', 'Drw') || '...';
 
   const isBetting = phase?.startsWith('BETTING_');
   const isDraw = phase?.startsWith('DRAW_');
@@ -626,22 +637,20 @@ function PhaseIndicator({ phase }) {
   const isIdle = phase === 'IDLE';
   const isCutForDealer = phase === 'CUT_FOR_DEALER';
 
-  let bgColors = { from: 'from-slate-600', to: 'to-slate-700', border: 'border-slate-500/50' };
-  if (isBetting) bgColors = { from: 'from-blue-600', to: 'to-blue-700', border: 'border-blue-400/50' };
-  if (isDraw) bgColors = { from: 'from-violet-600', to: 'to-violet-700', border: 'border-violet-400/50' };
-  if (isShowdown) bgColors = { from: 'from-amber-500', to: 'to-amber-600', border: 'border-amber-400/50' };
-  if (isCutForDealer) bgColors = { from: 'from-emerald-600', to: 'to-emerald-700', border: 'border-emerald-400/50' };
+  let bgClass = 'bg-slate-600/80';
+  if (isBetting) bgClass = 'bg-blue-600/80';
+  if (isDraw) bgClass = 'bg-violet-600/80';
+  if (isShowdown) bgClass = 'bg-amber-500/80';
+  if (isCutForDealer) bgClass = 'bg-emerald-600/80';
 
   return (
     <motion.div
-      className={`bg-gradient-to-r ${bgColors.from} ${bgColors.to} px-4 py-1.5 rounded-full shadow-lg border ${bgColors.border}`}
+      className={`${bgClass} px-1.5 py-0.5 rounded text-[10px] font-semibold text-white`}
       initial={{ scale: 0.9, opacity: 0 }}
       animate={{ scale: 1, opacity: 1 }}
       transition={{ type: 'spring', stiffness: 350, damping: 22 }}
     >
-      <span className="text-white font-semibold text-xs tracking-wide">
-        {displayName}
-      </span>
+      {displayName}
     </motion.div>
   );
 }
@@ -2623,27 +2632,27 @@ function GameView() {
           </div>
         </div>
       ) : (
-        /* MOBILE LAYOUT - Restructured with fixed bottom action bar */
-        <div className="h-screen flex flex-col overflow-hidden">
-          {/* Mobile Header - Compact */}
-          <div className="flex-shrink-0 px-3 py-2 bg-slate-900/90 border-b border-slate-700/50 backdrop-blur-sm">
-            <div className="flex items-center justify-between gap-2">
+        /* MOBILE LAYOUT - Fixed-height app-like layout with no scrolling */
+        <div className="h-[100dvh] flex flex-col overflow-hidden">
+          {/* Mobile Header - Compact (44px) */}
+          <div className="flex-shrink-0 h-11 px-2 bg-slate-900/95 border-b border-slate-700/50 backdrop-blur-sm">
+            <div className="flex items-center justify-between h-full gap-1">
+              {/* Left: Leave & Sit Out */}
               <div className="flex items-center gap-1">
                 <button
                   type="button"
                   onClick={leaveTable}
-                  className="bg-slate-700/80 hover:bg-slate-600/80 text-white px-2 py-1.5 rounded-lg text-xs font-medium"
+                  className="bg-slate-700/80 hover:bg-slate-600/80 text-white px-2 py-1 rounded-lg text-[10px] font-medium min-h-[32px]"
                 >
                   Leave
                 </button>
-                {/* Sit Out Toggle for Mobile - Only show for players */}
                 {!userIsRailbird && currentPlayer && (
                   playerHasPendingSitOut ? (
                     <button
                       type="button"
                       onClick={handleCancelSitOut}
                       disabled={loading}
-                      className="bg-amber-600/80 text-white px-2 py-1.5 rounded-lg text-xs font-medium"
+                      className="bg-amber-600/80 text-white px-2 py-1 rounded-lg text-[10px] font-medium min-h-[32px]"
                     >
                       Stay
                     </button>
@@ -2652,7 +2661,7 @@ function GameView() {
                       type="button"
                       onClick={handleSitOut}
                       disabled={loading}
-                      className="bg-slate-700/80 text-slate-200 px-2 py-1.5 rounded-lg text-xs font-medium"
+                      className="bg-slate-700/80 text-slate-200 px-2 py-1 rounded-lg text-[10px] font-medium min-h-[32px]"
                     >
                       Sit Out
                     </button>
@@ -2660,40 +2669,37 @@ function GameView() {
                 )}
               </div>
 
-              <div className="flex items-center gap-2">
-                <div className="bg-slate-800/80 px-2 py-1 rounded-lg">
-                  <span className="text-white font-mono font-bold text-sm">{currentTableId}</span>
+              {/* Center: Table ID, Phase, Add Bot */}
+              <div className="flex items-center gap-1.5">
+                <div className="bg-slate-800/80 px-1.5 py-0.5 rounded">
+                  <span className="text-white font-mono font-bold text-[10px]">{currentTableId}</span>
                 </div>
                 <PhaseIndicator phase={tableData?.phase} />
+                {/* Add Bot icon button - in header for table creator */}
+                {userIsTableCreator && !isTournament && (tableData?.players?.length || 0) < 6 && (
+                  <motion.button
+                    type="button"
+                    onClick={() => handleAddBot('hard')}
+                    disabled={loading}
+                    className="bg-slate-700/80 hover:bg-slate-600/80 disabled:opacity-50 text-white px-1.5 py-1 rounded min-h-[28px] text-sm"
+                    whileTap={{ scale: 0.95 }}
+                    title={isIdle ? 'Add Bot' : 'Add Bot (next hand)'}
+                  >
+                    🤖{!isIdle && <span className="text-[8px] ml-0.5">+</span>}
+                  </motion.button>
+                )}
               </div>
 
+              {/* Right: User info & Wallet */}
               <div className="flex items-center gap-1">
-                <span className="text-amber-400 font-medium text-xs truncate max-w-[80px]">{getDisplayName()}</span>
+                <span className="text-amber-400 font-medium text-[10px] truncate max-w-[60px]">{getDisplayName()}</span>
                 <WalletDisplay balance={userWallet?.balance} loading={walletLoading} />
               </div>
             </div>
           </div>
 
-          {/* Add Bot button - at the top, visible to table leader when seats available */}
-          {/* Hidden for SIT_AND_GO tournaments - hosts should not inject bots into competitive tournaments */}
-          {userIsTableCreator && !isTournament && (tableData?.players?.length || 0) < 6 && (
-            <div className="flex-shrink-0 px-3 py-1.5 bg-slate-800/50 border-b border-slate-700/30">
-              <motion.button
-                type="button"
-                onClick={() => handleAddBot('hard')}
-                disabled={loading}
-                className="w-full bg-slate-600 hover:bg-slate-500 disabled:opacity-50 text-white font-medium py-1.5 px-3 rounded-lg shadow flex items-center justify-center gap-2 text-sm"
-                whileTap={{ scale: 0.98 }}
-              >
-                <span>🤖</span>
-                <span>Add Bot</span>
-                {!isIdle && <span className="text-xs opacity-70">(next hand)</span>}
-              </motion.button>
-            </div>
-          )}
-
-          {/* Scrollable Main Content Area */}
-          <div className="flex-1 overflow-y-auto overflow-x-hidden px-3 py-2">
+          {/* Main Content Area - Fixed height, no scrolling */}
+          <div className="flex-1 flex flex-col overflow-hidden px-2 py-1">
             {/* Error display */}
             {error && (
               <div className="bg-red-500/20 border border-red-500 text-red-200 px-3 py-2 rounded text-xs mb-2 text-center">
@@ -2701,10 +2707,9 @@ function GameView() {
               </div>
             )}
 
-            {/* Turn Timer (for betting/draw phases) - compact
-                Passive Timer System: any player can claim after grace period */}
+            {/* Turn Timer - ultra-compact bar */}
             {tableData?.turnDeadline && (isBettingPhase || isDrawPhase) && !userIsRailbird && (
-              <div className="mb-2">
+              <div className="flex-shrink-0 mb-1">
                 <TurnTimer
                   turnDeadline={tableData.turnDeadline}
                   onTimeout={handleTimeout}
@@ -2715,41 +2720,22 @@ function GameView() {
               </div>
             )}
 
-            {/* Pot and Call info - shown above table */}
-            {!userIsRailbird && (
-              <div className="flex gap-1.5 flex-wrap justify-center items-center mb-2 px-1">
-                {/* Pot Display */}
-                {tableData?.pot > 0 && (
-                  <div className="bg-amber-900/40 rounded-lg px-2 py-1 text-center border border-amber-700/30 flex-shrink-0">
-                    <span className="text-amber-300/80 text-[9px] uppercase tracking-wider mr-1">Pot:</span>
-                    <span className="text-amber-400 font-bold text-sm whitespace-nowrap">${(tableData?.pot || 0).toLocaleString()}</span>
-                  </div>
-                )}
-
-                {/* To Call */}
-                {tableData?.currentBet > 0 && (
-                  <div className="bg-blue-900/40 rounded-lg px-2 py-1 text-center border border-blue-700/30 flex-shrink-0">
-                    <span className="text-blue-300/80 text-[9px] uppercase tracking-wider mr-1">Call:</span>
-                    <span className="text-blue-400 font-bold text-sm whitespace-nowrap">${callAmount.toLocaleString()}</span>
-                  </div>
-                )}
-
-                {/* Buy Chips Button */}
-                {needsBuyIn && isIdle && (
-                  <motion.button
-                    type="button"
-                    onClick={() => setShowBuyInModal(true)}
-                    className="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1 rounded-lg font-medium text-sm"
-                    whileTap={{ scale: 0.95 }}
-                  >
-                    + Buy
-                  </motion.button>
-                )}
+            {/* Buy Chips Button - only shown when needed, compact */}
+            {!userIsRailbird && needsBuyIn && isIdle && (
+              <div className="flex justify-center mb-1">
+                <motion.button
+                  type="button"
+                  onClick={() => setShowBuyInModal(true)}
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1 rounded-lg font-medium text-xs"
+                  whileTap={{ scale: 0.95 }}
+                >
+                  + Buy Chips
+                </motion.button>
               </div>
             )}
 
-            {/* Poker Table with Radial Player Positioning - scaled for mobile */}
-            <div className="w-full relative" style={{ minHeight: '220px', maxHeight: '280px' }}>
+            {/* Poker Table with Radial Player Positioning - flex to fill available space */}
+            <div className="flex-1 w-full relative min-h-[180px]">
         {/* Premium oval table background - Harmonized with desktop */}
         <motion.div
           className="absolute"
@@ -2920,112 +2906,98 @@ function GameView() {
         ) : null}
       </div>
 
-      {/* Game Table - Current Player's Hand - Harmonized with desktop styling */}
-      <motion.div 
-        className="rounded-2xl px-6 py-4 w-full max-w-lg mx-auto relative overflow-hidden"
-        initial={{ opacity: 0, y: 15 }}
+      {/* Game Table - Current Player's Hand - Compact layout for mobile */}
+      <motion.div
+        className="rounded-xl px-3 py-2 w-full max-w-lg mx-auto relative overflow-hidden"
+        initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4 }}
+        transition={{ duration: 0.3 }}
         style={{
-          background: userIsRailbird 
+          background: userIsRailbird
             ? `linear-gradient(180deg, rgba(88,28,135,0.9) 0%, rgba(76,29,149,0.85) 50%, rgba(88,28,135,0.9) 100%)`
             : `linear-gradient(180deg, rgba(22,101,52,0.95) 0%, rgba(21,128,61,0.9) 50%, rgba(22,101,52,0.95) 100%)`,
-          boxShadow: '0 -4px 30px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.1), 0 4px 20px rgba(0,0,0,0.4)',
-          border: userIsRailbird ? '2px solid rgba(167,139,250,0.6)' : '2px solid rgba(251,191,36,0.6)',
-          borderRadius: '16px',
+          boxShadow: '0 -2px 20px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.1)',
+          border: userIsRailbird ? '1px solid rgba(167,139,250,0.5)' : '1px solid rgba(251,191,36,0.5)',
+          borderRadius: '12px',
         }}
       >
-        {/* Subtle pattern overlay */}
-        <div 
-          className="absolute inset-0 opacity-5"
-          style={{
-            backgroundImage: `radial-gradient(circle at 2px 2px, white 1px, transparent 0)`,
-            backgroundSize: '16px 16px',
-          }}
-        />
-
         {/* Railbird View for Mobile */}
         {userIsRailbird ? (
-          <motion.div 
-            className="flex flex-col items-center gap-3 py-3 relative z-10"
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.35 }}
+          <motion.div
+            className="flex flex-col items-center gap-2 py-2 relative z-10"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
           >
             <div className="flex items-center gap-2">
-              <span className="text-2xl">👁️</span>
-              <span className="text-violet-200 font-semibold">Watching as Railbird</span>
+              <span className="text-xl">👁️</span>
+              <span className="text-violet-200 font-semibold text-sm">Watching as Railbird</span>
             </div>
-            <p className="text-violet-300/70 text-xs text-center">
-              Card values are hidden to prevent collusion.
+            <p className="text-violet-300/70 text-[10px] text-center">
+              Card values hidden to prevent collusion.
             </p>
             {userCanBecomePlayer && (
               <motion.button
                 type="button"
                 onClick={handleJoinAsPlayer}
                 disabled={loading}
-                className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-800 text-white font-bold py-2 px-5 rounded-lg text-sm transition-all"
-                whileHover={{ scale: 1.05 }}
+                className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-800 text-white font-bold py-1.5 px-4 rounded-lg text-xs"
                 whileTap={{ scale: 0.95 }}
               >
                 Join as Player
               </motion.button>
             )}
-            {!userCanBecomePlayer && !isIdle && (
-              <p className="text-violet-300/60 text-xs italic">
-                Wait for hand to end to join
-              </p>
-            )}
           </motion.div>
         ) : (
           <>
-            {/* Position indicators for hero */}
-            <div className="flex justify-center mb-1 relative z-10">
-              <PositionIndicators
-                isDealer={isDealer(heroSeatIndex)}
-                isSmallBlind={isSmallBlind(heroSeatIndex)}
-                isBigBlind={isBigBlind(heroSeatIndex)}
-              />
-            </div>
-
             {currentPlayer?.hand && Array.isArray(currentPlayer.hand) && currentPlayer.hand.length > 0 ? (
-              <motion.div 
-                className="flex flex-col items-center gap-3 relative z-10"
-                initial={{ opacity: 0, y: 15 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.35 }}
+              <motion.div
+                className="flex flex-col items-center gap-2 relative z-10"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
               >
-                {/* Cards - with AnimatePresence matching desktop */}
-                <div className="flex gap-2">
-                  <AnimatePresence mode="popLayout">
-                    {currentPlayer.hand.map((card, index) => (
-                      <motion.div
-                        key={`${index}-${card?.rank || 'unknown'}-${card?.suit || 'unknown'}`}
-                        layout
-                        initial={{ opacity: 0, scale: 0.85 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.85, y: -40 }}
-                        transition={{ 
-                          type: 'spring',
-                          stiffness: 350,
-                          damping: 28,
-                          delay: index * 0.04
-                        }}
-                      >
-                        <Card
-                          card={card}
-                          isSelected={selectedCardIndices.has(index) || stagedCardIndices.has(index)}
-                          isSelectable={(isDrawPhase && myTurn) || canStageCards}
-                          onClick={() => toggleCardSelection(index)}
-                          index={index}
-                          isDealing={isIdle && currentPlayer.hand.length === 5}
-                        />
-                      </motion.div>
-                    ))}
-                  </AnimatePresence>
+                {/* Cards row with position indicators inline on left */}
+                <div className="flex items-center gap-2">
+                  {/* Position indicators inline */}
+                  <div className="flex flex-col gap-0.5">
+                    <PositionIndicators
+                      isDealer={isDealer(heroSeatIndex)}
+                      isSmallBlind={isSmallBlind(heroSeatIndex)}
+                      isBigBlind={isBigBlind(heroSeatIndex)}
+                      compact={true}
+                    />
+                  </div>
+                  {/* Cards */}
+                  <div className="flex gap-1.5">
+                    <AnimatePresence mode="popLayout">
+                      {currentPlayer.hand.map((card, index) => (
+                        <motion.div
+                          key={`${index}-${card?.rank || 'unknown'}-${card?.suit || 'unknown'}`}
+                          layout
+                          initial={{ opacity: 0, scale: 0.85 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.85, y: -30 }}
+                          transition={{
+                            type: 'spring',
+                            stiffness: 350,
+                            damping: 28,
+                            delay: index * 0.03
+                          }}
+                        >
+                          <Card
+                            card={card}
+                            isSelected={selectedCardIndices.has(index) || stagedCardIndices.has(index)}
+                            isSelectable={(isDrawPhase && myTurn) || canStageCards}
+                            onClick={() => toggleCardSelection(index)}
+                            index={index}
+                            isDealing={isIdle && currentPlayer.hand.length === 5}
+                          />
+                        </motion.div>
+                      ))}
+                    </AnimatePresence>
+                  </div>
                 </div>
 
-                {/* Draw phase hint */}
+                {/* Draw phase hint - compact */}
                 {isDrawPhase && myTurn && (
                   <p className="text-emerald-200/80 text-xs">
                     Click cards to discard ({selectedCardIndices.size} selected)
@@ -3046,13 +3018,6 @@ function GameView() {
                   </p>
                 )}
 
-                {/* Turn indicator */}
-                {!isIdle && !isShowdown && (
-                  <p className={`text-sm ${myTurn ? 'text-amber-400 font-bold' : 'text-slate-300'}`}>
-                    {myTurn ? "It's your turn!" : `Waiting for ${activePlayer?.displayName || 'opponent'}...`}
-                  </p>
-                )}
-
                 {/* Hand Result (shown at showdown) */}
                 {playerHandResult && isShowdown && (
                   <div className="text-center bg-amber-500/20 rounded-lg px-4 py-1">
@@ -3062,18 +3027,14 @@ function GameView() {
                   </div>
                 )}
 
-                {/* Hero Stack & Wager Display - Below cards for visibility */}
-                <div className="flex gap-2 flex-wrap justify-center items-center mt-2">
-                  {/* Your Chips */}
-                  <div className="bg-slate-800/80 rounded-lg px-2 py-1 text-center border border-slate-700/50">
-                    <span className="text-slate-400 text-[9px] uppercase tracking-wider mr-1">Stack:</span>
-                    <span className="text-emerald-400 font-bold text-sm">${(currentPlayer?.chips || 0).toLocaleString()}</span>
+                {/* Hero Stack & Wager Display - Compact inline badges */}
+                <div className="flex gap-1.5 justify-center items-center mt-1">
+                  <div className="bg-slate-800/80 rounded px-1.5 py-0.5 text-center border border-slate-700/50">
+                    <span className="text-emerald-400 font-bold text-[11px]">${(currentPlayer?.chips || 0).toLocaleString()}</span>
                   </div>
-                  {/* Current Wager */}
                   {currentPlayer?.currentRoundBet > 0 && (
-                    <div className="bg-amber-900/40 rounded-lg px-2 py-1 text-center border border-amber-700/30">
-                      <span className="text-amber-300/80 text-[9px] uppercase tracking-wider mr-1">Wager:</span>
-                      <span className="text-amber-400 font-bold text-sm">${currentPlayer.currentRoundBet.toLocaleString()}</span>
+                    <div className="bg-amber-900/50 rounded px-1.5 py-0.5 text-center border border-amber-700/30">
+                      <span className="text-amber-400 font-bold text-[11px]">+${currentPlayer.currentRoundBet.toLocaleString()}</span>
                     </div>
                   )}
                 </div>
@@ -3107,8 +3068,8 @@ function GameView() {
             )}
           </div>{/* End of scrollable content area */}
 
-          {/* FIXED BOTTOM ACTION BAR - No scrolling required */}
-          <div className="flex-shrink-0 bg-slate-900/95 border-t border-slate-700/50 backdrop-blur-sm px-3 py-3 safe-area-pb">
+          {/* FIXED BOTTOM ACTION BAR - Respects safe area */}
+          <div className="flex-shrink-0 bg-slate-900/95 border-t border-slate-700/50 backdrop-blur-sm px-2 pt-2 pb-[max(8px,env(safe-area-inset-bottom))]">
             {/* Action Buttons / Betting Controls */}
             {!userIsRailbird ? (
               <div className="w-full">

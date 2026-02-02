@@ -84,7 +84,8 @@ function PrePlayControls({
    */
   const getButtonClass = (actionType) => {
     const isSelected = preAction.type === actionType;
-    const baseClass = 'preaction-btn py-2 px-3 rounded-lg text-xs';
+    // Explicit flex column layout to ensure text stacks vertically (not inline)
+    const baseClass = 'preaction-btn flex flex-col items-center justify-center py-2 px-3 rounded-lg text-xs min-h-[44px]';
 
     // Map action types to CSS class names
     const actionClassMap = {
@@ -180,8 +181,8 @@ function PrePlayControls({
             onClick={() => handlePreActionSelect(PRE_ACTION_TYPES.FOLD)}
             className={getButtonClass(PRE_ACTION_TYPES.FOLD)}
           >
-            <span className="preplay-btn-text">Fold</span>
-            <span className="preplay-btn-subtext">Any Bet</span>
+            <span className="block text-[10px] font-semibold leading-tight truncate">Fold</span>
+            <span className="block text-[9px] opacity-70 leading-tight truncate">Any Bet</span>
           </button>
 
           {/* ZONE 2 (Center-Left) - CHECK / CALL actions
@@ -194,8 +195,8 @@ function PrePlayControls({
               onClick={() => handlePreActionSelect(PRE_ACTION_TYPES.CHECK)}
               className={getButtonClass(PRE_ACTION_TYPES.CHECK)}
             >
-              <span className="preplay-btn-text">Check</span>
-              <span className="preplay-btn-subtext">Will Check</span>
+              <span className="block text-[10px] font-semibold leading-tight truncate">Check</span>
+              <span className="block text-[9px] opacity-70 leading-tight truncate">Will Check</span>
             </button>
           ) : (
             // When there's a bet, show Call button (maps to Call in real actions)
@@ -204,8 +205,8 @@ function PrePlayControls({
               onClick={() => handlePreActionSelect(PRE_ACTION_TYPES.CALL, callAmount)}
               className={getButtonClass(PRE_ACTION_TYPES.CALL)}
             >
-              <span className="preplay-btn-text">Call</span>
-              <span className="preplay-btn-subtext">${formatAmount(callAmount)}</span>
+              <span className="block text-[10px] font-semibold leading-tight truncate">Call</span>
+              <span className="block text-[9px] opacity-70 leading-tight truncate">${formatAmount(callAmount)}</span>
             </button>
           )}
 
@@ -218,8 +219,8 @@ function PrePlayControls({
               onClick={() => handlePreActionSelect(PRE_ACTION_TYPES.CHECK_FOLD)}
               className={getButtonClass(PRE_ACTION_TYPES.CHECK_FOLD)}
             >
-              <span className="preplay-btn-text">Chk/Fold</span>
-              <span className="preplay-btn-subtext">Will Fold</span>
+              <span className="block text-[10px] font-semibold leading-tight truncate">Chk/Fold</span>
+              <span className="block text-[9px] opacity-70 leading-tight truncate">Will Fold</span>
             </button>
           ) : (
             // When we can check, show Check/Fold as backup option
@@ -228,8 +229,8 @@ function PrePlayControls({
               onClick={() => handlePreActionSelect(PRE_ACTION_TYPES.CHECK_FOLD)}
               className={getButtonClass(PRE_ACTION_TYPES.CHECK_FOLD)}
             >
-              <span className="preplay-btn-text">Chk/Fold</span>
-              <span className="preplay-btn-subtext">If Bet</span>
+              <span className="block text-[10px] font-semibold leading-tight truncate">Chk/Fold</span>
+              <span className="block text-[9px] opacity-70 leading-tight truncate">If Bet</span>
             </button>
           )}
 
@@ -241,12 +242,12 @@ function PrePlayControls({
               onClick={() => handlePreActionSelect(PRE_ACTION_TYPES.CALL_ANY)}
               className={getButtonClass(PRE_ACTION_TYPES.CALL_ANY)}
             >
-              <span className="preplay-btn-text">Call Any</span>
-              <span className="preplay-btn-subtext">No Limit</span>
+              <span className="block text-[10px] font-semibold leading-tight truncate">Call Any</span>
+              <span className="block text-[9px] opacity-70 leading-tight truncate">No Limit</span>
             </button>
           ) : (
             // Placeholder when no bet - keeps grid aligned
-            <div className="py-2 px-3" />
+            <div className="min-h-[44px]" />
           )}
         </div>
 

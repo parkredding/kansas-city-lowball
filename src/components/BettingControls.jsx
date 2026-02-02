@@ -190,116 +190,114 @@ function BettingControls({
         </div>
       )}
 
-      {/* Main Action Buttons - Grid layout with dynamic columns based on available actions */}
-      <div className={`grid gap-1.5 ${canMinBet ? 'grid-cols-5' : 'grid-cols-4'}`}>
-        {/* Fold Button - Zone 1 (Left) */}
+      {/* Main Action Buttons - Fixed 5-column grid for consistent layout */}
+      <div className="grid grid-cols-5 gap-1">
+        {/* Zone 1: Fold */}
         <button
           type="button"
           onClick={onFold}
           disabled={disabled}
-          className="py-2.5 bg-red-600 hover:bg-red-500 disabled:bg-red-900/50 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-colors text-xs"
+          className="py-2 bg-red-600 hover:bg-red-500 disabled:bg-red-900/50 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-colors text-xs min-h-[44px] flex flex-col items-center justify-center"
         >
-          Fold
+          <span className="block text-[10px]">Fold</span>
         </button>
 
-        {/* Check, Call, or All-In Button - Zone 2 (Center-Left) */}
+        {/* Zone 2: Check / Call / All-In to Call */}
         {canCheck ? (
           <button
             type="button"
             onClick={onCheck}
             disabled={disabled}
-            className="py-2.5 bg-sky-600 hover:bg-sky-500 disabled:bg-sky-900/50 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-colors text-xs"
+            className="py-2 bg-sky-600 hover:bg-sky-500 disabled:bg-sky-900/50 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-colors text-xs min-h-[44px] flex flex-col items-center justify-center"
           >
-            Check
+            <span className="block text-[10px]">Check</span>
           </button>
         ) : mustAllInToCall ? (
           <button
             type="button"
             onClick={onAllIn || (() => onRaise(maxRaise))}
             disabled={disabled}
-            className="py-2.5 bg-violet-600 hover:bg-violet-500 disabled:bg-violet-900/50 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-colors text-xs col-span-1"
+            className="py-2 bg-violet-600 hover:bg-violet-500 disabled:bg-violet-900/50 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-colors text-xs min-h-[44px] flex flex-col items-center justify-center"
           >
             <span className="block text-[10px]">All-In</span>
-            <span className="block text-[9px] opacity-80">${formatAmount(maxRaise)}</span>
+            <span className="block text-[8px] opacity-80">${formatAmount(maxRaise)}</span>
           </button>
         ) : (
           <button
             type="button"
             onClick={onCall}
             disabled={disabled}
-            className="py-2.5 bg-sky-600 hover:bg-sky-500 disabled:bg-sky-900/50 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-colors text-xs"
+            className="py-2 bg-sky-600 hover:bg-sky-500 disabled:bg-sky-900/50 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-colors text-xs min-h-[44px] flex flex-col items-center justify-center"
           >
             <span className="block text-[10px]">Call</span>
-            <span className="block text-[9px] opacity-80">${formatAmount(callAmount)}</span>
+            <span className="block text-[8px] opacity-80">${formatAmount(callAmount)}</span>
           </button>
         )}
 
-        {/* Min Bet Button - Zone 3 (Center) - Quick access to minimum legal raise */}
-        {canMinBet && (
+        {/* Zone 3: Min Bet (placeholder if not available) */}
+        {canMinBet ? (
           <button
             type="button"
             onClick={handleMinBet}
             disabled={disabled}
-            className={`
-              py-2.5 font-bold rounded-lg transition-colors text-xs
+            className={`py-2 font-bold rounded-lg transition-colors text-xs min-h-[44px] flex flex-col items-center justify-center
               ${minBetIsAllIn
                 ? 'bg-violet-600 hover:bg-violet-500 disabled:bg-violet-900/50'
                 : 'bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-900/50'
-              }
-              disabled:cursor-not-allowed text-white
-            `}
+              } disabled:cursor-not-allowed text-white`}
           >
             <span className="block text-[10px]">{minBetIsAllIn ? 'All-In' : 'Min'}</span>
-            <span className="block text-[9px] opacity-80">
+            <span className="block text-[8px] opacity-80">
               ${formatAmount(minBetIsAllIn ? maxRaise : minBetAmount)}
             </span>
           </button>
+        ) : (
+          <div className="min-h-[44px]" />
         )}
 
-        {/* Raise Button - Zone 4 (Center-Right) - only show if player can raise */}
+        {/* Zone 4: Raise/Bet (placeholder if not available) */}
         {canRaise ? (
           <button
             type="button"
             onClick={() => setShowRaiseSlider(!showRaiseSlider)}
             disabled={disabled}
-            className={`
-              py-2.5 font-bold rounded-lg transition-colors text-xs
+            className={`py-2 font-bold rounded-lg transition-colors text-xs min-h-[44px] flex flex-col items-center justify-center
               ${showRaiseSlider
                 ? 'bg-amber-700 text-white'
                 : 'bg-amber-600 hover:bg-amber-500 disabled:bg-amber-900/50 disabled:cursor-not-allowed text-white'
-              }
-            `}
+              }`}
           >
             <span className="block text-[10px]">{currentBet > 0 ? 'Raise' : 'Bet'}</span>
             {!showRaiseSlider && (
-              <span className="block text-[9px] opacity-80">${formatAmount(minRaise)}+</span>
+              <span className="block text-[8px] opacity-80">${formatAmount(minRaise)}+</span>
             )}
           </button>
         ) : (
-          <div />
+          <div className="min-h-[44px]" />
         )}
 
-        {/* All-In Button (quick access) - Zone 5 (Right) - show if player can afford more than min */}
+        {/* Zone 5: All-In (placeholder if not available) */}
         {canRaise && maxRaise > minRaise ? (
           <button
             type="button"
             onClick={onAllIn || (() => onRaise(maxRaise))}
             disabled={disabled}
-            className="py-2.5 bg-violet-600 hover:bg-violet-500 disabled:bg-violet-900/50 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-colors text-xs"
+            className="py-2 bg-violet-600 hover:bg-violet-500 disabled:bg-violet-900/50 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-colors text-xs min-h-[44px] flex flex-col items-center justify-center"
           >
             <span className="block text-[10px]">All-In</span>
-            <span className="block text-[9px] opacity-80">${formatAmount(maxRaise)}</span>
+            <span className="block text-[8px] opacity-80">${formatAmount(maxRaise)}</span>
           </button>
         ) : (
-          <div />
+          <div className="min-h-[44px]" />
         )}
       </div>
 
-      {/* Info Bar - more compact */}
-      <div className="mt-2 flex justify-between text-[10px] text-slate-500">
-        <span>Bet: ${formatAmount(currentBet)}</span>
-        <span>Chips: ${formatAmount(maxRaise)}</span>
-      </div>
+      {/* Info Bar - minimal, only show current bet if relevant */}
+      {currentBet > 0 && (
+        <div className="mt-1.5 text-center text-[10px] text-slate-500">
+          <span>Current bet: ${formatAmount(currentBet)}</span>
+        </div>
+      )}
     </div>
   );
 }
