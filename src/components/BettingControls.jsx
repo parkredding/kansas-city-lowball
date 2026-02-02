@@ -13,6 +13,7 @@ function BettingControls({
   canCheck,
   currentBet,
   pot = 0, // total pot for half-pot calculations
+  bigBlind = 0, // big blind amount for min-bet calculation
   disabled,
   isDesktop = false, // For desktop layout mode
 }) {
@@ -27,6 +28,14 @@ function BettingControls({
   const mustAllInToCall = callAmount > 0 && maxRaise < callAmount && maxRaise > 0;
   // Check if player can raise (has more chips than needed to call)
   const canRaise = maxRaise > callAmount && trueMaxRaise >= minRaise;
+
+  // Min-bet is the minimum legal raise (typically = minRaise, but at least bigBlind)
+  // If no prior bet, min-bet = big blind; if there's a bet, min-bet = minRaise
+  const minBetAmount = currentBet > 0 ? minRaise : Math.max(bigBlind, minRaise);
+  // Can only min-bet if player has enough chips and can raise
+  const canMinBet = canRaise && maxRaise >= minBetAmount;
+  // If min-bet would be all-in, treat it as all-in
+  const minBetIsAllIn = canMinBet && maxRaise <= minBetAmount;
 
   // Update raise amount when minRaise changes, clamped to valid range
   useEffect(() => {
@@ -45,6 +54,16 @@ function BettingControls({
     e?.stopPropagation();
     onRaise(raiseAmount);
     setShowRaiseSlider(false);
+  };
+
+  // Handle min-bet quick action
+  const handleMinBet = () => {
+    if (minBetIsAllIn) {
+      // If min-bet would be all-in, use all-in handler
+      (onAllIn || (() => onRaise(maxRaise)))();
+    } else {
+      onRaise(minBetAmount);
+    }
   };
 
   // Handle direct input
@@ -171,9 +190,9 @@ function BettingControls({
         </div>
       )}
 
-      {/* Main Action Buttons - Grid layout for better spacing */}
-      <div className="grid grid-cols-4 gap-1.5">
-        {/* Fold Button */}
+      {/* Main Action Buttons - Grid layout with dynamic columns based on available actions */}
+      <div className={`grid gap-1.5 ${canMinBet ? 'grid-cols-5' : 'grid-cols-4'}`}>
+        {/* Fold Button - Zone 1 (Left) */}
         <button
           type="button"
           onClick={onFold}
@@ -183,7 +202,7 @@ function BettingControls({
           Fold
         </button>
 
-        {/* Check, Call, or All-In Button */}
+        {/* Check, Call, or All-In Button - Zone 2 (Center-Left) */}
         {canCheck ? (
           <button
             type="button"
@@ -215,7 +234,29 @@ function BettingControls({
           </button>
         )}
 
-        {/* Raise Button - only show if player can raise */}
+        {/* Min Bet Button - Zone 3 (Center) - Quick access to minimum legal raise */}
+        {canMinBet && (
+          <button
+            type="button"
+            onClick={handleMinBet}
+            disabled={disabled}
+            className={`
+              py-2.5 font-bold rounded-lg transition-colors text-xs
+              ${minBetIsAllIn
+                ? 'bg-violet-600 hover:bg-violet-500 disabled:bg-violet-900/50'
+                : 'bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-900/50'
+              }
+              disabled:cursor-not-allowed text-white
+            `}
+          >
+            <span className="block text-[10px]">{minBetIsAllIn ? 'All-In' : 'Min'}</span>
+            <span className="block text-[9px] opacity-80">
+              ${formatAmount(minBetIsAllIn ? maxRaise : minBetAmount)}
+            </span>
+          </button>
+        )}
+
+        {/* Raise Button - Zone 4 (Center-Right) - only show if player can raise */}
         {canRaise ? (
           <button
             type="button"
@@ -235,10 +276,10 @@ function BettingControls({
             )}
           </button>
         ) : (
-          <div /> 
+          <div />
         )}
 
-        {/* All-In Button (quick access) - show if player can afford to raise */}
+        {/* All-In Button (quick access) - Zone 5 (Right) - show if player can afford more than min */}
         {canRaise && maxRaise > minRaise ? (
           <button
             type="button"

@@ -1,6 +1,18 @@
-import { useMemo } from 'react';
+import { useMemo, useCallback } from 'react';
 import { motion, LayoutGroup } from 'framer-motion';
 import PokerChip, { CHIP_DENOMINATIONS } from './PokerChip';
+
+/**
+ * Chip color class mapping for CSS tower styling
+ */
+const CHIP_COLOR_CLASSES = {
+  1: 'chip-white',
+  5: 'chip-red',
+  25: 'chip-green',
+  100: 'chip-black',
+  500: 'chip-purple',
+  1000: 'chip-gold',
+};
 
 /**
  * Chip size configurations for overlap calculations
@@ -377,6 +389,226 @@ export function PotDisplay({ amount, animate = true, isWinning = false }) {
           ${amount.toLocaleString()}
         </span>
       </motion.div>
+    </motion.div>
+  );
+}
+
+/**
+ * REALISTIC CHIP TOWER COMPONENT
+ *
+ * Renders a 3D-style vertical tower of chips with:
+ * 1. Denomination-based chip breakdown
+ * 2. True vertical stacking with absolute positioning
+ * 3. 3D depth effect via box-shadows
+ * 4. Organic "jitter" for natural look
+ * 5. Multiple tower support for large pots
+ *
+ * @param {number} amount - Total chip value to display
+ * @param {string} size - Chip size: 'xs', 'sm', 'md', 'lg'
+ * @param {boolean} showAmount - Whether to show the amount label
+ * @param {boolean} animate - Enable entrance animations
+ * @param {number} maxChipsPerTower - Max chips before splitting into new tower
+ * @param {number} maxTowers - Maximum number of towers
+ */
+export function ChipTower({
+  amount,
+  size = 'sm',
+  showAmount = true,
+  animate = true,
+  maxChipsPerTower = 8,
+  maxTowers = 3,
+}) {
+  // Calculate chip breakdown by denomination
+  const breakdown = useMemo(() => calculateChipBreakdown(amount), [amount]);
+
+  // Generate deterministic jitter for organic look
+  const getJitter = useCallback((index, seed = 0) => {
+    // Deterministic "random" based on index and seed
+    const hash = (index * 17 + seed * 31) % 100;
+    const jitterX = ((hash % 5) - 2); // -2 to +2 pixels
+    const rotation = ((hash % 7) - 3) * 0.5; // -1.5 to +1.5 degrees
+    return { x: jitterX, rotation };
+  }, []);
+
+  // Build chip array from breakdown (limited by maxChips total)
+  const chips = useMemo(() => {
+    const result = [];
+    let count = 0;
+    const maxChips = maxChipsPerTower * maxTowers;
+
+    for (const { denomination, count: denomCount } of breakdown) {
+      const toAdd = Math.min(denomCount, maxChips - count);
+      for (let i = 0; i < toAdd; i++) {
+        const jitter = getJitter(count, denomination);
+        result.push({
+          id: `tower-${denomination}-${count}`,
+          denomination,
+          colorClass: CHIP_COLOR_CLASSES[denomination] || 'chip-black',
+          jitter,
+        });
+        count++;
+      }
+      if (count >= maxChips) break;
+    }
+    return result;
+  }, [breakdown, maxChipsPerTower, maxTowers, getJitter]);
+
+  // Split chips into multiple towers
+  const towers = useMemo(() => {
+    const result = [];
+    for (let i = 0; i < chips.length; i += maxChipsPerTower) {
+      result.push(chips.slice(i, i + maxChipsPerTower));
+    }
+    return result;
+  }, [chips, maxChipsPerTower]);
+
+  // Size configuration for chip dimensions and vertical offset
+  const sizeConfig = {
+    xs: { chipSize: 28, verticalOffset: 3 },
+    sm: { chipSize: 36, verticalOffset: 4 },
+    md: { chipSize: 48, verticalOffset: 5 },
+    lg: { chipSize: 64, verticalOffset: 6 },
+  }[size] || { chipSize: 36, verticalOffset: 4 };
+
+  if (amount <= 0) return null;
+
+  return (
+    <div className="flex flex-col items-center">
+      {/* Tower container - holds multiple towers side by side */}
+      <div className="chip-tower-container">
+        {towers.map((towerChips, towerIndex) => (
+          <div
+            key={`tower-${towerIndex}`}
+            className="chip-tower"
+            style={{
+              position: 'relative',
+              height: (towerChips.length - 1) * sizeConfig.verticalOffset + sizeConfig.chipSize,
+              width: sizeConfig.chipSize + 4, // Extra width for jitter
+            }}
+          >
+            {towerChips.map((chip, chipIndex) => {
+              const bottomOffset = chipIndex * sizeConfig.verticalOffset;
+
+              return (
+                <motion.div
+                  key={chip.id}
+                  className={`chip-tower-chip chip-${size} ${chip.colorClass}`}
+                  style={{
+                    position: 'absolute',
+                    bottom: bottomOffset,
+                    left: '50%',
+                    width: sizeConfig.chipSize,
+                    height: sizeConfig.chipSize,
+                    marginLeft: -sizeConfig.chipSize / 2 + chip.jitter.x,
+                    zIndex: chipIndex,
+                    transform: `rotate(${chip.jitter.rotation}deg)`,
+                  }}
+                  initial={animate ? {
+                    y: -30,
+                    opacity: 0,
+                    scale: 0.8,
+                  } : false}
+                  animate={{
+                    y: 0,
+                    opacity: 1,
+                    scale: 1,
+                  }}
+                  transition={{
+                    type: 'spring',
+                    stiffness: 400,
+                    damping: 25,
+                    delay: (towerIndex * maxChipsPerTower + chipIndex) * 0.03,
+                  }}
+                >
+                  {/* Chip inner styling with dashed border for edge spots */}
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: 3,
+                      left: 3,
+                      right: 3,
+                      bottom: 3,
+                      borderRadius: '50%',
+                      border: '2px dashed rgba(255,255,255,0.4)',
+                    }}
+                  />
+                  {/* Center denomination marker */}
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: '50%',
+                      left: '50%',
+                      transform: 'translate(-50%, -50%)',
+                      fontSize: sizeConfig.chipSize * 0.25,
+                      fontWeight: 'bold',
+                      color: chip.denomination >= 100 ? 'white' : '#1f2937',
+                      textShadow: chip.denomination >= 100
+                        ? '0 1px 2px rgba(0,0,0,0.5)'
+                        : '0 1px 1px rgba(255,255,255,0.3)',
+                    }}
+                  >
+                    {chip.denomination >= 1000 ? '1K' : `$${chip.denomination}`}
+                  </div>
+                </motion.div>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+
+      {/* Amount label */}
+      {showAmount && (
+        <motion.div
+          className="chip-tower-amount"
+          initial={animate ? { opacity: 0, y: 10 } : false}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+        >
+          ${amount.toLocaleString()}
+        </motion.div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Pot Tower - Specialized chip tower for pot display
+ * Uses larger chips and enhanced 3D effect
+ */
+export function PotTower({
+  amount,
+  animate = true,
+  isWinning = false,
+  winnerId,
+}) {
+  if (amount <= 0) return null;
+
+  return (
+    <motion.div
+      className="flex flex-col items-center"
+      initial={animate ? { scale: 0.8, opacity: 0 } : false}
+      animate={isWinning ? {
+        scale: [1, 1.1, 0.5],
+        opacity: [1, 1, 0],
+        y: [0, -10, 50],
+      } : { scale: 1, opacity: 1 }}
+      transition={isWinning ? {
+        duration: 0.8,
+        times: [0, 0.3, 1],
+      } : {
+        type: 'spring',
+        stiffness: 300,
+        damping: 25,
+      }}
+    >
+      <ChipTower
+        amount={amount}
+        size="md"
+        showAmount={true}
+        animate={animate}
+        maxChipsPerTower={6}
+        maxTowers={2}
+      />
     </motion.div>
   );
 }
