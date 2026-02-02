@@ -105,6 +105,23 @@ export function LandscapeWarning() {
 
 /**
  * Main Portrait Game Layout Component
+ *
+ * ZONE ARCHITECTURE (App-Like Fixed Layout):
+ * ┌─────────────────────────────────────┐
+ * │     HEADER ZONE (10%)               │  Fixed Top
+ * ├─────────────────────────────────────┤
+ * │                                     │
+ * │     TABLE ZONE (65%)                │  Scaled Container
+ * │     - Opponents (Horseshoe)         │
+ * │     - Community Cards               │
+ * │     - Pot (Centered)                │
+ * │     - Hero Cards                    │
+ * │                                     │
+ * ├─────────────────────────────────────┤
+ * │     INTERACTION ZONE (25%)          │  Clamped Bottom
+ * │     - Status Overlay                │
+ * │     - Pre-Action / Action Bar       │
+ * └─────────────────────────────────────┘
  */
 export function PortraitGameLayout({
   children,
@@ -113,6 +130,7 @@ export function PortraitGameLayout({
   communityContent,
   heroCardsContent,
   actionBarContent,
+  statusOverlayContent,
   showLandscapeWarning = true,
 }) {
   const { isLandscape } = useOrientationLock();
@@ -124,63 +142,158 @@ export function PortraitGameLayout({
         {showLandscapeWarning && isLandscape && <LandscapeWarning />}
       </AnimatePresence>
 
-      {/* Main Game Layout */}
+      {/* Main Game Layout - Fixed Height Container (No Scrolling) */}
       <div
         className={`
-          game-layout-portrait
+          game-layout-fixed
+          fixed inset-0
           flex flex-col
-          h-full w-full
           overflow-hidden
           transition-all duration-300
           ${isLandscape ? 'blur-sm pointer-events-none' : ''}
         `}
+        style={{
+          /* Use dynamic viewport height for mobile browser toolbar handling */
+          height: '100dvh',
+          /* Fallback for browsers without dvh support */
+          minHeight: '-webkit-fill-available',
+        }}
       >
         {/* ============================================
-            HEADER ZONE
+            HEADER ZONE (10% of viewport)
             Status bar, menu button, connection indicator
-            8-10% of viewport
+            Z-INDEX: 200 (sticky level)
             ============================================ */}
-        <header className="zone-header flex-shrink-0">
+        <header
+          className="zone-header-fixed flex-shrink-0"
+          style={{
+            flex: '0 0 10%',
+            maxHeight: '64px',
+            minHeight: '48px',
+            zIndex: 200,
+          }}
+        >
           {headerContent}
         </header>
 
         {/* ============================================
-            HORSESHOE ZONE
-            Opponent avatars arranged in arc formation
-            20-25% of viewport
+            TABLE ZONE (65% of viewport)
+            Contains: Opponents, Community Cards, Pot, Hero Cards
+            Scales to fit between header and interaction zone
+            Z-INDEX: 0-50 (base through elevated)
             ============================================ */}
-        <section className="zone-opponents flex-shrink-0">
-          {opponentsContent}
-        </section>
+        <section
+          className="zone-table-container flex-1 relative overflow-hidden"
+          style={{
+            flex: '1 1 65%',
+            minHeight: 0, /* Allow flex shrinking */
+          }}
+        >
+          {/* Table Felt Background */}
+          <div
+            className="absolute inset-0 table-felt-background"
+            style={{
+              background: 'radial-gradient(ellipse 100% 80% at 50% 40%, #166534 0%, #14532d 60%, #0f172a 100%)',
+              zIndex: 0,
+            }}
+          />
 
-        {/* ============================================
-            COMMUNITY ZONE
-            Community cards, pot display
-            15-20% of viewport
-            ============================================ */}
-        <section className="zone-community flex-shrink-0">
-          {communityContent}
-        </section>
-
-        {/* ============================================
-            HERO ZONE
-            Player's cards (LARGE) and action controls
-            40-45% of viewport, expands to fill remaining space
-            ============================================ */}
-        <section className="zone-hero flex-grow flex flex-col">
-          {/* Hero's Cards - Center of hero zone */}
-          <div className="hero-cards flex-grow flex items-center justify-center">
-            {heroCardsContent}
+          {/* Opponents Zone - Top portion of table */}
+          <div
+            className="zone-opponents-inner absolute top-0 left-0 right-0"
+            style={{
+              height: '35%',
+              zIndex: 10,
+            }}
+          >
+            {opponentsContent}
           </div>
 
-          {/* Action Bar - Fixed to bottom with safe area */}
-          <div className="zone-action-bar flex-shrink-0">
+          {/* Community Zone - Center of table (pot underneath cards) */}
+          <div
+            className="zone-community-inner absolute left-0 right-0 flex flex-col items-center justify-center"
+            style={{
+              top: '30%',
+              height: '35%',
+              zIndex: 20,
+            }}
+          >
+            {/* Pot Display - Centered, underneath community cards */}
+            <div
+              className="pot-center absolute"
+              style={{
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                zIndex: 15, /* Below cards, above felt */
+              }}
+            >
+              {/* Pot is passed through communityContent */}
+            </div>
+
+            {/* Community Cards - On top of pot */}
+            <div style={{ zIndex: 25 }}>
+              {communityContent}
+            </div>
+          </div>
+
+          {/* Hero Cards Zone - Bottom portion of table */}
+          <div
+            className="zone-hero-cards-inner absolute bottom-0 left-0 right-0 flex items-center justify-center"
+            style={{
+              height: '35%',
+              zIndex: 30,
+            }}
+          >
+            {heroCardsContent}
+          </div>
+        </section>
+
+        {/* ============================================
+            INTERACTION ZONE (25% of viewport)
+            Status overlay + Pre-Action/Action Bar
+            Clamped to bottom, never scrolls
+            Z-INDEX: 100-150 (dropdown/overlay level)
+            ============================================ */}
+        <section
+          className="zone-interaction-fixed flex-shrink-0 flex flex-col"
+          style={{
+            flex: '0 0 25%',
+            maxHeight: '200px',
+            minHeight: '120px',
+            zIndex: 100,
+            background: 'linear-gradient(0deg, rgba(15, 23, 42, 0.98) 0%, rgba(15, 23, 42, 0.85) 100%)',
+            backdropFilter: 'blur(12px)',
+            WebkitBackdropFilter: 'blur(12px)',
+            borderTop: '1px solid rgba(148, 163, 184, 0.1)',
+          }}
+        >
+          {/* Status Overlay - Call amount, current bet indicators */}
+          {statusOverlayContent && (
+            <div
+              className="status-overlay-container px-3 pt-2"
+              style={{ zIndex: 110 }}
+            >
+              {statusOverlayContent}
+            </div>
+          )}
+
+          {/* Action Bar Container - Pre-actions or Live actions */}
+          <div
+            className="action-bar-container flex-1 flex flex-col justify-end"
+            style={{
+              paddingBottom: 'max(12px, env(safe-area-inset-bottom, 0px))',
+              zIndex: 120,
+            }}
+          >
             {actionBarContent}
           </div>
         </section>
 
-        {/* Additional content (modals, overlays, etc.) */}
-        {children}
+        {/* Additional content (modals, overlays) - Highest z-index */}
+        <div style={{ zIndex: 500 }}>
+          {children}
+        </div>
       </div>
     </>
   );

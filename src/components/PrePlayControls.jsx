@@ -77,42 +77,35 @@ function PrePlayControls({
     }
   }, [preAction.type, onPreActionSet, onPreActionClear]);
 
-  // Get button style based on selection state
-  const getButtonStyle = (actionType) => {
+  /**
+   * Get button style class based on action type and selection state.
+   * Uses the new desaturated/outlined styling system from pwa-gaming.css
+   * to differentiate pre-actions from live actions and prevent mis-clicks.
+   */
+  const getButtonClass = (actionType) => {
     const isSelected = preAction.type === actionType;
-    const baseStyle = 'py-2 px-3 rounded-lg font-medium text-xs transition-all duration-200';
+    const baseClass = 'preaction-btn py-2 px-3 rounded-lg text-xs';
 
-    if (isSelected) {
-      return `${baseStyle} ring-2 ring-offset-2 ring-offset-slate-900`;
-    }
-    return baseStyle;
-  };
+    // Map action types to CSS class names
+    const actionClassMap = {
+      [PRE_ACTION_TYPES.FOLD]: isSelected
+        ? 'preaction-btn-selected preaction-btn-fold-selected'
+        : 'preaction-btn-default preaction-btn-fold',
+      [PRE_ACTION_TYPES.CHECK]: isSelected
+        ? 'preaction-btn-selected preaction-btn-check-selected'
+        : 'preaction-btn-default preaction-btn-check',
+      [PRE_ACTION_TYPES.CHECK_FOLD]: isSelected
+        ? 'preaction-btn-selected preaction-btn-checkfold-selected'
+        : 'preaction-btn-default preaction-btn-checkfold',
+      [PRE_ACTION_TYPES.CALL]: isSelected
+        ? 'preaction-btn-selected preaction-btn-call-selected'
+        : 'preaction-btn-default preaction-btn-call',
+      [PRE_ACTION_TYPES.CALL_ANY]: isSelected
+        ? 'preaction-btn-selected preaction-btn-callany-selected'
+        : 'preaction-btn-default preaction-btn-callany',
+    };
 
-  // Get button color based on action type and selection
-  const getButtonColor = (actionType) => {
-    const isSelected = preAction.type === actionType;
-
-    switch (actionType) {
-      case PRE_ACTION_TYPES.CHECK:
-        return isSelected
-          ? 'bg-emerald-600 text-white ring-emerald-400'
-          : 'bg-slate-700/80 text-slate-300 hover:bg-slate-600/80';
-      case PRE_ACTION_TYPES.CHECK_FOLD:
-        return isSelected
-          ? 'bg-sky-600 text-white ring-sky-400'
-          : 'bg-slate-700/80 text-slate-300 hover:bg-slate-600/80';
-      case PRE_ACTION_TYPES.CALL:
-      case PRE_ACTION_TYPES.CALL_ANY:
-        return isSelected
-          ? 'bg-emerald-600 text-white ring-emerald-400'
-          : 'bg-slate-700/80 text-slate-300 hover:bg-slate-600/80';
-      case PRE_ACTION_TYPES.FOLD:
-        return isSelected
-          ? 'bg-red-600 text-white ring-red-400'
-          : 'bg-slate-700/80 text-slate-300 hover:bg-slate-600/80';
-      default:
-        return 'bg-slate-700/80 text-slate-300 hover:bg-slate-600/80';
-    }
+    return `${baseClass} ${actionClassMap[actionType] || 'preaction-btn-default'}`;
   };
 
   // Format amount for display
@@ -185,7 +178,7 @@ function PrePlayControls({
           <button
             type="button"
             onClick={() => handlePreActionSelect(PRE_ACTION_TYPES.FOLD)}
-            className={`${getButtonStyle(PRE_ACTION_TYPES.FOLD)} ${getButtonColor(PRE_ACTION_TYPES.FOLD)} preplay-btn`}
+            className={getButtonClass(PRE_ACTION_TYPES.FOLD)}
           >
             <span className="preplay-btn-text">Fold</span>
             <span className="preplay-btn-subtext">Any Bet</span>
@@ -199,7 +192,7 @@ function PrePlayControls({
             <button
               type="button"
               onClick={() => handlePreActionSelect(PRE_ACTION_TYPES.CHECK)}
-              className={`${getButtonStyle(PRE_ACTION_TYPES.CHECK)} ${getButtonColor(PRE_ACTION_TYPES.CHECK)} preplay-btn`}
+              className={getButtonClass(PRE_ACTION_TYPES.CHECK)}
             >
               <span className="preplay-btn-text">Check</span>
               <span className="preplay-btn-subtext">Will Check</span>
@@ -209,7 +202,7 @@ function PrePlayControls({
             <button
               type="button"
               onClick={() => handlePreActionSelect(PRE_ACTION_TYPES.CALL, callAmount)}
-              className={`${getButtonStyle(PRE_ACTION_TYPES.CALL)} ${getButtonColor(PRE_ACTION_TYPES.CALL)} preplay-btn`}
+              className={getButtonClass(PRE_ACTION_TYPES.CALL)}
             >
               <span className="preplay-btn-text">Call</span>
               <span className="preplay-btn-subtext">${formatAmount(callAmount)}</span>
@@ -223,7 +216,7 @@ function PrePlayControls({
             <button
               type="button"
               onClick={() => handlePreActionSelect(PRE_ACTION_TYPES.CHECK_FOLD)}
-              className={`${getButtonStyle(PRE_ACTION_TYPES.CHECK_FOLD)} ${getButtonColor(PRE_ACTION_TYPES.CHECK_FOLD)} preplay-btn`}
+              className={getButtonClass(PRE_ACTION_TYPES.CHECK_FOLD)}
             >
               <span className="preplay-btn-text">Chk/Fold</span>
               <span className="preplay-btn-subtext">Will Fold</span>
@@ -233,7 +226,7 @@ function PrePlayControls({
             <button
               type="button"
               onClick={() => handlePreActionSelect(PRE_ACTION_TYPES.CHECK_FOLD)}
-              className={`${getButtonStyle(PRE_ACTION_TYPES.CHECK_FOLD)} ${getButtonColor(PRE_ACTION_TYPES.CHECK_FOLD)} preplay-btn`}
+              className={getButtonClass(PRE_ACTION_TYPES.CHECK_FOLD)}
             >
               <span className="preplay-btn-text">Chk/Fold</span>
               <span className="preplay-btn-subtext">If Bet</span>
@@ -246,7 +239,7 @@ function PrePlayControls({
             <button
               type="button"
               onClick={() => handlePreActionSelect(PRE_ACTION_TYPES.CALL_ANY)}
-              className={`${getButtonStyle(PRE_ACTION_TYPES.CALL_ANY)} ${getButtonColor(PRE_ACTION_TYPES.CALL_ANY)} preplay-btn`}
+              className={getButtonClass(PRE_ACTION_TYPES.CALL_ANY)}
             >
               <span className="preplay-btn-text">Call Any</span>
               <span className="preplay-btn-subtext">No Limit</span>
