@@ -132,6 +132,24 @@ function PrePlayControls({
     ? 'bg-slate-800/60 backdrop-blur-sm rounded-xl p-3 w-full border border-slate-700/50'
     : 'bg-slate-900/95 backdrop-blur-sm rounded-xl p-3 w-full max-w-lg border border-slate-700/50';
 
+  /**
+   * ZONE-BASED LAYOUT for Pre-Action Buttons
+   *
+   * Critical UX Fix: Pre-Action buttons MUST align 1:1 with Real-Action buttons
+   * to prevent misclicks when the turn starts.
+   *
+   * Zone 1 (Left):    Always FOLD - Pre-Fold goes here
+   * Zone 2 (Center):  CHECK/CALL actions - Pre-Check, Check/Fold, Call go here
+   * Zone 3 (Right):   BET/RAISE actions - Call Any goes here
+   *
+   * If Pre-Check is available, Zone 1 stays empty/disabled to prevent accidental folding.
+   */
+
+  // Determine which zones have content
+  const hasFoldAction = true; // Fold is always available
+  const hasCheckAction = canCheck;
+  const hasCallAction = callAmount > 0;
+
   return (
     <AnimatePresence>
       <motion.div
@@ -157,65 +175,86 @@ function PrePlayControls({
           )}
         </div>
 
-        {/* Pre-Action Buttons */}
+        {/* Pre-Action Buttons - Zone-aligned grid */}
+        {/* Always use 4-column grid to match BettingControls layout */}
         <div className="grid grid-cols-4 gap-2">
-          {/* Check Button - Checks if able, otherwise cancels and alerts */}
-          <button
-            type="button"
-            onClick={() => handlePreActionSelect(PRE_ACTION_TYPES.CHECK)}
-            className={`${getButtonStyle(PRE_ACTION_TYPES.CHECK)} ${getButtonColor(PRE_ACTION_TYPES.CHECK)}`}
-          >
-            <span className="block text-[11px]">Check</span>
-            <span className="block text-[9px] opacity-70">
-              {canCheck ? 'Will Check' : 'If Able'}
-            </span>
-          </button>
 
-          {/* Check/Fold Button */}
-          <button
-            type="button"
-            onClick={() => handlePreActionSelect(PRE_ACTION_TYPES.CHECK_FOLD)}
-            className={`${getButtonStyle(PRE_ACTION_TYPES.CHECK_FOLD)} ${getButtonColor(PRE_ACTION_TYPES.CHECK_FOLD)}`}
-          >
-            <span className="block text-[11px]">Check/Fold</span>
-            <span className="block text-[9px] opacity-70">
-              {canCheck ? 'Will Check' : 'Will Fold'}
-            </span>
-          </button>
-
-          {/* Call Button - with amount */}
-          {callAmount > 0 && (
-            <button
-              type="button"
-              onClick={() => handlePreActionSelect(PRE_ACTION_TYPES.CALL, callAmount)}
-              className={`${getButtonStyle(PRE_ACTION_TYPES.CALL)} ${getButtonColor(PRE_ACTION_TYPES.CALL)}`}
-            >
-              <span className="block text-[11px]">Call</span>
-              <span className="block text-[9px] opacity-70">${formatAmount(callAmount)}</span>
-            </button>
-          )}
-
-          {/* Call Any - no price protection */}
-          {callAmount > 0 && (
-            <button
-              type="button"
-              onClick={() => handlePreActionSelect(PRE_ACTION_TYPES.CALL_ANY)}
-              className={`${getButtonStyle(PRE_ACTION_TYPES.CALL_ANY)} ${getButtonColor(PRE_ACTION_TYPES.CALL_ANY)}`}
-            >
-              <span className="block text-[11px]">Call Any</span>
-              <span className="block text-[9px] opacity-70">No Limit</span>
-            </button>
-          )}
-
-          {/* Fold Button */}
+          {/* ZONE 1 (Left) - FOLD ONLY
+              This zone ALWAYS maps to Fold in real actions.
+              NEVER put Check here to prevent accidental folding. */}
           <button
             type="button"
             onClick={() => handlePreActionSelect(PRE_ACTION_TYPES.FOLD)}
-            className={`${getButtonStyle(PRE_ACTION_TYPES.FOLD)} ${getButtonColor(PRE_ACTION_TYPES.FOLD)}`}
+            className={`${getButtonStyle(PRE_ACTION_TYPES.FOLD)} ${getButtonColor(PRE_ACTION_TYPES.FOLD)} preplay-btn`}
           >
-            <span className="block text-[11px]">Fold</span>
-            <span className="block text-[9px] opacity-70">Any Bet</span>
+            <span className="preplay-btn-text">Fold</span>
+            <span className="preplay-btn-subtext">Any Bet</span>
           </button>
+
+          {/* ZONE 2 (Center-Left) - CHECK / CALL actions
+              This zone maps to Check/Call in real actions.
+              Pre-Check and Check/Fold go here. */}
+          {canCheck ? (
+            // When we can check, show Check button (maps to Check in real actions)
+            <button
+              type="button"
+              onClick={() => handlePreActionSelect(PRE_ACTION_TYPES.CHECK)}
+              className={`${getButtonStyle(PRE_ACTION_TYPES.CHECK)} ${getButtonColor(PRE_ACTION_TYPES.CHECK)} preplay-btn`}
+            >
+              <span className="preplay-btn-text">Check</span>
+              <span className="preplay-btn-subtext">Will Check</span>
+            </button>
+          ) : (
+            // When there's a bet, show Call button (maps to Call in real actions)
+            <button
+              type="button"
+              onClick={() => handlePreActionSelect(PRE_ACTION_TYPES.CALL, callAmount)}
+              className={`${getButtonStyle(PRE_ACTION_TYPES.CALL)} ${getButtonColor(PRE_ACTION_TYPES.CALL)} preplay-btn`}
+            >
+              <span className="preplay-btn-text">Call</span>
+              <span className="preplay-btn-subtext">${formatAmount(callAmount)}</span>
+            </button>
+          )}
+
+          {/* ZONE 3 (Center-Right) - CONDITIONAL actions
+              Check/Fold when there's a bet, or secondary check option */}
+          {callAmount > 0 ? (
+            // When there's a bet, show Check/Fold (will fold if bet increases)
+            <button
+              type="button"
+              onClick={() => handlePreActionSelect(PRE_ACTION_TYPES.CHECK_FOLD)}
+              className={`${getButtonStyle(PRE_ACTION_TYPES.CHECK_FOLD)} ${getButtonColor(PRE_ACTION_TYPES.CHECK_FOLD)} preplay-btn`}
+            >
+              <span className="preplay-btn-text">Chk/Fold</span>
+              <span className="preplay-btn-subtext">Will Fold</span>
+            </button>
+          ) : (
+            // When we can check, show Check/Fold as backup option
+            <button
+              type="button"
+              onClick={() => handlePreActionSelect(PRE_ACTION_TYPES.CHECK_FOLD)}
+              className={`${getButtonStyle(PRE_ACTION_TYPES.CHECK_FOLD)} ${getButtonColor(PRE_ACTION_TYPES.CHECK_FOLD)} preplay-btn`}
+            >
+              <span className="preplay-btn-text">Chk/Fold</span>
+              <span className="preplay-btn-subtext">If Bet</span>
+            </button>
+          )}
+
+          {/* ZONE 4 (Right) - AGGRESSIVE actions
+              Call Any (no price protection) - maps to Raise zone */}
+          {callAmount > 0 ? (
+            <button
+              type="button"
+              onClick={() => handlePreActionSelect(PRE_ACTION_TYPES.CALL_ANY)}
+              className={`${getButtonStyle(PRE_ACTION_TYPES.CALL_ANY)} ${getButtonColor(PRE_ACTION_TYPES.CALL_ANY)} preplay-btn`}
+            >
+              <span className="preplay-btn-text">Call Any</span>
+              <span className="preplay-btn-subtext">No Limit</span>
+            </button>
+          ) : (
+            // Placeholder when no bet - keeps grid aligned
+            <div className="py-2 px-3" />
+          )}
         </div>
 
         {/* Selected Action Indicator */}

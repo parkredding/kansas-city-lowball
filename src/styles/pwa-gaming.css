@@ -997,3 +997,266 @@ a, button {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+
+/* ============================================================================
+   10. PRE-PLAY BUTTON STYLING
+   Mobile-optimized pre-action buttons with fluid typography
+   ============================================================================ */
+
+/**
+ * Pre-play buttons need special handling for mobile:
+ * 1. Fluid typography that scales with screen width
+ * 2. Text overflow protection with ellipsis fallback
+ * 3. Icon fallback on very narrow screens (< 400px)
+ */
+
+.preplay-btn {
+  /* Ensure proper button containment */
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  min-width: 0; /* Allow flex shrinking */
+
+  /* Touch target minimum */
+  min-height: var(--touch-target-min);
+}
+
+/* Button text - main label */
+.preplay-btn-text {
+  display: block;
+  /* Fluid typography: scales between 9px and 11px based on viewport */
+  font-size: clamp(0.5625rem, 2vw + 0.25rem, 0.6875rem);
+  font-weight: 600;
+  line-height: 1.2;
+
+  /* Text overflow protection */
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Button subtext - secondary info (e.g., "Will Check", "$50") */
+.preplay-btn-subtext {
+  display: block;
+  /* Slightly smaller fluid typography */
+  font-size: clamp(0.5rem, 1.5vw + 0.2rem, 0.5625rem);
+  font-weight: 400;
+  opacity: 0.7;
+  line-height: 1.2;
+
+  /* Text overflow protection */
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Icon mode for very narrow screens (< 400px) */
+@media screen and (max-width: 400px) {
+  .preplay-btn {
+    padding: var(--space-sm);
+  }
+
+  /* Hide text, show icon */
+  .preplay-btn-text,
+  .preplay-btn-subtext {
+    /* Use even smaller text on tiny screens */
+    font-size: clamp(0.5rem, 2.5vw, 0.625rem);
+  }
+
+  /* Alternative: Icon-only mode */
+  .preplay-btn[data-icon-mode="true"] .preplay-btn-text,
+  .preplay-btn[data-icon-mode="true"] .preplay-btn-subtext {
+    display: none;
+  }
+
+  .preplay-btn[data-icon-mode="true"]::before {
+    font-size: 1.25rem;
+  }
+
+  /* Fold icon (red X) */
+  .preplay-btn[data-action="fold"][data-icon-mode="true"]::before {
+    content: "✕";
+    color: var(--color-action-negative);
+  }
+
+  /* Check icon (green checkmark) */
+  .preplay-btn[data-action="check"][data-icon-mode="true"]::before {
+    content: "✓";
+    color: var(--color-action-positive);
+  }
+
+  /* Call icon (blue arrow) */
+  .preplay-btn[data-action="call"][data-icon-mode="true"]::before {
+    content: "→";
+    color: var(--color-action-info);
+  }
+
+  /* Check/Fold icon (combined) */
+  .preplay-btn[data-action="check-fold"][data-icon-mode="true"]::before {
+    content: "✓/✕";
+    font-size: 0.875rem;
+    color: var(--color-action-info);
+  }
+}
+
+/* Even smaller screens (< 320px) - compact mode */
+@media screen and (max-width: 320px) {
+  .preplay-btn {
+    padding: var(--space-xs);
+    min-height: 36px;
+  }
+
+  .preplay-btn-text {
+    font-size: 0.5rem;
+  }
+
+  .preplay-btn-subtext {
+    display: none; /* Hide subtext on very small screens */
+  }
+}
+
+
+/* ============================================================================
+   11. REALISTIC CHIP TOWER VISUALIZATION
+   3D stacked chip tower with realistic shadows and jitter
+   ============================================================================ */
+
+/**
+ * Chip tower styling for the pot display
+ * Creates a realistic vertical stack of chips with:
+ * 1. Proper vertical stacking with offset
+ * 2. 3D depth effect via box-shadow
+ * 3. Organic "jitter" for natural look
+ * 4. Multiple tower support for large pots
+ */
+
+.chip-tower {
+  display: flex;
+  flex-direction: column-reverse; /* Stack from bottom up */
+  align-items: center;
+  position: relative;
+}
+
+.chip-tower-container {
+  display: flex;
+  gap: var(--space-sm);
+  align-items: flex-end;
+  justify-content: center;
+}
+
+/* Individual chip in tower */
+.chip-tower-chip {
+  position: relative;
+  border-radius: 50%;
+
+  /* 3D depth effect - thickness shadow */
+  box-shadow:
+    0 3px 0 var(--chip-dark-color, #1a1a1a),    /* Edge thickness */
+    0 4px 2px rgba(0, 0, 0, 0.3),                 /* Soft shadow below */
+    0 6px 8px rgba(0, 0, 0, 0.2),                 /* Ambient shadow */
+    inset 0 2px 4px rgba(255, 255, 255, 0.2),    /* Top highlight */
+    inset 0 -2px 4px rgba(0, 0, 0, 0.15);         /* Bottom shadow */
+}
+
+/* Chip size variants */
+.chip-tower-chip.chip-xs {
+  width: 28px;
+  height: 28px;
+}
+
+.chip-tower-chip.chip-sm {
+  width: 36px;
+  height: 36px;
+}
+
+.chip-tower-chip.chip-md {
+  width: 48px;
+  height: 48px;
+}
+
+.chip-tower-chip.chip-lg {
+  width: 64px;
+  height: 64px;
+}
+
+/* Stacking offset - each chip slightly above the previous */
+.chip-tower-chip:nth-child(n+2) {
+  margin-top: -4px;
+}
+
+/* Organic jitter - slight random horizontal offset */
+.chip-tower-chip:nth-child(2n) {
+  transform: translateX(1px);
+}
+
+.chip-tower-chip:nth-child(3n) {
+  transform: translateX(-1px);
+}
+
+.chip-tower-chip:nth-child(4n) {
+  transform: translateX(2px);
+}
+
+.chip-tower-chip:nth-child(5n) {
+  transform: translateX(-2px) rotate(2deg);
+}
+
+.chip-tower-chip:nth-child(6n) {
+  transform: translateX(1px) rotate(-1deg);
+}
+
+/* Chip color variants */
+.chip-tower-chip.chip-white {
+  background: linear-gradient(135deg, #f8f8f8 0%, #e8e8e8 50%, #d8d8d8 100%);
+  --chip-dark-color: #b8b8b8;
+}
+
+.chip-tower-chip.chip-red {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 50%, #b91c1c 100%);
+  --chip-dark-color: #991b1b;
+}
+
+.chip-tower-chip.chip-green {
+  background: linear-gradient(135deg, #22c55e 0%, #16a34a 50%, #15803d 100%);
+  --chip-dark-color: #166534;
+}
+
+.chip-tower-chip.chip-black {
+  background: linear-gradient(135deg, #374151 0%, #1f2937 50%, #111827 100%);
+  --chip-dark-color: #030712;
+}
+
+.chip-tower-chip.chip-purple {
+  background: linear-gradient(135deg, #a855f7 0%, #7c3aed 50%, #5b21b6 100%);
+  --chip-dark-color: #4c1d95;
+}
+
+.chip-tower-chip.chip-gold {
+  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 50%, #d97706 100%);
+  --chip-dark-color: #b45309;
+}
+
+/* Pot amount label - positioned below chip stack */
+.chip-tower-amount {
+  margin-top: var(--space-sm);
+  padding: var(--space-xs) var(--space-md);
+
+  background: linear-gradient(180deg, #f59e0b 0%, #d97706 100%);
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(251, 191, 36, 0.5);
+
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: white;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
