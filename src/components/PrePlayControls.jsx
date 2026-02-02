@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
  */
 export const PRE_ACTION_TYPES = {
   NONE: 'none',
+  CHECK: 'check',                // Check if possible, otherwise cancel and alert
   CHECK_FOLD: 'check_fold',     // Check if possible, otherwise fold
   CALL: 'call',                  // Call the current bet
   CALL_ANY: 'call_any',          // Call any amount
@@ -92,6 +93,10 @@ function PrePlayControls({
     const isSelected = preAction.type === actionType;
 
     switch (actionType) {
+      case PRE_ACTION_TYPES.CHECK:
+        return isSelected
+          ? 'bg-emerald-600 text-white ring-emerald-400'
+          : 'bg-slate-700/80 text-slate-300 hover:bg-slate-600/80';
       case PRE_ACTION_TYPES.CHECK_FOLD:
         return isSelected
           ? 'bg-sky-600 text-white ring-sky-400'
@@ -153,7 +158,19 @@ function PrePlayControls({
         </div>
 
         {/* Pre-Action Buttons */}
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-4 gap-2">
+          {/* Check Button - Checks if able, otherwise cancels and alerts */}
+          <button
+            type="button"
+            onClick={() => handlePreActionSelect(PRE_ACTION_TYPES.CHECK)}
+            className={`${getButtonStyle(PRE_ACTION_TYPES.CHECK)} ${getButtonColor(PRE_ACTION_TYPES.CHECK)}`}
+          >
+            <span className="block text-[11px]">Check</span>
+            <span className="block text-[9px] opacity-70">
+              {canCheck ? 'Will Check' : 'If Able'}
+            </span>
+          </button>
+
           {/* Check/Fold Button */}
           <button
             type="button"
@@ -212,6 +229,7 @@ function PrePlayControls({
             <div className="flex items-center justify-between text-xs">
               <span className="text-slate-400">Queued:</span>
               <span className="text-amber-400 font-medium">
+                {preAction.type === PRE_ACTION_TYPES.CHECK && 'Check (if able)'}
                 {preAction.type === PRE_ACTION_TYPES.CHECK_FOLD && (canCheck ? 'Check' : 'Fold')}
                 {preAction.type === PRE_ACTION_TYPES.CALL && `Call $${formatAmount(preAction.amount)}`}
                 {preAction.type === PRE_ACTION_TYPES.CALL_ANY && 'Call Any'}
@@ -241,6 +259,7 @@ function PrePlayControls({
  * @param {function} options.onCheck - Check action handler
  * @param {function} options.onCall - Call action handler
  * @param {boolean} options.canCheck - Whether player can check
+ * @param {function} options.onCheckBlocked - Called when CHECK action is blocked due to bet
  * @returns {Object} Pre-action state and handlers
  */
 export function usePrePlayAction({
@@ -251,6 +270,7 @@ export function usePrePlayAction({
   onCheck,
   onCall,
   canCheck,
+  onCheckBlocked,
 }) {
   const [preAction, setPreAction] = useState({ type: PRE_ACTION_TYPES.NONE, amount: 0 });
   // Use ref instead of state to prevent re-render from clearing the timeout
@@ -261,6 +281,17 @@ export function usePrePlayAction({
   // Execute the queued pre-action
   const executePreAction = useCallback(() => {
     switch (preAction.type) {
+      case PRE_ACTION_TYPES.CHECK:
+        // Check if able, otherwise cancel and alert player
+        if (canCheck) {
+          onCheck?.();
+        } else {
+          // There's a bet on the table - cancel and notify player
+          onCheckBlocked?.(callAmount);
+          // Don't execute any action - give control back to player
+        }
+        break;
+
       case PRE_ACTION_TYPES.CHECK_FOLD:
         if (canCheck) {
           onCheck?.();
@@ -300,7 +331,7 @@ export function usePrePlayAction({
 
     // Clear the pre-action after execution
     setPreAction({ type: PRE_ACTION_TYPES.NONE, amount: 0 });
-  }, [preAction, canCheck, callAmount, onCheck, onFold, onCall]);
+  }, [preAction, canCheck, callAmount, onCheck, onFold, onCall, onCheckBlocked]);
 
   // Execute pre-action when turn starts
   useEffect(() => {
