@@ -1512,17 +1512,12 @@ a, button {
   transform: scale(0.96);
 }
 
-/* Default state - High contrast with visible background */
+/* Default state - Base styles only, color-specific classes provide backgrounds */
 .preaction-btn-default {
-  background: rgba(30, 41, 59, 0.9); /* Darker, more opaque for contrast */
-  border-color: rgba(100, 116, 139, 0.7); /* More visible border */
-  color: #e2e8f0; /* Brighter text (slate-200) */
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5); /* Text shadow for legibility */
-}
-
-.preaction-btn-default:hover {
-  background: rgba(51, 65, 85, 0.95);
-  border-color: rgba(148, 163, 184, 0.9);
+  /* Background handled by color-specific classes (preaction-btn-fold, etc.) */
+  border-color: rgba(100, 116, 139, 0.5); /* Subtle border, overridden by color classes */
+  color: #e2e8f0; /* Base text color, overridden by color classes */
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4); /* Text shadow for legibility */
 }
 
 /* Selected state - Glowing ring highlight */
@@ -1550,20 +1545,21 @@ a, button {
   }
 }
 
-/* Pre-Fold - High contrast red */
+/* Pre-Fold - Washed out red (matches action-btn-fold) */
 .preaction-btn-fold {
-  border-color: rgba(239, 68, 68, 0.5);
-  color: #fca5a5; /* Brighter red text */
-  text-shadow: 0 1px 2px rgba(239, 68, 68, 0.3);
+  background: linear-gradient(180deg, rgba(239, 68, 68, 0.2) 0%, rgba(220, 38, 38, 0.25) 100%);
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #fecaca; /* Light red text */
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
 }
 
 .preaction-btn-fold:hover {
-  border-color: rgba(239, 68, 68, 0.7);
-  background: rgba(127, 29, 29, 0.5);
+  background: linear-gradient(180deg, rgba(239, 68, 68, 0.3) 0%, rgba(220, 38, 38, 0.35) 100%);
+  border-color: rgba(239, 68, 68, 0.6);
 }
 
 .preaction-btn-fold-selected {
-  background: rgba(127, 29, 29, 0.7);
+  background: linear-gradient(180deg, rgba(239, 68, 68, 0.45) 0%, rgba(220, 38, 38, 0.5) 100%);
   border-color: #ef4444;
   color: #fef2f2;
   box-shadow:
@@ -1572,20 +1568,21 @@ a, button {
     0 0 16px rgba(239, 68, 68, 0.6);
 }
 
-/* Pre-Check - High contrast green */
+/* Pre-Check - Washed out green (matches action-btn-check) */
 .preaction-btn-check {
-  border-color: rgba(34, 197, 94, 0.5);
-  color: #86efac; /* Brighter green text */
-  text-shadow: 0 1px 2px rgba(34, 197, 94, 0.3);
+  background: linear-gradient(180deg, rgba(34, 197, 94, 0.2) 0%, rgba(22, 163, 74, 0.25) 100%);
+  border-color: rgba(34, 197, 94, 0.4);
+  color: #bbf7d0; /* Light green text */
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
 }
 
 .preaction-btn-check:hover {
-  border-color: rgba(34, 197, 94, 0.7);
-  background: rgba(20, 83, 45, 0.5);
+  background: linear-gradient(180deg, rgba(34, 197, 94, 0.3) 0%, rgba(22, 163, 74, 0.35) 100%);
+  border-color: rgba(34, 197, 94, 0.6);
 }
 
 .preaction-btn-check-selected {
-  background: rgba(20, 83, 45, 0.7);
+  background: linear-gradient(180deg, rgba(34, 197, 94, 0.45) 0%, rgba(22, 163, 74, 0.5) 100%);
   border-color: #22c55e;
   color: #f0fdf4;
   box-shadow:
@@ -1594,20 +1591,21 @@ a, button {
     0 0 16px rgba(34, 197, 94, 0.6);
 }
 
-/* Pre-Call - High contrast sky blue */
+/* Pre-Call - Washed out sky blue (matches action-btn-call) */
 .preaction-btn-call {
-  border-color: rgba(14, 165, 233, 0.5);
-  color: #7dd3fc; /* Brighter blue text */
-  text-shadow: 0 1px 2px rgba(14, 165, 233, 0.3);
+  background: linear-gradient(180deg, rgba(14, 165, 233, 0.2) 0%, rgba(2, 132, 199, 0.25) 100%);
+  border-color: rgba(14, 165, 233, 0.4);
+  color: #bae6fd; /* Light sky blue text */
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
 }
 
 .preaction-btn-call:hover {
-  border-color: rgba(14, 165, 233, 0.7);
-  background: rgba(12, 74, 110, 0.5);
+  background: linear-gradient(180deg, rgba(14, 165, 233, 0.3) 0%, rgba(2, 132, 199, 0.35) 100%);
+  border-color: rgba(14, 165, 233, 0.6);
 }
 
 .preaction-btn-call-selected {
-  background: rgba(12, 74, 110, 0.7);
+  background: linear-gradient(180deg, rgba(14, 165, 233, 0.45) 0%, rgba(2, 132, 199, 0.5) 100%);
   border-color: #0ea5e9;
   color: #f0f9ff;
   box-shadow:
@@ -1616,42 +1614,44 @@ a, button {
     0 0 16px rgba(14, 165, 233, 0.6);
 }
 
-/* Pre-Check/Fold - High contrast blue */
+/* Pre-Check/Fold - Washed out teal (blend of check-green and fold-red concepts) */
 .preaction-btn-checkfold {
-  border-color: rgba(59, 130, 246, 0.5);
-  color: #93c5fd; /* Brighter blue text */
-  text-shadow: 0 1px 2px rgba(59, 130, 246, 0.3);
+  background: linear-gradient(180deg, rgba(20, 184, 166, 0.2) 0%, rgba(13, 148, 136, 0.25) 100%);
+  border-color: rgba(20, 184, 166, 0.4);
+  color: #99f6e4; /* Light teal text */
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
 }
 
 .preaction-btn-checkfold:hover {
-  border-color: rgba(59, 130, 246, 0.7);
-  background: rgba(30, 64, 175, 0.5);
+  background: linear-gradient(180deg, rgba(20, 184, 166, 0.3) 0%, rgba(13, 148, 136, 0.35) 100%);
+  border-color: rgba(20, 184, 166, 0.6);
 }
 
 .preaction-btn-checkfold-selected {
-  background: rgba(30, 64, 175, 0.7);
-  border-color: #3b82f6;
-  color: #eff6ff;
+  background: linear-gradient(180deg, rgba(20, 184, 166, 0.45) 0%, rgba(13, 148, 136, 0.5) 100%);
+  border-color: #14b8a6;
+  color: #f0fdfa;
   box-shadow:
     0 0 0 2px var(--color-bg-primary),
-    0 0 0 4px #3b82f6,
-    0 0 16px rgba(59, 130, 246, 0.6);
+    0 0 0 4px #14b8a6,
+    0 0 16px rgba(20, 184, 166, 0.6);
 }
 
-/* Pre-Call Any - High contrast amber (warning style) */
+/* Pre-Call Any - Washed out amber (matches action-btn-raise commitment level) */
 .preaction-btn-callany {
-  border-color: rgba(245, 158, 11, 0.5);
-  color: #fcd34d; /* Brighter amber text */
-  text-shadow: 0 1px 2px rgba(245, 158, 11, 0.3);
+  background: linear-gradient(180deg, rgba(245, 158, 11, 0.2) 0%, rgba(217, 119, 6, 0.25) 100%);
+  border-color: rgba(245, 158, 11, 0.4);
+  color: #fde68a; /* Light amber text */
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
 }
 
 .preaction-btn-callany:hover {
-  border-color: rgba(245, 158, 11, 0.7);
-  background: rgba(120, 53, 15, 0.5);
+  background: linear-gradient(180deg, rgba(245, 158, 11, 0.3) 0%, rgba(217, 119, 6, 0.35) 100%);
+  border-color: rgba(245, 158, 11, 0.6);
 }
 
 .preaction-btn-callany-selected {
-  background: rgba(120, 53, 15, 0.7);
+  background: linear-gradient(180deg, rgba(245, 158, 11, 0.45) 0%, rgba(217, 119, 6, 0.5) 100%);
   border-color: #f59e0b;
   color: #fffbeb;
   box-shadow:
