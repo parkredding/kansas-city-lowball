@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
 
 /**
  * Modal for joining a table with optional password entry
@@ -72,19 +73,28 @@ function JoinTableModal({ isOpen, onClose, onJoin, tableId: initialTableId, load
       />
 
       {/* Modal */}
-      <div className="relative bg-gray-800 rounded-xl p-6 w-full max-w-md mx-4 shadow-2xl border border-gray-700">
+      <div
+        className="relative w-full max-w-md mx-4 rounded-2xl p-6"
+        style={{
+          background: 'linear-gradient(180deg, rgba(30, 41, 59, 0.95) 0%, rgba(15, 23, 42, 0.98) 100%)',
+          backdropFilter: 'blur(20px)',
+          WebkitBackdropFilter: 'blur(20px)',
+          border: '1px solid rgba(148, 163, 184, 0.1)',
+          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05) inset',
+        }}
+      >
         <h2 className="text-2xl font-bold text-white mb-2">Join Table</h2>
-        <p className="text-gray-400 text-sm mb-4">
+        <p className="text-slate-400 text-sm mb-4">
           Enter the table ID to join
         </p>
-        <p className="text-violet-400/80 text-xs mb-4 bg-violet-900/30 rounded-lg p-2 border border-violet-600/30">
+        <p className="text-violet-400/80 text-xs mb-4 bg-violet-900/30 rounded-xl p-3 border border-violet-600/30">
           💡 If a game is in progress, you'll join as a railbird (observer) and can become a player when the hand ends.
         </p>
 
         <form onSubmit={handleSubmit}>
           {/* Table ID Input */}
           <div className="mb-5">
-            <label htmlFor="tableId" className="block text-sm font-medium text-gray-300 mb-2">
+            <label htmlFor="tableId" className="block text-xs font-medium text-slate-500 mb-2">
               Table ID
             </label>
             <input
@@ -95,9 +105,13 @@ function JoinTableModal({ isOpen, onClose, onJoin, tableId: initialTableId, load
                 setTableId(e.target.value.toUpperCase());
                 setError('');
               }}
-              placeholder="Enter Table ID"
+              placeholder="ABC123"
               maxLength={6}
-              className="w-full bg-gray-700 border border-gray-600 text-white px-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500 text-center text-xl tracking-widest uppercase"
+              className="w-full text-white px-4 py-3.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-center text-xl tracking-widest uppercase font-mono transition-colors"
+              style={{
+                background: 'rgba(30, 41, 59, 0.85)',
+                border: '1px solid rgba(100, 120, 150, 0.45)',
+              }}
               autoFocus
             />
           </div>
@@ -105,7 +119,7 @@ function JoinTableModal({ isOpen, onClose, onJoin, tableId: initialTableId, load
           {/* Password Input (shown if needed or if explicitly requested) */}
           {(needsPassword || error.includes('password') || error.includes('Password')) && (
             <div className="mb-5">
-              <label htmlFor="password" className="block text-sm font-medium text-gray-300 mb-2">
+              <label htmlFor="password" className="block text-xs font-medium text-slate-500 mb-2">
                 Room Password
               </label>
               <input
@@ -117,10 +131,14 @@ function JoinTableModal({ isOpen, onClose, onJoin, tableId: initialTableId, load
                   setError('');
                 }}
                 placeholder="Enter room password"
-                className="w-full bg-gray-700 border border-gray-600 text-white px-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                className="w-full text-white px-4 py-3.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-colors"
+                style={{
+                  background: 'rgba(30, 41, 59, 0.85)',
+                  border: '1px solid rgba(100, 120, 150, 0.45)',
+                }}
                 autoFocus={needsPassword}
               />
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-xs text-slate-500 mt-1">
                 This is a private table. Please enter the password.
               </p>
             </div>
@@ -128,28 +146,42 @@ function JoinTableModal({ isOpen, onClose, onJoin, tableId: initialTableId, load
 
           {/* Error Message */}
           {error && (
-            <div className="bg-red-500/20 border border-red-500 text-red-200 px-4 py-2 rounded mb-4 text-sm">
+            <div className="bg-red-500/10 border border-red-500/30 text-red-400 px-4 py-3 rounded-xl mb-4 text-sm">
               {error}
             </div>
           )}
 
           {/* Action Buttons */}
-          <div className="flex gap-3">
-            <button
+          <div className="flex gap-3 mt-2">
+            <motion.button
               type="button"
               onClick={handleClose}
               disabled={loading}
-              className="flex-1 bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 disabled:cursor-not-allowed text-white font-medium py-3 rounded-lg transition-colors"
+              whileTap={{ y: 2, boxShadow: '0 0px 0 rgba(51, 65, 85, 0.7), 0 1px 4px rgba(0, 0, 0, 0.15)' }}
+              className="flex-1 text-white font-semibold rounded-2xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+              style={{
+                minHeight: '52px',
+                background: 'rgba(51, 65, 85, 0.6)',
+                border: '1px solid rgba(71, 85, 105, 0.3)',
+                boxShadow: '0 3px 0 rgba(51, 65, 85, 0.7), 0 5px 12px rgba(0, 0, 0, 0.2)',
+              }}
             >
               Cancel
-            </button>
-            <button
+            </motion.button>
+            <motion.button
               type="submit"
               disabled={loading || !tableId?.trim()}
-              className="flex-1 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 disabled:cursor-not-allowed text-white font-bold py-3 rounded-lg transition-colors"
+              whileTap={{ y: 4, boxShadow: '0 1px 0 #1d4ed8, 0 3px 10px rgba(37, 99, 235, 0.2)' }}
+              className="flex-1 font-bold rounded-2xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+              style={{
+                minHeight: '52px',
+                background: 'linear-gradient(180deg, #60a5fa 0%, #3b82f6 50%, #2563eb 100%)',
+                color: 'white',
+                boxShadow: '0 5px 0 #1d4ed8, 0 7px 18px rgba(37, 99, 235, 0.35)',
+              }}
             >
               {loading ? 'Joining...' : 'Join Table'}
-            </button>
+            </motion.button>
           </div>
         </form>
       </div>

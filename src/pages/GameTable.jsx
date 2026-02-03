@@ -1228,24 +1228,25 @@ function LobbyView() {
         )}
 
         {/* Create Table */}
-        <div className="mb-5">
+        <div className="flex justify-center mb-4">
           <motion.button
             type="button"
             onClick={handleCreateTable}
             disabled={loading || needsUsername}
-            whileTap={{ scale: 0.98 }}
-            className="w-full font-bold py-3.5 px-6 rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            whileTap={{ y: 4, boxShadow: '0 1px 0 #b45309, 0 3px 10px rgba(180, 83, 9, 0.2)' }}
+            className="w-[88%] font-bold rounded-2xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
             style={{
-              background: 'linear-gradient(180deg, #f59e0b 0%, #d97706 100%)',
+              minHeight: '56px',
+              background: 'linear-gradient(180deg, #fbbf24 0%, #f59e0b 50%, #d97706 100%)',
               color: 'white',
-              boxShadow: '0 4px 15px rgba(245, 158, 11, 0.3)',
+              boxShadow: '0 5px 0 #b45309, 0 7px 18px rgba(180, 83, 9, 0.3)',
             }}
           >
             {loading ? 'Creating...' : 'Create New Table'}
           </motion.button>
         </div>
 
-        <div className="relative mb-5">
+        <div className="relative mb-4">
           <div className="absolute inset-0 flex items-center">
             <div className="w-full border-t border-slate-600/50"></div>
           </div>
@@ -1255,33 +1256,37 @@ function LobbyView() {
         </div>
 
         {/* Join Table */}
-        <div className="space-y-3">
+        <div>
+          <label className="block text-xs font-medium text-slate-400 mb-2 px-1">Table ID</label>
           <input
             type="text"
             value={tableIdInput}
             onChange={(e) => setTableIdInput(e.target.value.toUpperCase())}
-            placeholder="ENTER TABLE ID"
+            placeholder="ABC123"
             maxLength={6}
-            className="w-full text-white px-4 py-3.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/50 text-center text-xl tracking-[0.3em] uppercase font-mono transition-all"
+            className="w-full text-white px-4 py-3.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-center text-xl tracking-[0.3em] uppercase font-mono transition-colors"
             style={{
-              background: 'rgba(15, 23, 42, 0.6)',
-              border: '1px solid rgba(71, 85, 105, 0.4)',
+              background: 'rgba(30, 41, 59, 0.85)',
+              border: '1px solid rgba(100, 120, 150, 0.45)',
             }}
           />
-          <motion.button
-            type="button"
-            onClick={handleJoinTable}
-            disabled={loading || !tableIdInput.trim() || needsUsername}
-            whileTap={{ scale: 0.98 }}
-            className="w-full font-bold py-3.5 px-6 rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-            style={{
-              background: 'linear-gradient(180deg, #3b82f6 0%, #2563eb 100%)',
-              color: 'white',
-              boxShadow: '0 4px 15px rgba(59, 130, 246, 0.3)',
-            }}
-          >
-            {loading ? 'Joining...' : 'Join Table'}
-          </motion.button>
+          <div className="flex justify-center mt-4">
+            <motion.button
+              type="button"
+              onClick={handleJoinTable}
+              disabled={loading || !tableIdInput.trim() || needsUsername}
+              whileTap={{ y: 4, boxShadow: '0 1px 0 #1d4ed8, 0 3px 10px rgba(37, 99, 235, 0.2)' }}
+              className="w-[88%] font-bold rounded-2xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+              style={{
+                minHeight: '56px',
+                background: 'linear-gradient(180deg, #60a5fa 0%, #3b82f6 50%, #2563eb 100%)',
+                color: 'white',
+                boxShadow: '0 5px 0 #1d4ed8, 0 7px 18px rgba(37, 99, 235, 0.35)',
+              }}
+            >
+              {loading ? 'Joining...' : 'Join Table'}
+            </motion.button>
+          </div>
         </div>
 
         {needsUsername && (
