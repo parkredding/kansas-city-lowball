@@ -93,7 +93,14 @@
                 console.log('New version detected, clearing cache and reloading...');
                 localStorage.setItem(VERSION_KEY, data.version);
                 
-                // Clear all caches, then reload after completion
+                // Clear all caches, then navigate to a cache-busted URL.
+                // NOTE: reload(true) is deprecated and ignored by modern browsers,
+                // so we change the URL instead — a different URL is a different
+                // cache key, forcing the browser to fetch the new HTML which
+                // references the updated content-hashed CSS/JS assets.
+                var reload = function() {
+                  window.location.href = window.location.pathname + '?v=' + data.version;
+                };
                 if ('caches' in window) {
                   caches.keys()
                     .then(function(names) {
@@ -101,16 +108,10 @@
                         return caches.delete(name);
                       }));
                     })
-                    .then(function() {
-                      window.location.reload(true);
-                    })
-                    .catch(function() {
-                      // Reload anyway if cache clearing fails
-                      window.location.reload(true);
-                    });
+                    .then(reload)
+                    .catch(reload);
                 } else {
-                  // No cache API available, just reload
-                  window.location.reload(true);
+                  reload();
                 }
               } else if (!currentVersion) {
                 localStorage.setItem(VERSION_KEY, data.version);
