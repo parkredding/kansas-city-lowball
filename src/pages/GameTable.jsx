@@ -1204,7 +1204,7 @@ function LobbyView() {
 
       {/* Main Action Card */}
       <div
-        className="rounded-2xl p-6 max-w-md w-full"
+        className="rounded-2xl p-8 max-w-md w-full"
         style={{
           background: 'linear-gradient(180deg, rgba(30, 41, 59, 0.95) 0%, rgba(15, 23, 42, 0.98) 100%)',
           backdropFilter: 'blur(20px)',
@@ -1213,7 +1213,7 @@ function LobbyView() {
           boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05) inset',
         }}
       >
-        <h2 className="text-lg font-semibold text-white mb-5 text-center">
+        <h2 className="text-xl font-bold text-white mb-6 text-center">
           Join or Create a Table
         </h2>
 
@@ -1228,13 +1228,13 @@ function LobbyView() {
         )}
 
         {/* Create Table */}
-        <div className="flex justify-center mb-4">
+        <div className="mb-6">
           <motion.button
             type="button"
             onClick={handleCreateTable}
             disabled={loading || needsUsername}
             whileTap={{ y: 4, boxShadow: '0 1px 0 #b45309, 0 3px 10px rgba(180, 83, 9, 0.2)' }}
-            className="w-[88%] font-bold rounded-2xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+            className="w-full font-bold rounded-2xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
             style={{
               minHeight: '56px',
               background: 'linear-gradient(180deg, #fbbf24 0%, #f59e0b 50%, #d97706 100%)',
@@ -1246,7 +1246,7 @@ function LobbyView() {
           </motion.button>
         </div>
 
-        <div className="relative mb-4">
+        <div className="relative mb-6">
           <div className="absolute inset-0 flex items-center">
             <div className="w-full border-t border-slate-600/50"></div>
           </div>
@@ -1257,7 +1257,7 @@ function LobbyView() {
 
         {/* Join Table */}
         <div>
-          <label className="block text-xs font-medium text-slate-400 mb-2 px-1">Table ID</label>
+          <label className="block text-sm font-medium text-slate-400 mb-2 px-1">Table ID</label>
           <input
             type="text"
             value={tableIdInput}
@@ -1270,13 +1270,13 @@ function LobbyView() {
               border: '1px solid rgba(100, 120, 150, 0.45)',
             }}
           />
-          <div className="flex justify-center mt-4">
+          <div className="mt-5">
             <motion.button
               type="button"
               onClick={handleJoinTable}
               disabled={loading || !tableIdInput.trim() || needsUsername}
               whileTap={{ y: 4, boxShadow: '0 1px 0 #1d4ed8, 0 3px 10px rgba(37, 99, 235, 0.2)' }}
-              className="w-[88%] font-bold rounded-2xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+              className="w-full font-bold rounded-2xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
               style={{
                 minHeight: '56px',
                 background: 'linear-gradient(180deg, #60a5fa 0%, #3b82f6 50%, #2563eb 100%)',
