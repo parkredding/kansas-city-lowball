@@ -133,7 +133,14 @@ function VictoryModal({
 
           {/* Modal Content */}
           <motion.div
-            className="relative bg-gradient-to-b from-gray-800 to-gray-900 rounded-2xl p-6 w-full max-w-md mx-4 shadow-2xl border border-purple-500/30"
+            className="relative w-full max-w-md mx-4 rounded-2xl p-6"
+            style={{
+              background: 'linear-gradient(180deg, rgba(30, 41, 59, 0.95) 0%, rgba(15, 23, 42, 0.98) 100%)',
+              backdropFilter: 'blur(20px)',
+              WebkitBackdropFilter: 'blur(20px)',
+              border: '1px solid rgba(139, 92, 246, 0.2)',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05) inset',
+            }}
             initial={{ scale: 0.8, y: 50, opacity: 0 }}
             animate={{ scale: 1, y: 0, opacity: 1 }}
             exit={{ scale: 0.8, y: 50, opacity: 0 }}
@@ -160,7 +167,7 @@ function VictoryModal({
                 {isCurrentUserWinner ? 'Victory!' : 'Tournament Complete!'}
               </motion.h2>
               <motion.p
-                className="text-gray-400 text-sm mt-1"
+                className="text-slate-400 text-sm mt-1"
                 initial={{ y: 20, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 transition={{ delay: 0.4 }}
@@ -177,7 +184,7 @@ function VictoryModal({
                 animate={{ y: 0, opacity: 1 }}
                 transition={{ delay: 0.5 }}
               >
-                <p className="text-sm text-gray-400 mb-1">Winner</p>
+                <p className="text-sm text-slate-400 mb-1">Winner</p>
                 <p className="text-xl font-bold text-yellow-400">{winner.displayName}</p>
               </motion.div>
             )}
@@ -188,13 +195,13 @@ function VictoryModal({
                 className={`rounded-xl p-4 mb-4 text-center ${
                   isCurrentUserWinner
                     ? 'bg-gradient-to-r from-green-900/30 to-emerald-900/30 border border-green-500/30'
-                    : 'bg-gray-800/50 border border-gray-700'
+                    : 'bg-slate-800/50 border border-slate-700/50'
                 }`}
                 initial={{ y: 20, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 transition={{ delay: 0.6 }}
               >
-                <p className="text-sm text-gray-400 mb-1">Your Result</p>
+                <p className="text-sm text-slate-400 mb-1">Your Result</p>
                 <p className={`text-lg font-bold ${getPositionColor(currentUserPosition)}`}>
                   {getTrophyEmoji(currentUserPosition)} {getOrdinal(currentUserPosition)} Place
                 </p>
@@ -208,13 +215,17 @@ function VictoryModal({
 
             {/* Payout Summary */}
             <motion.div
-              className="bg-gray-800/50 rounded-xl p-4 mb-6"
+              className="rounded-xl p-4 mb-6"
+              style={{
+                background: 'rgba(15, 23, 42, 0.5)',
+                border: '1px solid rgba(71, 85, 105, 0.3)',
+              }}
               initial={{ y: 20, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
               transition={{ delay: 0.7 }}
             >
               <div className="flex justify-between items-center mb-3">
-                <h3 className="text-sm font-semibold text-gray-300">Payout Summary</h3>
+                <h3 className="text-sm font-semibold text-slate-300">Payout Summary</h3>
                 <span className="text-xs text-purple-400">
                   ${prizePool.toLocaleString()} Pool
                 </span>
@@ -226,7 +237,7 @@ function VictoryModal({
                     className={`flex justify-between items-center py-2 px-3 rounded-lg ${
                       payout.uid === currentUserUid
                         ? 'bg-purple-900/30 border border-purple-500/30'
-                        : 'bg-gray-900/50'
+                        : 'bg-slate-800/50'
                     }`}
                     initial={{ x: -20, opacity: 0 }}
                     animate={{ x: 0, opacity: 1 }}
@@ -236,14 +247,14 @@ function VictoryModal({
                       <span className={`font-bold ${getPositionColor(payout.position)}`}>
                         {getTrophyEmoji(payout.position)}
                       </span>
-                      <span className="text-gray-300">{payout.displayName}</span>
+                      <span className="text-slate-300">{payout.displayName}</span>
                       {payout.uid === currentUserUid && (
                         <span className="text-xs bg-purple-600 px-1.5 py-0.5 rounded text-white">
                           You
                         </span>
                       )}
                     </div>
-                    <span className={`font-bold ${payout.amount > 0 ? 'text-green-400' : 'text-gray-500'}`}>
+                    <span className={`font-bold ${payout.amount > 0 ? 'text-green-400' : 'text-slate-500'}`}>
                       {payout.amount > 0 ? `$${payout.amount.toLocaleString()}` : '$0'}
                     </span>
                   </motion.div>
@@ -258,18 +269,34 @@ function VictoryModal({
               animate={{ y: 0, opacity: 1 }}
               transition={{ delay: 1 }}
             >
-              <button
+              <motion.button
+                type="button"
                 onClick={onReturnToLobby}
-                className="flex-1 py-3 px-4 bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-xl transition-colors"
+                whileTap={{ y: 2, boxShadow: '0 0px 0 rgba(51, 65, 85, 0.7), 0 1px 4px rgba(0, 0, 0, 0.15)' }}
+                className="flex-1 text-white font-semibold rounded-2xl flex items-center justify-center"
+                style={{
+                  minHeight: '52px',
+                  background: 'rgba(51, 65, 85, 0.6)',
+                  border: '1px solid rgba(71, 85, 105, 0.3)',
+                  boxShadow: '0 3px 0 rgba(51, 65, 85, 0.7), 0 5px 12px rgba(0, 0, 0, 0.2)',
+                }}
               >
                 Return to Lobby
-              </button>
-              <button
+              </motion.button>
+              <motion.button
+                type="button"
                 onClick={onCreateNewTable}
-                className="flex-1 py-3 px-4 bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-500 hover:to-purple-600 text-white font-bold rounded-xl transition-colors"
+                whileTap={{ y: 4, boxShadow: '0 1px 0 #6d28d9, 0 3px 10px rgba(139, 92, 246, 0.2)' }}
+                className="flex-1 font-bold rounded-2xl flex items-center justify-center"
+                style={{
+                  minHeight: '52px',
+                  background: 'linear-gradient(180deg, #a78bfa 0%, #8b5cf6 50%, #7c3aed 100%)',
+                  color: 'white',
+                  boxShadow: '0 5px 0 #6d28d9, 0 7px 18px rgba(139, 92, 246, 0.35)',
+                }}
               >
                 Create New Table
-              </button>
+              </motion.button>
             </motion.div>
           </motion.div>
         </motion.div>
