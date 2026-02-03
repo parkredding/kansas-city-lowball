@@ -1750,3 +1750,250 @@ a, button {
   --z-toast: 700;
   --z-landscape-warning: 9999;
 }
+
+
+/* ============================================================================
+   17. TABLE OVERLAY COMPONENT STYLES
+   Centralized pot and community cards display
+   ============================================================================ */
+
+/**
+ * Table Overlay - Central pot display with large typography
+ */
+.table-overlay {
+  position: relative;
+  z-index: var(--z-community-cards);
+}
+
+.central-pot-display {
+  text-align: center;
+}
+
+.pot-label-container {
+  padding: var(--space-sm) var(--space-lg);
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-radius: var(--radius-xl);
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+.pot-amount-display {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: var(--space-sm);
+}
+
+
+/* ============================================================================
+   18. HAND HISTORY WIDGET STYLES
+   Floating widget for recent hand results
+   ============================================================================ */
+
+.hand-history-widget {
+  pointer-events: auto;
+}
+
+.hand-entry {
+  transition: background-color var(--duration-fast) ease;
+}
+
+.hand-entry:hover {
+  background-color: rgba(51, 65, 85, 0.3);
+}
+
+
+/* ============================================================================
+   19. PLAYER BET PILL STYLES
+   High-contrast bet display pills near player avatars
+   ============================================================================ */
+
+.player-bet-pill {
+  z-index: var(--z-chip-animation);
+  white-space: nowrap;
+}
+
+.call-amount-pill {
+  z-index: var(--z-chip-animation);
+  white-space: nowrap;
+}
+
+.staged-bet-display {
+  z-index: var(--z-chip-animation);
+}
+
+
+/* ============================================================================
+   20. PLAYER HUD STYLES
+   Win percentage and hand type display
+   ============================================================================ */
+
+.player-hud,
+.player-hud-compact {
+  pointer-events: none;
+}
+
+.win-percent-badge {
+  font-variant-numeric: tabular-nums;
+}
+
+.hand-type-badge {
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.strength-bar {
+  overflow: hidden;
+  border-radius: var(--radius-full);
+}
+
+
+/* ============================================================================
+   21. DEALER & POSITION BUTTON STYLES
+   Professional casino-style position indicators
+   ============================================================================ */
+
+.dealer-button {
+  z-index: var(--z-player-highlight);
+  pointer-events: none;
+}
+
+.position-indicators {
+  z-index: var(--z-player-highlight);
+}
+
+.floating-dealer-button {
+  pointer-events: none;
+}
+
+
+/* ============================================================================
+   22. POKER TABLE CONTAINER STYLES
+   Responsive container with aspect ratio and visual styling
+   ============================================================================ */
+
+.poker-table-outer-container {
+  contain: layout style;
+}
+
+.poker-table-wrapper {
+  will-change: transform;
+}
+
+.poker-rail {
+  /* Preserve 3D for shadow effects */
+  transform-style: preserve-3d;
+}
+
+.poker-felt {
+  /* Subtle texture effect */
+  image-rendering: -webkit-optimize-contrast;
+}
+
+.poker-table-content {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+
+/* ============================================================================
+   23. ENHANCED COMMUNITY CARDS STYLES
+   4-color deck visual improvements
+   ============================================================================ */
+
+.community-cards-container {
+  z-index: var(--z-community-cards);
+}
+
+.community-card {
+  transform-style: preserve-3d;
+  backface-visibility: hidden;
+}
+
+.empty-card-slot {
+  opacity: 0.6;
+}
+
+
+/* ============================================================================
+   24. BLINDS INDICATOR STYLES
+   Compact blinds display
+   ============================================================================ */
+
+.blinds-indicator-pill {
+  z-index: var(--z-header);
+}
+
+.blinds-indicator-default {
+  z-index: var(--z-header);
+}
+
+.blinds-timer {
+  z-index: var(--z-header);
+}
+
+
+/* ============================================================================
+   25. RESPONSIVE TABLE ADJUSTMENTS
+   Mobile-optimized table scaling
+   ============================================================================ */
+
+@media screen and (max-width: 480px) {
+  .central-pot-display .pot-amount-display span:last-child {
+    font-size: 1.5rem; /* Smaller pot amount on mobile */
+  }
+
+  .community-card {
+    width: 48px;
+    height: 72px;
+  }
+
+  .hand-history-widget {
+    min-width: 150px;
+    max-width: 200px;
+  }
+
+  .player-bet-pill {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.75rem;
+  }
+}
+
+@media screen and (max-width: 360px) {
+  .central-pot-display .pot-amount-display span:last-child {
+    font-size: 1.25rem;
+  }
+
+  .community-card {
+    width: 40px;
+    height: 60px;
+  }
+
+  .blinds-indicator-default {
+    flex-wrap: wrap;
+    gap: 0.25rem;
+  }
+}
+
+/* Tablet and larger screens */
+@media screen and (min-width: 768px) {
+  .central-pot-display .pot-amount-display span:last-child {
+    font-size: 2.5rem; /* Larger pot amount on tablet+ */
+  }
+
+  .community-card {
+    width: 72px;
+    height: 108px;
+  }
+
+  .hand-history-widget {
+    max-width: 360px;
+  }
+
+  .player-hud {
+    padding: var(--space-md);
+  }
+}
