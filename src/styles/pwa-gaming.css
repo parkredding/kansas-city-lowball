@@ -2286,6 +2286,35 @@ select option {
 }
 
 /**
+ * Touch-friendly range slider
+ * Thicker track and larger thumb for mobile usability
+ */
+.slider-touch {
+  height: 12px;
+}
+
+.slider-touch::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+}
+
+.slider-touch::-moz-range-thumb {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+  border: none;
+}
+
+/**
  * Disabled state styling
  */
 button:disabled,
