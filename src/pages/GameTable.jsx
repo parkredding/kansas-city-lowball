@@ -1130,7 +1130,12 @@ function LobbyView() {
   };
 
   return (
-    <div className="min-h-screen bg-green-800 flex flex-col items-center justify-center gap-6 p-4">
+    <div
+      className="min-h-screen flex flex-col items-center justify-center gap-6 p-4"
+      style={{
+        background: 'linear-gradient(180deg, #166534 0%, #14532d 40%, #0f172a 100%)',
+      }}
+    >
       {/* Username Modal */}
       <UsernameModal
         isOpen={showUsernameModal || needsUsername}
@@ -1162,20 +1167,31 @@ function LobbyView() {
         error={error}
       />
 
-      <h1 className="text-4xl font-bold text-white">Kansas City Lowball</h1>
-      <p className="text-gray-300">2-7 Triple Draw Poker</p>
+      {/* Title Section */}
+      <div className="text-center mb-2">
+        <h1 className="text-4xl font-bold text-white mb-1 tracking-tight">Kansas City Lowball</h1>
+        <p className="text-slate-300 text-sm">2-7 Triple Draw Poker</p>
+      </div>
 
       {/* User Display with Edit Button */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 flex-wrap justify-center">
         <WalletDisplay balance={userWallet?.balance} loading={walletLoading} />
         {userWallet?.username && (
-          <div className="bg-gray-700 px-3 py-2 rounded-lg flex items-center gap-2">
-            <span className="text-gray-300 text-sm">Playing as:</span>
-            <span className="text-yellow-400 font-medium">{userWallet.username}</span>
+          <div
+            className="px-3 py-2 rounded-xl flex items-center gap-2"
+            style={{
+              background: 'rgba(30, 41, 59, 0.8)',
+              backdropFilter: 'blur(8px)',
+              WebkitBackdropFilter: 'blur(8px)',
+              border: '1px solid rgba(71, 85, 105, 0.3)',
+            }}
+          >
+            <span className="text-slate-400 text-sm">Playing as:</span>
+            <span className="text-amber-400 font-medium">{userWallet.username}</span>
             <button
               type="button"
               onClick={() => setShowUsernameModal(true)}
-              className="text-gray-400 hover:text-white ml-1"
+              className="text-slate-400 hover:text-white ml-1 transition-colors"
               title="Edit username"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1186,35 +1202,55 @@ function LobbyView() {
         )}
       </div>
 
-      <div className="bg-gray-800 rounded-xl p-8 shadow-2xl max-w-md w-full">
-        <h2 className="text-xl font-semibold text-white mb-6 text-center">
+      {/* Main Action Card */}
+      <div
+        className="rounded-2xl p-6 max-w-md w-full"
+        style={{
+          background: 'linear-gradient(180deg, rgba(30, 41, 59, 0.95) 0%, rgba(15, 23, 42, 0.98) 100%)',
+          backdropFilter: 'blur(20px)',
+          WebkitBackdropFilter: 'blur(20px)',
+          border: '1px solid rgba(148, 163, 184, 0.1)',
+          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05) inset',
+        }}
+      >
+        <h2 className="text-lg font-semibold text-white mb-5 text-center">
           Join or Create a Table
         </h2>
 
         {error && (
-          <div className="bg-red-500/20 border border-red-500 text-red-200 px-4 py-2 rounded mb-4 text-sm">
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-red-500/10 border border-red-500/30 text-red-400 px-4 py-3 rounded-xl mb-4 text-sm"
+          >
             {error}
-          </div>
+          </motion.div>
         )}
 
         {/* Create Table */}
-        <div className="mb-6">
-          <button
+        <div className="mb-5">
+          <motion.button
             type="button"
             onClick={handleCreateTable}
             disabled={loading || needsUsername}
-            className="w-full bg-yellow-600 hover:bg-yellow-500 disabled:bg-yellow-800 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition-colors"
+            whileTap={{ scale: 0.98 }}
+            className="w-full font-bold py-3.5 px-6 rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{
+              background: 'linear-gradient(180deg, #f59e0b 0%, #d97706 100%)',
+              color: 'white',
+              boxShadow: '0 4px 15px rgba(245, 158, 11, 0.3)',
+            }}
           >
             {loading ? 'Creating...' : 'Create New Table'}
-          </button>
+          </motion.button>
         </div>
 
-        <div className="relative mb-6">
+        <div className="relative mb-5">
           <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-gray-600"></div>
+            <div className="w-full border-t border-slate-600/50"></div>
           </div>
           <div className="relative flex justify-center text-sm">
-            <span className="px-2 bg-gray-800 text-gray-400">or</span>
+            <span className="px-3 text-slate-500" style={{ background: 'rgba(15, 23, 42, 0.98)' }}>or</span>
           </div>
         </div>
 
@@ -1224,22 +1260,32 @@ function LobbyView() {
             type="text"
             value={tableIdInput}
             onChange={(e) => setTableIdInput(e.target.value.toUpperCase())}
-            placeholder="Enter Table ID"
+            placeholder="ENTER TABLE ID"
             maxLength={6}
-            className="w-full bg-gray-700 border border-gray-600 text-white px-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500 text-center text-xl tracking-widest uppercase"
+            className="w-full text-white px-4 py-3.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/50 text-center text-xl tracking-[0.3em] uppercase font-mono transition-all"
+            style={{
+              background: 'rgba(15, 23, 42, 0.6)',
+              border: '1px solid rgba(71, 85, 105, 0.4)',
+            }}
           />
-          <button
+          <motion.button
             type="button"
             onClick={handleJoinTable}
             disabled={loading || !tableIdInput.trim() || needsUsername}
-            className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition-colors"
+            whileTap={{ scale: 0.98 }}
+            className="w-full font-bold py-3.5 px-6 rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{
+              background: 'linear-gradient(180deg, #3b82f6 0%, #2563eb 100%)',
+              color: 'white',
+              boxShadow: '0 4px 15px rgba(59, 130, 246, 0.3)',
+            }}
           >
             {loading ? 'Joining...' : 'Join Table'}
-          </button>
+          </motion.button>
         </div>
 
         {needsUsername && (
-          <p className="text-yellow-400 text-sm text-center mt-4">
+          <p className="text-amber-400 text-sm text-center mt-4">
             Please set your username to continue
           </p>
         )}
@@ -1248,7 +1294,7 @@ function LobbyView() {
       <button
         type="button"
         onClick={logout}
-        className="text-gray-400 hover:text-white text-sm underline"
+        className="text-slate-400 hover:text-white text-sm underline transition-colors"
       >
         Sign Out
       </button>

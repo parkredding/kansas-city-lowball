@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const PRESET_AMOUNTS = [500, 1000, 2000, 5000];
 
@@ -40,106 +41,183 @@ function BuyInModal({ isOpen, onClose, onBuyIn, maxAmount, minBet, loading }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-      <div className="bg-gray-800 rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl border border-gray-700">
-        <h2 className="text-2xl font-bold text-white mb-2">Buy In</h2>
-        <p className="text-gray-400 text-sm mb-6">
-          Transfer chips from your wallet to play at this table.
-        </p>
+    <AnimatePresence>
+      <motion.div
+        className="fixed inset-0 z-50 flex items-end sm:items-center justify-center"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+      >
+        {/* Backdrop */}
+        <motion.div
+          className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          onClick={onClose}
+        />
 
-        {/* Wallet Balance Display */}
-        <div className="bg-gray-700 rounded-lg p-4 mb-6">
-          <div className="flex justify-between items-center">
-            <span className="text-gray-400">Wallet Balance</span>
-            <span className="text-white font-bold text-xl">${maxAmount.toLocaleString()}</span>
-          </div>
-        </div>
+        {/* Modal */}
+        <motion.div
+          className="relative w-full max-w-md mx-4 mb-4 sm:mb-0"
+          initial={{ y: 100, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+        >
+          <div
+            className="rounded-2xl overflow-hidden"
+            style={{
+              background: 'linear-gradient(180deg, rgba(30, 41, 59, 0.95) 0%, rgba(15, 23, 42, 0.98) 100%)',
+              backdropFilter: 'blur(20px)',
+              WebkitBackdropFilter: 'blur(20px)',
+              border: '1px solid rgba(148, 163, 184, 0.1)',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05) inset',
+            }}
+          >
+            {/* Header */}
+            <div className="px-6 pt-6 pb-4">
+              <h2 className="text-2xl font-bold text-white">Buy In</h2>
+              <p className="text-slate-400 text-sm mt-1">
+                Transfer chips from your wallet to play at this table.
+              </p>
+            </div>
 
-        {/* Amount Selection */}
-        <div className="mb-6">
-          <label className="block text-gray-300 text-sm mb-2">Buy-In Amount</label>
-
-          {/* Preset Buttons */}
-          <div className="grid grid-cols-4 gap-2 mb-4">
-            {PRESET_AMOUNTS.map((preset) => (
-              <button
-                type="button"
-                key={preset}
-                onClick={() => handlePresetClick(preset)}
-                disabled={preset > maxBuyIn}
-                className={`
-                  py-2 rounded-lg font-medium transition-colors
-                  ${amount === preset
-                    ? 'bg-yellow-600 text-white'
-                    : preset <= maxBuyIn
-                      ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                      : 'bg-gray-800 text-gray-600 cursor-not-allowed'
-                  }
-                `}
+            {/* Content */}
+            <div className="px-6 pb-6">
+              {/* Wallet Balance Display */}
+              <div
+                className="rounded-xl p-4 mb-5"
+                style={{
+                  background: 'linear-gradient(135deg, rgba(34, 197, 94, 0.1) 0%, rgba(22, 163, 74, 0.05) 100%)',
+                  border: '1px solid rgba(34, 197, 94, 0.2)',
+                }}
               >
-                ${preset.toLocaleString()}
-              </button>
-            ))}
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-lg bg-green-500/20 flex items-center justify-center">
+                      <svg className="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                      </svg>
+                    </div>
+                    <span className="text-slate-400 text-sm font-medium">Wallet Balance</span>
+                  </div>
+                  <span className="text-green-400 font-bold text-xl">${maxAmount.toLocaleString()}</span>
+                </div>
+              </div>
+
+              {/* Amount Selection */}
+              <div className="mb-5">
+                <label className="block text-slate-300 text-sm font-medium mb-3">Buy-In Amount</label>
+
+                {/* Preset Buttons */}
+                <div className="grid grid-cols-4 gap-2 mb-5">
+                  {PRESET_AMOUNTS.map((preset) => (
+                    <motion.button
+                      type="button"
+                      key={preset}
+                      onClick={() => handlePresetClick(preset)}
+                      disabled={preset > maxBuyIn}
+                      whileTap={{ scale: 0.95 }}
+                      className={`
+                        py-2.5 rounded-xl font-semibold text-sm transition-all duration-200
+                        ${amount === preset
+                          ? 'bg-gradient-to-b from-amber-500 to-amber-600 text-white shadow-lg shadow-amber-500/25'
+                          : preset <= maxBuyIn
+                            ? 'bg-slate-700/50 text-slate-300 hover:bg-slate-600/50 border border-slate-600/50'
+                            : 'bg-slate-800/50 text-slate-600 cursor-not-allowed border border-slate-700/30'
+                        }
+                      `}
+                    >
+                      ${preset.toLocaleString()}
+                    </motion.button>
+                  ))}
+                </div>
+
+                {/* Slider */}
+                <div className="relative mb-5">
+                  <input
+                    type="range"
+                    min={minBuyIn}
+                    max={maxBuyIn}
+                    step={50}
+                    value={amount}
+                    onChange={handleSliderChange}
+                    className="w-full h-2 rounded-full appearance-none cursor-pointer"
+                    style={{
+                      background: `linear-gradient(to right, #f59e0b 0%, #f59e0b ${((amount - minBuyIn) / (maxBuyIn - minBuyIn)) * 100}%, rgba(71, 85, 105, 0.5) ${((amount - minBuyIn) / (maxBuyIn - minBuyIn)) * 100}%, rgba(71, 85, 105, 0.5) 100%)`,
+                    }}
+                  />
+                </div>
+
+                {/* Amount Display & Input */}
+                <div
+                  className="flex items-center justify-center py-4 rounded-xl"
+                  style={{
+                    background: 'rgba(15, 23, 42, 0.5)',
+                    border: '1px solid rgba(71, 85, 105, 0.3)',
+                  }}
+                >
+                  <span className="text-slate-500 text-2xl font-medium mr-1">$</span>
+                  <input
+                    type="number"
+                    value={amount}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value) || 0;
+                      setAmount(Math.max(minBuyIn, Math.min(maxBuyIn, val)));
+                      setError(null);
+                    }}
+                    className="bg-transparent text-white text-3xl font-bold w-32 text-center focus:outline-none"
+                  />
+                </div>
+
+                <p className="text-slate-500 text-xs text-center mt-3">
+                  Min: ${minBuyIn.toLocaleString()} | Max: ${maxBuyIn.toLocaleString()}
+                </p>
+              </div>
+
+              {/* Error Message */}
+              <AnimatePresence>
+                {error && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    className="bg-red-500/10 border border-red-500/30 text-red-400 px-4 py-3 rounded-xl mb-4 text-sm"
+                  >
+                    {error}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Action Buttons */}
+              <div className="flex gap-3">
+                <motion.button
+                  type="button"
+                  onClick={onClose}
+                  whileTap={{ scale: 0.98 }}
+                  className="flex-1 bg-slate-700/50 hover:bg-slate-600/50 text-white font-semibold py-3.5 rounded-xl transition-colors border border-slate-600/30"
+                >
+                  Cancel
+                </motion.button>
+                <motion.button
+                  type="button"
+                  onClick={handleSubmit}
+                  disabled={loading || amount < minBuyIn || amount > maxBuyIn}
+                  whileTap={{ scale: 0.98 }}
+                  className="flex-1 font-bold py-3.5 rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{
+                    background: 'linear-gradient(180deg, #f59e0b 0%, #d97706 100%)',
+                    color: 'white',
+                    boxShadow: '0 4px 15px rgba(245, 158, 11, 0.3)',
+                  }}
+                >
+                  {loading ? 'Processing...' : `Buy In $${amount.toLocaleString()}`}
+                </motion.button>
+              </div>
+            </div>
           </div>
-
-          {/* Slider */}
-          <input
-            type="range"
-            min={minBuyIn}
-            max={maxBuyIn}
-            step={50}
-            value={amount}
-            onChange={handleSliderChange}
-            className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-yellow-500"
-          />
-
-          {/* Amount Display & Input */}
-          <div className="flex items-center justify-center mt-4">
-            <span className="text-gray-400 text-xl mr-2">$</span>
-            <input
-              type="number"
-              value={amount}
-              onChange={(e) => {
-                const val = parseInt(e.target.value) || 0;
-                setAmount(Math.max(minBuyIn, Math.min(maxBuyIn, val)));
-                setError(null);
-              }}
-              className="bg-gray-700 text-white text-3xl font-bold w-32 text-center rounded-lg py-2 focus:outline-none focus:ring-2 focus:ring-yellow-500"
-            />
-          </div>
-
-          <p className="text-gray-500 text-xs text-center mt-2">
-            Min: ${minBuyIn.toLocaleString()} | Max: ${maxBuyIn.toLocaleString()}
-          </p>
-        </div>
-
-        {/* Error Message */}
-        {error && (
-          <div className="bg-red-500/20 border border-red-500 text-red-300 px-4 py-2 rounded-lg mb-4 text-sm">
-            {error}
-          </div>
-        )}
-
-        {/* Action Buttons */}
-        <div className="flex gap-3">
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex-1 bg-gray-700 hover:bg-gray-600 text-white font-medium py-3 rounded-lg transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleSubmit}
-            disabled={loading || amount < minBuyIn || amount > maxBuyIn}
-            className="flex-1 bg-yellow-600 hover:bg-yellow-500 disabled:bg-yellow-800 disabled:cursor-not-allowed text-white font-bold py-3 rounded-lg transition-colors"
-          >
-            {loading ? 'Processing...' : `Buy In $${amount.toLocaleString()}`}
-          </button>
-        </div>
-      </div>
-    </div>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
   );
 }
 

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   TABLE_MODES,
   DEFAULT_TOURNAMENT_CONFIG,
@@ -178,58 +179,102 @@ function CreateGameModal({ isOpen, onClose, onCreate, loading }) {
 
   if (!isOpen) return null;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/70 cursor-pointer"
-        onClick={handleClose}
-      />
+  // Common style objects for glass morphism
+  const glassModalStyle = {
+    background: 'linear-gradient(180deg, rgba(30, 41, 59, 0.95) 0%, rgba(15, 23, 42, 0.98) 100%)',
+    backdropFilter: 'blur(20px)',
+    WebkitBackdropFilter: 'blur(20px)',
+    border: '1px solid rgba(148, 163, 184, 0.1)',
+    boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05) inset',
+  };
 
-      {/* Modal */}
-      <div className="relative bg-gray-800 rounded-xl p-6 w-full max-w-lg mx-4 shadow-2xl border border-gray-700 max-h-[90vh] overflow-y-auto">
-        <h2 className="text-2xl font-bold text-white mb-2">Create New Table</h2>
-        <p className="text-gray-400 text-sm mb-6">
-          Configure your poker table settings
-        </p>
+  const inputStyle = {
+    background: 'rgba(15, 23, 42, 0.6)',
+    border: '1px solid rgba(71, 85, 105, 0.4)',
+  };
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        className="fixed inset-0 z-50 flex items-end sm:items-center justify-center"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+      >
+        {/* Backdrop */}
+        <motion.div
+          className="absolute inset-0 bg-black/80 backdrop-blur-sm cursor-pointer"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          onClick={handleClose}
+        />
+
+        {/* Modal */}
+        <motion.div
+          className="relative w-full max-w-lg mx-4 mb-4 sm:mb-0 max-h-[90vh] overflow-hidden"
+          initial={{ y: 100, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+        >
+          <div className="rounded-2xl overflow-hidden" style={glassModalStyle}>
+            {/* Header */}
+            <div className="px-6 pt-6 pb-4 border-b border-slate-700/50">
+              <h2 className="text-2xl font-bold text-white">Create New Table</h2>
+              <p className="text-slate-400 text-sm mt-1">
+                Configure your poker table settings
+              </p>
+            </div>
+
+            {/* Scrollable Content */}
+            <div className="overflow-y-auto max-h-[calc(90vh-180px)] px-6 py-5">
 
         <form onSubmit={handleSubmit}>
           {/* Table Mode Toggle */}
           <div className="mb-5">
-            <label className="block text-sm font-medium text-gray-300 mb-2">
+            <label className="block text-sm font-medium text-slate-300 mb-3">
               Table Mode
             </label>
-            <div className="flex gap-2">
-              <button
+            <div className="flex gap-2 p-1 rounded-xl" style={{ background: 'rgba(15, 23, 42, 0.5)' }}>
+              <motion.button
                 type="button"
                 onClick={() => {
                   setTableMode(TABLE_MODES.CASH_GAME);
                   setBotCount(0);
                 }}
-                className={`flex-1 py-3 px-4 rounded-lg font-medium transition-colors ${
+                whileTap={{ scale: 0.98 }}
+                className={`flex-1 py-3 px-4 rounded-lg font-semibold text-sm transition-all duration-200 ${
                   tableMode === TABLE_MODES.CASH_GAME
-                    ? 'bg-green-600 text-white ring-2 ring-green-400'
-                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                    ? 'text-white shadow-lg'
+                    : 'text-slate-400 hover:text-slate-300'
                 }`}
+                style={tableMode === TABLE_MODES.CASH_GAME ? {
+                  background: 'linear-gradient(180deg, #22c55e 0%, #16a34a 100%)',
+                  boxShadow: '0 4px 15px rgba(34, 197, 94, 0.3)',
+                } : {}}
               >
                 Cash Game
-              </button>
-              <button
+              </motion.button>
+              <motion.button
                 type="button"
                 onClick={() => {
                   setTableMode(TABLE_MODES.SIT_AND_GO);
                   setBotCount(0); // No bots in SNG
                 }}
-                className={`flex-1 py-3 px-4 rounded-lg font-medium transition-colors ${
+                whileTap={{ scale: 0.98 }}
+                className={`flex-1 py-3 px-4 rounded-lg font-semibold text-sm transition-all duration-200 ${
                   tableMode === TABLE_MODES.SIT_AND_GO
-                    ? 'bg-purple-600 text-white ring-2 ring-purple-400'
-                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                    ? 'text-white shadow-lg'
+                    : 'text-slate-400 hover:text-slate-300'
                 }`}
+                style={tableMode === TABLE_MODES.SIT_AND_GO ? {
+                  background: 'linear-gradient(180deg, #8b5cf6 0%, #7c3aed 100%)',
+                  boxShadow: '0 4px 15px rgba(139, 92, 246, 0.3)',
+                } : {}}
               >
                 Sit & Go
-              </button>
+              </motion.button>
             </div>
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-xs text-slate-500 mt-2">
               {tableMode === TABLE_MODES.SIT_AND_GO
                 ? 'Tournament mode: Fixed buy-in, winner-takes-format, no re-entries'
                 : 'Standard cash game: Buy-in anytime, leave anytime'}
@@ -238,33 +283,45 @@ function CreateGameModal({ isOpen, onClose, onCreate, loading }) {
 
           {/* Game Type */}
           <div className="mb-5">
-            <label htmlFor="gameType" className="block text-sm font-medium text-gray-300 mb-2">
+            <label htmlFor="gameType" className="block text-sm font-medium text-slate-300 mb-2">
               Game Type
             </label>
             <select
               id="gameType"
               value={gameType}
               onChange={(e) => setGameType(e.target.value)}
-              className="w-full bg-gray-700 border border-gray-600 text-white px-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500"
+              className="w-full text-white px-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/50 transition-all"
+              style={inputStyle}
             >
               <option value="lowball_27">Kansas City Lowball (2-7 Triple Draw)</option>
               <option value="holdem">Texas Hold'em</option>
               <option value="plo" disabled>PLO (Coming Soon)</option>
             </select>
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-xs text-slate-500 mt-1">
               Select the poker variant for this table
             </p>
           </div>
 
           {/* Sit & Go Tournament Settings */}
           {isSitAndGo && (
-            <div className="mb-5 p-4 bg-purple-900/30 border border-purple-700/50 rounded-lg">
-              <h3 className="text-sm font-semibold text-purple-300 mb-4">Tournament Settings</h3>
+            <div
+              className="mb-5 p-4 rounded-xl"
+              style={{
+                background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(124, 58, 237, 0.05) 100%)',
+                border: '1px solid rgba(139, 92, 246, 0.2)',
+              }}
+            >
+              <h3 className="text-sm font-semibold text-purple-300 mb-4 flex items-center gap-2">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
+                </svg>
+                Tournament Settings
+              </h3>
 
               {/* Buy-in Amount */}
               <div className="mb-4">
-                <label htmlFor="sngBuyIn" className="block text-sm font-medium text-gray-300 mb-2">
-                  Buy-in Amount: ${sngBuyIn.toLocaleString()}
+                <label htmlFor="sngBuyIn" className="block text-sm font-medium text-slate-300 mb-2">
+                  Buy-in Amount: <span className="text-purple-300">${sngBuyIn.toLocaleString()}</span>
                 </label>
                 <input
                   type="range"
@@ -274,9 +331,12 @@ function CreateGameModal({ isOpen, onClose, onCreate, loading }) {
                   step="100"
                   value={sngBuyIn}
                   onChange={(e) => setSngBuyIn(parseInt(e.target.value))}
-                  className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-purple-600"
+                  className="w-full h-2 rounded-full appearance-none cursor-pointer"
+                  style={{
+                    background: `linear-gradient(to right, #8b5cf6 0%, #8b5cf6 ${((sngBuyIn - 100) / (10000 - 100)) * 100}%, rgba(71, 85, 105, 0.5) ${((sngBuyIn - 100) / (10000 - 100)) * 100}%, rgba(71, 85, 105, 0.5) 100%)`,
+                  }}
                 />
-                <div className="flex justify-between text-xs text-gray-500 mt-1">
+                <div className="flex justify-between text-xs text-slate-500 mt-1">
                   <span>$100</span>
                   <span>$10,000</span>
                 </div>
@@ -284,33 +344,41 @@ function CreateGameModal({ isOpen, onClose, onCreate, loading }) {
 
               {/* Total Seats */}
               <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-300 mb-2">
+                <label className="block text-sm font-medium text-slate-300 mb-2">
                   Total Seats: {sngTotalSeats}
                 </label>
                 <div className="flex gap-2">
                   {[2, 3, 4, 5, 6].map((num) => (
-                    <button
+                    <motion.button
                       key={num}
                       type="button"
                       onClick={() => setSngTotalSeats(num)}
-                      className={`flex-1 py-2 px-3 rounded-lg font-medium transition-colors ${
+                      whileTap={{ scale: 0.95 }}
+                      className={`flex-1 py-2 px-3 rounded-lg font-semibold text-sm transition-all ${
                         sngTotalSeats === num
-                          ? 'bg-purple-600 text-white'
-                          : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                          ? 'text-white'
+                          : 'text-slate-400 hover:text-slate-300'
                       }`}
+                      style={sngTotalSeats === num ? {
+                        background: 'linear-gradient(180deg, #8b5cf6 0%, #7c3aed 100%)',
+                        boxShadow: '0 4px 12px rgba(139, 92, 246, 0.3)',
+                      } : {
+                        background: 'rgba(15, 23, 42, 0.5)',
+                        border: '1px solid rgba(71, 85, 105, 0.3)',
+                      }}
                     >
                       {num}
-                    </button>
+                    </motion.button>
                   ))}
                 </div>
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-xs text-slate-500 mt-1">
                   Admin can start with 2+ players. Max {sngTotalSeats} seats.
                 </p>
               </div>
 
               {/* Payout Structure */}
               <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-300 mb-2">
+                <label className="block text-sm font-medium text-slate-300 mb-2">
                   Payout Structure
                 </label>
                 <select
@@ -319,7 +387,8 @@ function CreateGameModal({ isOpen, onClose, onCreate, loading }) {
                     setPayoutStructureType(e.target.value);
                     setCustomPayoutError('');
                   }}
-                  className="w-full bg-gray-700 border border-gray-600 text-white px-4 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  className="w-full text-white px-4 py-2.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500/50 transition-all"
+                  style={inputStyle}
                 >
                   <option value={PAYOUT_STRUCTURE_TYPES.WINNER_TAKE_ALL}>
                     Winner Take All (1st: 100%)
@@ -331,7 +400,7 @@ function CreateGameModal({ isOpen, onClose, onCreate, loading }) {
                     Custom
                   </option>
                 </select>
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-xs text-slate-500 mt-1">
                   {payoutStructureType === PAYOUT_STRUCTURE_TYPES.WINNER_TAKE_ALL && 'First place takes the entire prize pool'}
                   {payoutStructureType === PAYOUT_STRUCTURE_TYPES.STANDARD && `Standard payout: ${STANDARD_PAYOUTS[sngTotalSeats]?.map(p => `${(p * 100).toFixed(0)}%`).join(' / ') || '100%'}`}
                   {payoutStructureType === PAYOUT_STRUCTURE_TYPES.CUSTOM && 'Enter custom payout percentages below'}
@@ -341,7 +410,7 @@ function CreateGameModal({ isOpen, onClose, onCreate, loading }) {
               {/* Custom Payout Input */}
               {payoutStructureType === PAYOUT_STRUCTURE_TYPES.CUSTOM && (
                 <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                  <label className="block text-sm font-medium text-slate-300 mb-2">
                     Custom Percentages (comma-separated)
                   </label>
                   <input
@@ -353,31 +422,41 @@ function CreateGameModal({ isOpen, onClose, onCreate, loading }) {
                       setCustomPayoutError(parsed.valid ? '' : parsed.error);
                     }}
                     placeholder="e.g., 50, 30, 20"
-                    className={`w-full bg-gray-700 border text-white px-4 py-2 rounded-lg focus:outline-none focus:ring-2 ${
+                    className={`w-full text-white px-4 py-2.5 rounded-xl focus:outline-none focus:ring-2 transition-all ${
                       customPayoutError
-                        ? 'border-red-500 focus:ring-red-500'
-                        : 'border-gray-600 focus:ring-purple-500'
+                        ? 'focus:ring-red-500/50'
+                        : 'focus:ring-purple-500/50'
                     }`}
+                    style={{
+                      ...inputStyle,
+                      borderColor: customPayoutError ? 'rgba(239, 68, 68, 0.5)' : inputStyle.border,
+                    }}
                   />
                   {customPayoutError && (
                     <p className="text-xs text-red-400 mt-1">{customPayoutError}</p>
                   )}
-                  <p className="text-xs text-gray-500 mt-1">
+                  <p className="text-xs text-slate-500 mt-1">
                     Enter percentages for each place (must add up to 100%)
                   </p>
                 </div>
               )}
 
               {/* Prize Pool Preview */}
-              <div className="bg-gray-800/50 rounded-lg p-3">
-                <p className="text-xs text-gray-400 mb-2">Prize Pool Preview:</p>
+              <div
+                className="rounded-xl p-3"
+                style={{
+                  background: 'rgba(15, 23, 42, 0.5)',
+                  border: '1px solid rgba(71, 85, 105, 0.3)',
+                }}
+              >
+                <p className="text-xs text-slate-400 mb-2">Prize Pool Preview:</p>
                 <p className="text-lg font-bold text-purple-300">
                   ${(sngBuyIn * sngTotalSeats).toLocaleString()} Total
                 </p>
                 <div className="mt-2 space-y-1">
                   {getCurrentPayoutStructure().map((pct, idx) => (
                     <div key={idx} className="flex justify-between text-xs">
-                      <span className="text-gray-400">
+                      <span className="text-slate-400">
                         {idx + 1}{idx === 0 ? 'st' : idx === 1 ? 'nd' : idx === 2 ? 'rd' : 'th'} Place:
                       </span>
                       <span className="text-green-400">
@@ -393,26 +472,34 @@ function CreateGameModal({ isOpen, onClose, onCreate, loading }) {
           {/* Max Players (Cash Game only) */}
           {!isSitAndGo && (
             <div className="mb-5">
-              <label htmlFor="maxPlayers" className="block text-sm font-medium text-gray-300 mb-2">
+              <label htmlFor="maxPlayers" className="block text-sm font-medium text-slate-300 mb-2">
                 Max Players: {maxPlayers}
               </label>
               <div className="flex gap-2 mb-2">
                 {[2, 3, 4, 5, 6].map((num) => (
-                  <button
+                  <motion.button
                     key={num}
                     type="button"
                     onClick={() => setMaxPlayers(num)}
-                    className={`flex-1 py-2 px-3 rounded-lg font-medium transition-colors ${
+                    whileTap={{ scale: 0.95 }}
+                    className={`flex-1 py-2 px-3 rounded-lg font-semibold text-sm transition-all ${
                       maxPlayers === num
-                        ? 'bg-yellow-600 text-white'
-                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                        ? 'text-white'
+                        : 'text-slate-400 hover:text-slate-300'
                     }`}
+                    style={maxPlayers === num ? {
+                      background: 'linear-gradient(180deg, #f59e0b 0%, #d97706 100%)',
+                      boxShadow: '0 4px 12px rgba(245, 158, 11, 0.3)',
+                    } : {
+                      background: 'rgba(15, 23, 42, 0.5)',
+                      border: '1px solid rgba(71, 85, 105, 0.3)',
+                    }}
                   >
                     {num}
-                  </button>
+                  </motion.button>
                 ))}
               </div>
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-slate-500">
                 Number of players allowed at this table (2-6)
               </p>
             </div>
@@ -420,20 +507,21 @@ function CreateGameModal({ isOpen, onClose, onCreate, loading }) {
 
           {/* Betting Structure */}
           <div className="mb-5">
-            <label htmlFor="bettingType" className="block text-sm font-medium text-gray-300 mb-2">
+            <label htmlFor="bettingType" className="block text-sm font-medium text-slate-300 mb-2">
               Betting Structure
             </label>
             <select
               id="bettingType"
               value={bettingType}
               onChange={(e) => setBettingType(e.target.value)}
-              className="w-full bg-gray-700 border border-gray-600 text-white px-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500"
+              className="w-full text-white px-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/50 transition-all"
+              style={inputStyle}
             >
               <option value="no_limit">No Limit</option>
               <option value="pot_limit">Pot Limit</option>
               <option value="fixed_limit">Fixed Limit</option>
             </select>
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-xs text-slate-500 mt-1">
               Choose the betting structure for this table
             </p>
           </div>
@@ -442,7 +530,7 @@ function CreateGameModal({ isOpen, onClose, onCreate, loading }) {
           {!isSitAndGo && (
             <>
               <div className="mb-5">
-                <label htmlFor="botCount" className="block text-sm font-medium text-gray-300 mb-2">
+                <label htmlFor="botCount" className="block text-sm font-medium text-slate-300 mb-2">
                   Bot Players: {botCount}
                 </label>
                 <input
@@ -459,13 +547,16 @@ function CreateGameModal({ isOpen, onClose, onCreate, loading }) {
                       setMaxPlayers(Math.min(6, newCount + 1));
                     }
                   }}
-                  className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-yellow-600"
+                  className="w-full h-2 rounded-full appearance-none cursor-pointer"
+                  style={{
+                    background: `linear-gradient(to right, #f59e0b 0%, #f59e0b ${(botCount / 5) * 100}%, rgba(71, 85, 105, 0.5) ${(botCount / 5) * 100}%, rgba(71, 85, 105, 0.5) 100%)`,
+                  }}
                 />
-                <div className="flex justify-between text-xs text-gray-500 mt-1">
+                <div className="flex justify-between text-xs text-slate-500 mt-1">
                   <span>0</span>
                   <span>5</span>
                 </div>
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-xs text-slate-500 mt-1">
                   Add AI opponents to fill the table
                 </p>
               </div>
@@ -473,20 +564,21 @@ function CreateGameModal({ isOpen, onClose, onCreate, loading }) {
               {/* Bot Difficulty */}
               {botCount > 0 && (
                 <div className="mb-5">
-                  <label htmlFor="botDifficulty" className="block text-sm font-medium text-gray-300 mb-2">
+                  <label htmlFor="botDifficulty" className="block text-sm font-medium text-slate-300 mb-2">
                     Bot Difficulty
                   </label>
                   <select
                     id="botDifficulty"
                     value={botDifficulty}
                     onChange={(e) => setBotDifficulty(e.target.value)}
-                    className="w-full bg-gray-700 border border-gray-600 text-white px-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                    className="w-full text-white px-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/50 transition-all"
+                    style={inputStyle}
                   >
                     <option value="easy">Easy (Tourist)</option>
                     <option value="medium">Medium</option>
                     <option value="hard">Hard (Pro)</option>
                   </select>
-                  <p className="text-xs text-gray-500 mt-1">
+                  <p className="text-xs text-slate-500 mt-1">
                     AI skill level for all bots
                   </p>
                 </div>
@@ -495,34 +587,56 @@ function CreateGameModal({ isOpen, onClose, onCreate, loading }) {
               {/* Fill Strategy */}
               {botCount > 0 && (
                 <div className="mb-5">
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                  <label className="block text-sm font-medium text-slate-300 mb-3">
                     Bot Fill Strategy
                   </label>
-                  <div className="flex gap-4">
-                    <label className="flex items-center cursor-pointer">
+                  <div className="flex gap-3">
+                    <label
+                      className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl cursor-pointer transition-all ${
+                        fillStrategy === 'fixed' ? 'text-white' : 'text-slate-400'
+                      }`}
+                      style={fillStrategy === 'fixed' ? {
+                        background: 'linear-gradient(180deg, rgba(245, 158, 11, 0.2) 0%, rgba(217, 119, 6, 0.25) 100%)',
+                        border: '1px solid rgba(245, 158, 11, 0.4)',
+                      } : {
+                        background: 'rgba(15, 23, 42, 0.5)',
+                        border: '1px solid rgba(71, 85, 105, 0.3)',
+                      }}
+                    >
                       <input
                         type="radio"
                         name="fillStrategy"
                         value="fixed"
                         checked={fillStrategy === 'fixed'}
                         onChange={(e) => setFillStrategy(e.target.value)}
-                        className="w-4 h-4 text-yellow-600 bg-gray-700 border-gray-600 focus:ring-yellow-500"
+                        className="w-4 h-4 text-amber-500 bg-slate-700 border-slate-600 focus:ring-amber-500"
                       />
-                      <span className="ml-2 text-gray-300">Fixed Count</span>
+                      <span className="text-sm font-medium">Fixed Count</span>
                     </label>
-                    <label className="flex items-center cursor-pointer">
+                    <label
+                      className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl cursor-pointer transition-all ${
+                        fillStrategy === 'fill_empty' ? 'text-white' : 'text-slate-400'
+                      }`}
+                      style={fillStrategy === 'fill_empty' ? {
+                        background: 'linear-gradient(180deg, rgba(245, 158, 11, 0.2) 0%, rgba(217, 119, 6, 0.25) 100%)',
+                        border: '1px solid rgba(245, 158, 11, 0.4)',
+                      } : {
+                        background: 'rgba(15, 23, 42, 0.5)',
+                        border: '1px solid rgba(71, 85, 105, 0.3)',
+                      }}
+                    >
                       <input
                         type="radio"
                         name="fillStrategy"
                         value="fill_empty"
                         checked={fillStrategy === 'fill_empty'}
                         onChange={(e) => setFillStrategy(e.target.value)}
-                        className="w-4 h-4 text-yellow-600 bg-gray-700 border-gray-600 focus:ring-yellow-500"
+                        className="w-4 h-4 text-amber-500 bg-slate-700 border-slate-600 focus:ring-amber-500"
                       />
-                      <span className="ml-2 text-gray-300">Fill Empty Seats</span>
+                      <span className="text-sm font-medium">Fill Empty</span>
                     </label>
                   </div>
-                  <p className="text-xs text-gray-500 mt-1">
+                  <p className="text-xs text-slate-500 mt-2">
                     {fillStrategy === 'fixed'
                       ? 'Add exactly this many bots when table is created'
                       : 'Automatically add bots to fill empty seats up to max players'}
@@ -534,11 +648,22 @@ function CreateGameModal({ isOpen, onClose, onCreate, loading }) {
 
           {/* Privacy Settings */}
           <div className="mb-5">
-            <label className="block text-sm font-medium text-gray-300 mb-2">
+            <label className="block text-sm font-medium text-slate-300 mb-3">
               Privacy Settings
             </label>
-            <div className="flex gap-4 mb-3">
-              <label className="flex items-center cursor-pointer">
+            <div className="flex gap-3 mb-3">
+              <label
+                className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl cursor-pointer transition-all ${
+                  privacy === 'public' ? 'text-white' : 'text-slate-400'
+                }`}
+                style={privacy === 'public' ? {
+                  background: 'linear-gradient(180deg, rgba(34, 197, 94, 0.2) 0%, rgba(22, 163, 74, 0.25) 100%)',
+                  border: '1px solid rgba(34, 197, 94, 0.4)',
+                } : {
+                  background: 'rgba(15, 23, 42, 0.5)',
+                  border: '1px solid rgba(71, 85, 105, 0.3)',
+                }}
+              >
                 <input
                   type="radio"
                   name="privacy"
@@ -549,11 +674,22 @@ function CreateGameModal({ isOpen, onClose, onCreate, loading }) {
                     setPassword('');
                     setError('');
                   }}
-                  className="w-4 h-4 text-yellow-600 bg-gray-700 border-gray-600 focus:ring-yellow-500"
+                  className="w-4 h-4 text-green-500 bg-slate-700 border-slate-600 focus:ring-green-500"
                 />
-                <span className="ml-2 text-gray-300">Public</span>
+                <span className="text-sm font-medium">Public</span>
               </label>
-              <label className="flex items-center cursor-pointer">
+              <label
+                className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl cursor-pointer transition-all ${
+                  privacy === 'private' ? 'text-white' : 'text-slate-400'
+                }`}
+                style={privacy === 'private' ? {
+                  background: 'linear-gradient(180deg, rgba(245, 158, 11, 0.2) 0%, rgba(217, 119, 6, 0.25) 100%)',
+                  border: '1px solid rgba(245, 158, 11, 0.4)',
+                } : {
+                  background: 'rgba(15, 23, 42, 0.5)',
+                  border: '1px solid rgba(71, 85, 105, 0.3)',
+                }}
+              >
                 <input
                   type="radio"
                   name="privacy"
@@ -563,83 +699,112 @@ function CreateGameModal({ isOpen, onClose, onCreate, loading }) {
                     setPrivacy(e.target.value);
                     setError('');
                   }}
-                  className="w-4 h-4 text-yellow-600 bg-gray-700 border-gray-600 focus:ring-yellow-500"
+                  className="w-4 h-4 text-amber-500 bg-slate-700 border-slate-600 focus:ring-amber-500"
                 />
-                <span className="ml-2 text-gray-300">Private</span>
+                <span className="text-sm font-medium">Private</span>
               </label>
             </div>
 
             {/* Password Input (only shown for private) */}
-            {privacy === 'private' && (
-              <div className="mt-3">
-                <label htmlFor="password" className="block text-sm font-medium text-gray-300 mb-2">
-                  Room Password
-                </label>
-                <input
-                  type="text"
-                  id="password"
-                  value={password}
-                  onChange={(e) => {
-                    setPassword(e.target.value);
-                    setError('');
-                  }}
-                  placeholder="Enter room password"
-                  className="w-full bg-gray-700 border border-gray-600 text-white px-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500"
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  Players will need this password to join the table
-                </p>
-              </div>
-            )}
+            <AnimatePresence>
+              {privacy === 'private' && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="mt-3 overflow-hidden"
+                >
+                  <label htmlFor="password" className="block text-sm font-medium text-slate-300 mb-2">
+                    Room Password
+                  </label>
+                  <input
+                    type="text"
+                    id="password"
+                    value={password}
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      setError('');
+                    }}
+                    placeholder="Enter room password"
+                    className="w-full text-white px-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/50 transition-all"
+                    style={inputStyle}
+                  />
+                  <p className="text-xs text-slate-500 mt-1">
+                    Players will need this password to join the table
+                  </p>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
           {/* Game Speed */}
           <div className="mb-6">
-            <label htmlFor="gameSpeed" className="block text-sm font-medium text-gray-300 mb-2">
+            <label htmlFor="gameSpeed" className="block text-sm font-medium text-slate-300 mb-2">
               Game Speed
             </label>
             <select
               id="gameSpeed"
               value={gameSpeed}
               onChange={(e) => setGameSpeed(e.target.value)}
-              className="w-full bg-gray-700 border border-gray-600 text-white px-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500"
+              className="w-full text-white px-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/50 transition-all"
+              style={inputStyle}
             >
               <option value="normal">Normal (1 min per turn)</option>
               <option value="turbo">Turbo (30s per turn)</option>
             </select>
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-xs text-slate-500 mt-1">
               Turn time limit for each player
             </p>
           </div>
 
           {/* Error Message */}
-          {error && (
-            <div className="bg-red-500/20 border border-red-500 text-red-200 px-4 py-2 rounded mb-4 text-sm">
-              {error}
-            </div>
-          )}
-
-          {/* Action Buttons */}
-          <div className="flex gap-3">
-            <button
-              type="button"
-              onClick={handleClose}
-              disabled={loading}
-              className="flex-1 bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 disabled:cursor-not-allowed text-white font-medium py-3 rounded-lg transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={loading || (privacy === 'private' && !password.trim())}
-              className="flex-1 bg-yellow-600 hover:bg-yellow-500 disabled:bg-yellow-800 disabled:cursor-not-allowed text-white font-bold py-3 rounded-lg transition-colors"
-            >
-              {loading ? 'Creating...' : 'Create Table'}
-            </button>
-          </div>
+          <AnimatePresence>
+            {error && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="bg-red-500/10 border border-red-500/30 text-red-400 px-4 py-3 rounded-xl mb-4 text-sm"
+              >
+                {error}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </form>
-      </div>
-    </div>
+            </div>
+
+            {/* Footer with Action Buttons */}
+            <div className="px-6 py-4 border-t border-slate-700/50">
+              <div className="flex gap-3">
+                <motion.button
+                  type="button"
+                  onClick={handleClose}
+                  disabled={loading}
+                  whileTap={{ scale: 0.98 }}
+                  className="flex-1 bg-slate-700/50 hover:bg-slate-600/50 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3.5 rounded-xl transition-colors border border-slate-600/30"
+                >
+                  Cancel
+                </motion.button>
+                <motion.button
+                  type="button"
+                  onClick={handleSubmit}
+                  disabled={loading || (privacy === 'private' && !password.trim())}
+                  whileTap={{ scale: 0.98 }}
+                  className="flex-1 font-bold py-3.5 rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{
+                    background: 'linear-gradient(180deg, #f59e0b 0%, #d97706 100%)',
+                    color: 'white',
+                    boxShadow: '0 4px 15px rgba(245, 158, 11, 0.3)',
+                  }}
+                >
+                  {loading ? 'Creating...' : 'Create Table'}
+                </motion.button>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
   );
 }
 
