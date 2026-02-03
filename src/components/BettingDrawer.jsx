@@ -25,7 +25,6 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { triggerHaptic, HapticPatterns } from '../utils/haptics';
 
 /**
  * Calculate pot-relative bet amounts
@@ -98,7 +97,6 @@ export function BettingDrawer({
     setSelectedAmount(clampedValue);
     setInputValue(String(clampedValue));
     setActivePreset(presetKey);
-    triggerHaptic(HapticPatterns.TAP);
   }, [clampAmount]);
 
   // Handle increment/decrement by Big Blind
@@ -107,7 +105,6 @@ export function BettingDrawer({
     setSelectedAmount(newValue);
     setInputValue(String(newValue));
     setActivePreset(null);
-    triggerHaptic(delta > 0 ? HapticPatterns.TICK : HapticPatterns.TICK);
   }, [selectedAmount, bigBlind, clampAmount]);
 
   // Handle direct input change
@@ -128,14 +125,12 @@ export function BettingDrawer({
   // Handle bet submission
   const handleSubmit = () => {
     if (disabled || selectedAmount < minRaise || selectedAmount > maxRaise) return;
-    triggerHaptic(HapticPatterns.SUCCESS);
     onSubmit(selectedAmount);
     onClose();
   };
 
   // Handle cancel
   const handleCancel = () => {
-    triggerHaptic(HapticPatterns.CANCEL);
     onClose();
   };
 
@@ -430,7 +425,6 @@ export function ActionBar({
   isMyTurn = false,
 }) {
   const handleAction = (action, callback) => {
-    triggerHaptic(HapticPatterns.TAP);
     callback?.();
   };
 

@@ -1,5 +1,4 @@
 @import "tailwindcss";
-@import "./styles/pwa-gaming.css";
 
 @source "../index.html";
 @source "./**/*.{js,ts,jsx,tsx}";
