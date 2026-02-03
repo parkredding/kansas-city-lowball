@@ -304,7 +304,7 @@ function CreateGameModal({ isOpen, onClose, onCreate, loading }) {
                   ))}
                 </div>
                 <p className="text-xs text-gray-500 mt-1">
-                  Tournament starts automatically when all seats are filled
+                  Admin can start with 2+ players. Max {sngTotalSeats} seats.
                 </p>
               </div>
 

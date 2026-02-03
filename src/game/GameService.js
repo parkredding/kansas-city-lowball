@@ -542,6 +542,7 @@ export class GameService {
         pot: 0,
         pots: [],
         currentBet: 0,
+        lastRaiseAmount: 0, // Reset raise tracking for new hand
         turnDeadline: null, // No time limit for cut phase
         cutForDealerComplete: false,
         lastUpdated: serverTimestamp(),
@@ -990,6 +991,7 @@ export class GameService {
       pot: 0, // Legacy: total pot for display (sum of all pots)
       minBet: minBet,
       currentBet: 0,
+      lastRaiseAmount: 0, // Track the size of the last raise for minimum raise validation (NL rules)
       activePlayerIndex: 0,
       turnDeadline: null,
       dealerIndex: 0,
@@ -2108,6 +2110,7 @@ export class GameService {
       players,
       communityCards,
       currentBet: 0,
+      lastRaiseAmount: 0, // Reset raise tracking for new betting round
       phase: street,
       activePlayerIndex: firstToAct >= 0 ? firstToAct : 0,
       turnDeadline: GameService.calculateTurnDeadline(),
@@ -2396,9 +2399,22 @@ export class GameService {
           const totalBetAmount = Math.floor(amount);
           const additionalAmount = Math.floor(totalBetAmount - playerCurrentRoundBet);
 
+          // Calculate minimum raise per NL rules:
+          // - For a BET (currentBet = 0): minimum is the big blind
+          // - For a RAISE: minimum is the previous raise amount OR the big blind, whichever is larger
+          // Example: If Player A bets $10, Player B must raise to at least $20 (call $10 + raise $10)
+          const lastRaise = Math.floor(tableData.lastRaiseAmount || 0);
+          const minRaiseIncrement = Math.max(minBet, lastRaise); // Minimum raise must match previous raise
+          const minTotalBet = currentBet === 0 ? minBet : currentBet + minRaiseIncrement;
+
           // Validate minimum raise (unless going all-in)
-          if (totalBetAmount < currentBet + minBet && playerChips > additionalAmount) {
-            throw new Error(`Minimum raise is $${currentBet + minBet} (you tried $${totalBetAmount})`);
+          if (totalBetAmount < minTotalBet && playerChips > additionalAmount) {
+            const isBet = currentBet === 0;
+            throw new Error(
+              isBet
+                ? `Minimum bet is $${minBet} (you tried $${totalBetAmount})`
+                : `Minimum raise is $${minTotalBet} (raise by at least $${minRaiseIncrement})`
+            );
           }
 
           if (additionalAmount <= 0) {
@@ -2409,20 +2425,29 @@ export class GameService {
             throw new Error(`Insufficient chips - you have $${playerChips}, need $${additionalAmount}`);
           }
 
+          // Calculate the actual raise amount for tracking (for next player's min raise)
+          const raiseIncrement = totalBetAmount - currentBet;
+
           if (playerChips <= additionalAmount) {
             // All-in raise
             pot += playerChips;
             player.currentRoundBet = playerCurrentRoundBet + playerChips;
             player.totalContribution = (player.totalContribution || 0) + playerChips;
+            const allInRaiseIncrement = player.currentRoundBet - currentBet;
             if (player.currentRoundBet > currentBet) {
               newCurrentBet = Math.floor(player.currentRoundBet);
+              // Track the raise amount for next player's min-raise (if it's a valid raise)
+              if (allInRaiseIncrement >= minRaiseIncrement) {
+                tableData.lastRaiseAmount = allInRaiseIncrement;
+              }
             }
             player.chips = 0;
             player.status = 'all-in';
             player.hasActedThisRound = true;
             player.lastAction = 'All-In';
             isAggressiveAction = true; // All-in raise is aggressive
-            actionDescription = `${player.displayName} raised all-in to $${player.currentRoundBet}`;
+            const actionType = currentBet === 0 ? 'bet' : 'raised';
+            actionDescription = `${player.displayName} ${actionType} all-in to $${player.currentRoundBet}`;
             // Reset hasActed for other players since there's a raise
             players.forEach((p, i) => {
               if (i !== playerIndex && p.status === 'active') {
@@ -2436,6 +2461,8 @@ export class GameService {
             player.totalContribution = (player.totalContribution || 0) + additionalAmount;
             pot += additionalAmount;
             newCurrentBet = totalBetAmount;
+            // Track the raise amount for next player's min-raise
+            tableData.lastRaiseAmount = raiseIncrement;
             player.hasActedThisRound = true;
             player.lastAction = currentBet === 0 ? 'Bet' : 'Raise';
             isAggressiveAction = true; // Bet/Raise is aggressive
@@ -2512,6 +2539,7 @@ export class GameService {
         pot: 0,
         pots: [],
         currentBet: 0,
+        lastRaiseAmount: 0,
         phase: 'SHOWDOWN',
         turnDeadline: null,
         showdownResult: uncontestedShowdownResult,
@@ -2675,6 +2703,7 @@ export class GameService {
         pot: updatedPot,
         pots: isShowdown ? [] : sidePots,
         currentBet: 0,
+        lastRaiseAmount: 0, // Reset raise tracking for new betting round
         phase: nextPhase,
         activePlayerIndex: firstToAct,
         turnDeadline: isShowdown ? null : GameService.calculateTurnDeadline(),
@@ -2819,6 +2848,7 @@ export class GameService {
             pot: updatedPot,
             pots: isShowdown ? [] : calculateSidePots(players),
             currentBet: 0,
+            lastRaiseAmount: 0, // Reset raise tracking for new betting round
             phase: nextPhase,
             activePlayerIndex: firstToActInner,
             turnDeadline: isShowdown ? null : GameService.calculateTurnDeadline(),
@@ -3444,6 +3474,7 @@ export class GameService {
         pot: 0,
         pots: [],
         currentBet: 0,
+        lastRaiseAmount: 0,
         players,
         railbirds,
         activePlayerIndex: 0,
@@ -3547,6 +3578,7 @@ export class GameService {
           players: [],
           pot: 0,
           currentBet: 0,
+          lastRaiseAmount: 0,
           deck: GameService.createShuffledDeck(),
         });
       } else {

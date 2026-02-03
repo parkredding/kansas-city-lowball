@@ -46,6 +46,107 @@ function formatCurrency(amount) {
 }
 
 /**
+ * Draw Round Indicator Component
+ * Displays the current draw round prominently for Draw Poker variants
+ * Shows: "Draw 1", "Draw 2", "Draw 3", or "Final Betting"
+ */
+export function DrawRoundIndicator({ phase, gameType = 'lowball_27' }) {
+  // Only show for draw poker variants
+  if (gameType === 'holdem') return null;
+
+  // Parse the phase to determine what to display
+  const getDrawInfo = () => {
+    switch (phase) {
+      case 'BETTING_1':
+        return { label: 'Pre-Draw', sublabel: 'First Betting Round', number: 0 };
+      case 'DRAW_1':
+        return { label: 'Draw 1', sublabel: 'Select cards to discard', number: 1 };
+      case 'BETTING_2':
+        return { label: 'After Draw 1', sublabel: 'Second Betting Round', number: 1 };
+      case 'DRAW_2':
+        return { label: 'Draw 2', sublabel: 'Select cards to discard', number: 2 };
+      case 'BETTING_3':
+        return { label: 'After Draw 2', sublabel: 'Third Betting Round', number: 2 };
+      case 'DRAW_3':
+        return { label: 'Final Draw', sublabel: 'Last chance to draw', number: 3 };
+      case 'BETTING_4':
+        return { label: 'Final Betting', sublabel: 'Last betting round', number: 3 };
+      case 'SHOWDOWN':
+        return { label: 'Showdown', sublabel: 'Reveal hands', number: 4 };
+      default:
+        return null;
+    }
+  };
+
+  const info = getDrawInfo();
+  if (!info) return null;
+
+  const isDrawPhase = phase?.startsWith('DRAW_');
+
+  return (
+    <motion.div
+      className="draw-round-indicator"
+      initial={{ opacity: 0, y: -10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+    >
+      <div
+        className={`
+          inline-flex flex-col items-center justify-center
+          px-4 py-2 rounded-xl
+          ${isDrawPhase
+            ? 'bg-gradient-to-r from-amber-600/90 to-orange-600/90 ring-2 ring-amber-400/50'
+            : 'bg-slate-800/90 ring-1 ring-slate-600/50'
+          }
+          backdrop-blur-sm
+          shadow-lg
+        `}
+        style={{
+          boxShadow: isDrawPhase
+            ? '0 4px 20px rgba(245, 158, 11, 0.4), 0 2px 8px rgba(0,0,0,0.3)'
+            : '0 4px 12px rgba(0,0,0,0.4)',
+        }}
+      >
+        <span
+          className={`
+            text-sm sm:text-base font-bold tracking-wide
+            ${isDrawPhase ? 'text-white' : 'text-amber-400'}
+          `}
+        >
+          {info.label}
+        </span>
+        <span
+          className={`
+            text-[10px] sm:text-xs font-medium
+            ${isDrawPhase ? 'text-amber-100/80' : 'text-slate-400'}
+          `}
+        >
+          {info.sublabel}
+        </span>
+
+        {/* Progress dots for draw rounds */}
+        {info.number > 0 && info.number < 4 && (
+          <div className="flex gap-1.5 mt-1.5">
+            {[1, 2, 3].map((n) => (
+              <div
+                key={n}
+                className={`
+                  w-1.5 h-1.5 rounded-full transition-all
+                  ${n <= info.number
+                    ? isDrawPhase ? 'bg-white' : 'bg-amber-400'
+                    : 'bg-slate-600'
+                  }
+                `}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </motion.div>
+  );
+}
+
+/**
  * Centralized Pot Display Component
  * Large, prominent display directly above community cards
  */
@@ -281,9 +382,18 @@ export function TableOverlay({
   phase = 'PREFLOP',
   showPot = true,
   className = '',
+  gameType = 'lowball_27',
 }) {
+  // Determine if this is a draw game
+  const isDrawGame = gameType !== 'holdem';
+
   return (
     <div className={`table-overlay flex flex-col items-center gap-4 ${className}`}>
+      {/* Draw Round Indicator - Only for draw poker variants */}
+      {isDrawGame && (
+        <DrawRoundIndicator phase={phase} gameType={gameType} />
+      )}
+
       {/* Centralized Pot Display */}
       {showPot && (
         <CentralPotDisplay
@@ -292,7 +402,7 @@ export function TableOverlay({
         />
       )}
 
-      {/* Community Cards */}
+      {/* Community Cards (for Hold'em) */}
       <CommunityCardsEnhanced
         cards={communityCards}
         phase={phase}
