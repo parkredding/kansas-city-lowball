@@ -565,7 +565,13 @@ function RaisePanel({
         <button
           type="button"
           onClick={onCancel}
-          className="flex-1 py-2.5 rounded-lg bg-slate-700 text-slate-300 font-medium text-sm hover:bg-slate-600 active:scale-98 transition-all"
+          className="flex-1 text-white font-medium text-sm rounded-xl flex items-center justify-center"
+          style={{
+            minHeight: '40px',
+            background: 'rgba(51, 65, 85, 0.6)',
+            border: '1px solid rgba(71, 85, 105, 0.3)',
+            boxShadow: '0 2px 0 rgba(51, 65, 85, 0.7), 0 3px 8px rgba(0, 0, 0, 0.2)',
+          }}
         >
           Cancel
         </button>
@@ -573,13 +579,17 @@ function RaisePanel({
           type="button"
           onClick={onSubmit}
           disabled={disabled}
-          className={`
-            flex-[2] py-2.5 rounded-lg font-bold text-sm active:scale-98 transition-all
-            ${isAllIn
-              ? 'bg-gradient-to-r from-violet-600 to-purple-600 text-white'
-              : 'bg-gradient-to-r from-amber-500 to-orange-500 text-slate-900'
-            }
-          `}
+          className="flex-[2] font-bold text-sm rounded-xl flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+          style={{
+            minHeight: '40px',
+            background: isAllIn
+              ? 'linear-gradient(180deg, #a78bfa 0%, #8b5cf6 50%, #7c3aed 100%)'
+              : 'linear-gradient(180deg, #fbbf24 0%, #f59e0b 50%, #d97706 100%)',
+            color: 'white',
+            boxShadow: isAllIn
+              ? '0 3px 0 #6d28d9, 0 5px 12px rgba(139, 92, 246, 0.35)'
+              : '0 3px 0 #b45309, 0 5px 12px rgba(180, 83, 9, 0.3)',
+          }}
         >
           {isAllIn ? 'ALL IN' : `${currentBet > 0 ? 'Raise' : 'Bet'} $${formatAmount(raiseAmount)}`}
         </button>

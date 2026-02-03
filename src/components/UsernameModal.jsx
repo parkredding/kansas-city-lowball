@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
 
 /**
  * Modal for setting or editing a custom username
@@ -66,21 +67,30 @@ function UsernameModal({ isOpen, onClose, onSave, currentUsername, isRequired, l
       />
 
       {/* Modal */}
-      <div className="relative bg-gray-800 rounded-xl p-6 w-full max-w-md mx-4 shadow-2xl border border-gray-700">
-        <h2 className="text-xl font-bold text-white mb-2">
+      <div
+        className="relative w-full max-w-md mx-4 rounded-2xl p-6"
+        style={{
+          background: 'linear-gradient(180deg, rgba(30, 41, 59, 0.95) 0%, rgba(15, 23, 42, 0.98) 100%)',
+          backdropFilter: 'blur(20px)',
+          WebkitBackdropFilter: 'blur(20px)',
+          border: '1px solid rgba(148, 163, 184, 0.1)',
+          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05) inset',
+        }}
+      >
+        <h2 className="text-2xl font-bold text-white mb-2">
           {isRequired ? 'Choose Your Username' : 'Edit Username'}
         </h2>
 
         {isRequired && (
-          <p className="text-gray-400 text-sm mb-4">
+          <p className="text-slate-400 text-sm mb-4">
             Please choose a username to display at the poker table. This helps protect your privacy
             by not showing your Google account name.
           </p>
         )}
 
         <form onSubmit={handleSubmit}>
-          <div className="mb-4">
-            <label htmlFor="username" className="block text-sm font-medium text-gray-300 mb-2">
+          <div className="mb-5">
+            <label htmlFor="username" className="block text-xs font-medium text-slate-500 mb-2">
               Username
             </label>
             <input
@@ -94,36 +104,54 @@ function UsernameModal({ isOpen, onClose, onSave, currentUsername, isRequired, l
               placeholder="Enter your username"
               maxLength={20}
               autoFocus
-              className="w-full bg-gray-700 border border-gray-600 text-white px-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500"
+              className="w-full text-white px-4 py-3.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/50 transition-all"
+              style={{
+                background: 'rgba(30, 41, 59, 0.85)',
+                border: '1px solid rgba(100, 120, 150, 0.45)',
+              }}
             />
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-xs text-slate-500 mt-2">
               2-20 characters. Letters, numbers, underscores, and spaces allowed.
             </p>
           </div>
 
           {error && (
-            <div className="bg-red-500/20 border border-red-500 text-red-200 px-3 py-2 rounded mb-4 text-sm">
+            <div className="bg-red-500/10 border border-red-500/30 text-red-400 px-4 py-3 rounded-xl mb-4 text-sm">
               {error}
             </div>
           )}
 
           <div className="flex gap-3">
             {!isRequired && (
-              <button
+              <motion.button
                 type="button"
                 onClick={handleClose}
-                className="flex-1 bg-gray-600 hover:bg-gray-500 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+                whileTap={{ y: 2, boxShadow: '0 0px 0 rgba(51, 65, 85, 0.7), 0 1px 4px rgba(0, 0, 0, 0.15)' }}
+                className="flex-1 text-white font-semibold rounded-2xl flex items-center justify-center"
+                style={{
+                  minHeight: '52px',
+                  background: 'rgba(51, 65, 85, 0.6)',
+                  border: '1px solid rgba(71, 85, 105, 0.3)',
+                  boxShadow: '0 3px 0 rgba(51, 65, 85, 0.7), 0 5px 12px rgba(0, 0, 0, 0.2)',
+                }}
               >
                 Cancel
-              </button>
+              </motion.button>
             )}
-            <button
+            <motion.button
               type="submit"
               disabled={loading || !username.trim()}
-              className={`${isRequired ? 'w-full' : 'flex-1'} bg-yellow-600 hover:bg-yellow-500 disabled:bg-yellow-800 disabled:cursor-not-allowed text-white font-bold py-2 px-4 rounded-lg transition-colors`}
+              whileTap={{ y: 4, boxShadow: '0 1px 0 #b45309, 0 3px 10px rgba(180, 83, 9, 0.2)' }}
+              className={`${isRequired ? 'w-full' : 'flex-1'} font-bold rounded-2xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center`}
+              style={{
+                minHeight: '52px',
+                background: 'linear-gradient(180deg, #fbbf24 0%, #f59e0b 50%, #d97706 100%)',
+                color: 'white',
+                boxShadow: '0 5px 0 #b45309, 0 7px 18px rgba(180, 83, 9, 0.3)',
+              }}
             >
               {loading ? 'Saving...' : 'Save Username'}
-            </button>
+            </motion.button>
           </div>
         </form>
       </div>
