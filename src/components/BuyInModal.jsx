@@ -11,6 +11,8 @@ function BuyInModal({ isOpen, onClose, onBuyIn, maxAmount, minBet, loading }) {
 
   const minBuyIn = minBet * 10; // Minimum buy-in is 10x the minimum bet
   const maxBuyIn = maxAmount;
+  const buyInRange = maxBuyIn - minBuyIn;
+  const sliderProgress = buyInRange > 0 ? ((amount - minBuyIn) / buyInRange) * 100 : 0;
 
   const handleSubmit = async () => {
     if (amount < minBuyIn) {
@@ -141,9 +143,9 @@ function BuyInModal({ isOpen, onClose, onBuyIn, maxAmount, minBet, loading }) {
                     step={50}
                     value={amount}
                     onChange={handleSliderChange}
-                    className="w-full h-2 rounded-full appearance-none cursor-pointer"
+                    className="w-full rounded-full appearance-none cursor-pointer slider-touch"
                     style={{
-                      background: `linear-gradient(to right, #f59e0b 0%, #f59e0b ${((amount - minBuyIn) / (maxBuyIn - minBuyIn)) * 100}%, rgba(71, 85, 105, 0.5) ${((amount - minBuyIn) / (maxBuyIn - minBuyIn)) * 100}%, rgba(71, 85, 105, 0.5) 100%)`,
+                      background: `linear-gradient(to right, #f59e0b 0%, #f59e0b ${sliderProgress}%, rgba(71, 85, 105, 0.5) ${sliderProgress}%, rgba(71, 85, 105, 0.5) 100%)`,
                     }}
                   />
                 </div>

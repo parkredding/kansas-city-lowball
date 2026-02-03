@@ -230,8 +230,8 @@ function CreateGameModal({ isOpen, onClose, onCreate, loading }) {
 
         <form onSubmit={handleSubmit}>
           {/* Table Mode Toggle */}
-          <div className="mb-5">
-            <label className="block text-sm font-medium text-slate-300 mb-3">
+          <div className="mb-6">
+            <label className="block text-xs font-medium text-slate-500 mb-2">
               Table Mode
             </label>
             <div className="flex gap-2 p-1 rounded-xl" style={{ background: 'rgba(15, 23, 42, 0.5)' }}>
@@ -282,21 +282,26 @@ function CreateGameModal({ isOpen, onClose, onCreate, loading }) {
           </div>
 
           {/* Game Type */}
-          <div className="mb-5">
-            <label htmlFor="gameType" className="block text-sm font-medium text-slate-300 mb-2">
+          <div className="mb-6">
+            <label htmlFor="gameType" className="block text-xs font-medium text-slate-500 mb-2">
               Game Type
             </label>
-            <select
-              id="gameType"
-              value={gameType}
-              onChange={(e) => setGameType(e.target.value)}
-              className="w-full text-white px-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/50 transition-all"
-              style={inputStyle}
-            >
-              <option value="lowball_27">Kansas City Lowball (2-7 Triple Draw)</option>
-              <option value="holdem">Texas Hold'em</option>
-              <option value="plo" disabled>PLO (Coming Soon)</option>
-            </select>
+            <div className="relative">
+              <select
+                id="gameType"
+                value={gameType}
+                onChange={(e) => setGameType(e.target.value)}
+                className="w-full text-white px-4 pr-10 py-3 rounded-xl appearance-none focus:outline-none focus:ring-2 focus:ring-amber-500/50 transition-all"
+                style={inputStyle}
+              >
+                <option value="lowball_27">Kansas City Lowball (2-7 Triple Draw)</option>
+                <option value="holdem">Texas Hold'em</option>
+                <option value="plo" disabled>PLO (Coming Soon)</option>
+              </select>
+              <svg className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
             <p className="text-xs text-slate-500 mt-1">
               Select the poker variant for this table
             </p>
@@ -305,7 +310,7 @@ function CreateGameModal({ isOpen, onClose, onCreate, loading }) {
           {/* Sit & Go Tournament Settings */}
           {isSitAndGo && (
             <div
-              className="mb-5 p-4 rounded-xl"
+              className="mb-6 p-4 rounded-xl"
               style={{
                 background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(124, 58, 237, 0.05) 100%)',
                 border: '1px solid rgba(139, 92, 246, 0.2)',
@@ -320,7 +325,7 @@ function CreateGameModal({ isOpen, onClose, onCreate, loading }) {
 
               {/* Buy-in Amount */}
               <div className="mb-4">
-                <label htmlFor="sngBuyIn" className="block text-sm font-medium text-slate-300 mb-2">
+                <label htmlFor="sngBuyIn" className="block text-xs font-medium text-slate-500 mb-2">
                   Buy-in Amount: <span className="text-purple-300">${sngBuyIn.toLocaleString()}</span>
                 </label>
                 <input
@@ -331,7 +336,7 @@ function CreateGameModal({ isOpen, onClose, onCreate, loading }) {
                   step="100"
                   value={sngBuyIn}
                   onChange={(e) => setSngBuyIn(parseInt(e.target.value))}
-                  className="w-full h-2 rounded-full appearance-none cursor-pointer"
+                  className="w-full rounded-full appearance-none cursor-pointer slider-touch"
                   style={{
                     background: `linear-gradient(to right, #8b5cf6 0%, #8b5cf6 ${((sngBuyIn - 100) / (10000 - 100)) * 100}%, rgba(71, 85, 105, 0.5) ${((sngBuyIn - 100) / (10000 - 100)) * 100}%, rgba(71, 85, 105, 0.5) 100%)`,
                   }}
@@ -344,8 +349,8 @@ function CreateGameModal({ isOpen, onClose, onCreate, loading }) {
 
               {/* Total Seats */}
               <div className="mb-4">
-                <label className="block text-sm font-medium text-slate-300 mb-2">
-                  Total Seats: {sngTotalSeats}
+                <label className="block text-xs font-medium text-slate-500 mb-2">
+                  Total Seats: <span className="text-slate-300">{sngTotalSeats}</span>
                 </label>
                 <div className="flex gap-2">
                   {[2, 3, 4, 5, 6].map((num) => (
@@ -378,28 +383,33 @@ function CreateGameModal({ isOpen, onClose, onCreate, loading }) {
 
               {/* Payout Structure */}
               <div className="mb-4">
-                <label className="block text-sm font-medium text-slate-300 mb-2">
+                <label className="block text-xs font-medium text-slate-500 mb-2">
                   Payout Structure
                 </label>
-                <select
-                  value={payoutStructureType}
-                  onChange={(e) => {
-                    setPayoutStructureType(e.target.value);
-                    setCustomPayoutError('');
-                  }}
-                  className="w-full text-white px-4 py-2.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500/50 transition-all"
-                  style={inputStyle}
-                >
-                  <option value={PAYOUT_STRUCTURE_TYPES.WINNER_TAKE_ALL}>
-                    Winner Take All (1st: 100%)
-                  </option>
-                  <option value={PAYOUT_STRUCTURE_TYPES.STANDARD}>
-                    Standard (Top {STANDARD_PAYOUTS[sngTotalSeats]?.length || 1} Paid)
-                  </option>
-                  <option value={PAYOUT_STRUCTURE_TYPES.CUSTOM}>
-                    Custom
-                  </option>
-                </select>
+                <div className="relative">
+                  <select
+                    value={payoutStructureType}
+                    onChange={(e) => {
+                      setPayoutStructureType(e.target.value);
+                      setCustomPayoutError('');
+                    }}
+                    className="w-full text-white px-4 pr-10 py-2.5 rounded-xl appearance-none focus:outline-none focus:ring-2 focus:ring-purple-500/50 transition-all"
+                    style={inputStyle}
+                  >
+                    <option value={PAYOUT_STRUCTURE_TYPES.WINNER_TAKE_ALL}>
+                      Winner Take All (1st: 100%)
+                    </option>
+                    <option value={PAYOUT_STRUCTURE_TYPES.STANDARD}>
+                      Standard (Top {STANDARD_PAYOUTS[sngTotalSeats]?.length || 1} Paid)
+                    </option>
+                    <option value={PAYOUT_STRUCTURE_TYPES.CUSTOM}>
+                      Custom
+                    </option>
+                  </select>
+                  <svg className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </div>
                 <p className="text-xs text-slate-500 mt-1">
                   {payoutStructureType === PAYOUT_STRUCTURE_TYPES.WINNER_TAKE_ALL && 'First place takes the entire prize pool'}
                   {payoutStructureType === PAYOUT_STRUCTURE_TYPES.STANDARD && `Standard payout: ${STANDARD_PAYOUTS[sngTotalSeats]?.map(p => `${(p * 100).toFixed(0)}%`).join(' / ') || '100%'}`}
@@ -410,7 +420,7 @@ function CreateGameModal({ isOpen, onClose, onCreate, loading }) {
               {/* Custom Payout Input */}
               {payoutStructureType === PAYOUT_STRUCTURE_TYPES.CUSTOM && (
                 <div className="mb-4">
-                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                  <label className="block text-xs font-medium text-slate-500 mb-2">
                     Custom Percentages (comma-separated)
                   </label>
                   <input
@@ -471,9 +481,9 @@ function CreateGameModal({ isOpen, onClose, onCreate, loading }) {
 
           {/* Max Players (Cash Game only) */}
           {!isSitAndGo && (
-            <div className="mb-5">
-              <label htmlFor="maxPlayers" className="block text-sm font-medium text-slate-300 mb-2">
-                Max Players: {maxPlayers}
+            <div className="mb-6">
+              <label htmlFor="maxPlayers" className="block text-xs font-medium text-slate-500 mb-2">
+                Max Players: <span className="text-slate-300">{maxPlayers}</span>
               </label>
               <div className="flex gap-2 mb-2">
                 {[2, 3, 4, 5, 6].map((num) => (
@@ -506,21 +516,26 @@ function CreateGameModal({ isOpen, onClose, onCreate, loading }) {
           )}
 
           {/* Betting Structure */}
-          <div className="mb-5">
-            <label htmlFor="bettingType" className="block text-sm font-medium text-slate-300 mb-2">
+          <div className="mb-6">
+            <label htmlFor="bettingType" className="block text-xs font-medium text-slate-500 mb-2">
               Betting Structure
             </label>
-            <select
-              id="bettingType"
-              value={bettingType}
-              onChange={(e) => setBettingType(e.target.value)}
-              className="w-full text-white px-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/50 transition-all"
-              style={inputStyle}
-            >
-              <option value="no_limit">No Limit</option>
-              <option value="pot_limit">Pot Limit</option>
-              <option value="fixed_limit">Fixed Limit</option>
-            </select>
+            <div className="relative">
+              <select
+                id="bettingType"
+                value={bettingType}
+                onChange={(e) => setBettingType(e.target.value)}
+                className="w-full text-white px-4 pr-10 py-3 rounded-xl appearance-none focus:outline-none focus:ring-2 focus:ring-amber-500/50 transition-all"
+                style={inputStyle}
+              >
+                <option value="no_limit">No Limit</option>
+                <option value="pot_limit">Pot Limit</option>
+                <option value="fixed_limit">Fixed Limit</option>
+              </select>
+              <svg className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
             <p className="text-xs text-slate-500 mt-1">
               Choose the betting structure for this table
             </p>
@@ -529,9 +544,9 @@ function CreateGameModal({ isOpen, onClose, onCreate, loading }) {
           {/* Bot Configuration (Cash Game only) */}
           {!isSitAndGo && (
             <>
-              <div className="mb-5">
-                <label htmlFor="botCount" className="block text-sm font-medium text-slate-300 mb-2">
-                  Bot Players: {botCount}
+              <div className="mb-6">
+                <label htmlFor="botCount" className="block text-xs font-medium text-slate-500 mb-2">
+                  Bot Players: <span className="text-slate-300">{botCount}</span>
                 </label>
                 <input
                   type="range"
@@ -547,7 +562,7 @@ function CreateGameModal({ isOpen, onClose, onCreate, loading }) {
                       setMaxPlayers(Math.min(6, newCount + 1));
                     }
                   }}
-                  className="w-full h-2 rounded-full appearance-none cursor-pointer"
+                  className="w-full rounded-full appearance-none cursor-pointer slider-touch"
                   style={{
                     background: `linear-gradient(to right, #f59e0b 0%, #f59e0b ${(botCount / 5) * 100}%, rgba(71, 85, 105, 0.5) ${(botCount / 5) * 100}%, rgba(71, 85, 105, 0.5) 100%)`,
                   }}
@@ -563,21 +578,26 @@ function CreateGameModal({ isOpen, onClose, onCreate, loading }) {
 
               {/* Bot Difficulty */}
               {botCount > 0 && (
-                <div className="mb-5">
-                  <label htmlFor="botDifficulty" className="block text-sm font-medium text-slate-300 mb-2">
+                <div className="mb-6">
+                  <label htmlFor="botDifficulty" className="block text-xs font-medium text-slate-500 mb-2">
                     Bot Difficulty
                   </label>
-                  <select
-                    id="botDifficulty"
-                    value={botDifficulty}
-                    onChange={(e) => setBotDifficulty(e.target.value)}
-                    className="w-full text-white px-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/50 transition-all"
-                    style={inputStyle}
-                  >
-                    <option value="easy">Easy (Tourist)</option>
-                    <option value="medium">Medium</option>
-                    <option value="hard">Hard (Pro)</option>
-                  </select>
+                  <div className="relative">
+                    <select
+                      id="botDifficulty"
+                      value={botDifficulty}
+                      onChange={(e) => setBotDifficulty(e.target.value)}
+                      className="w-full text-white px-4 pr-10 py-3 rounded-xl appearance-none focus:outline-none focus:ring-2 focus:ring-amber-500/50 transition-all"
+                      style={inputStyle}
+                    >
+                      <option value="easy">Easy (Tourist)</option>
+                      <option value="medium">Medium</option>
+                      <option value="hard">Hard (Pro)</option>
+                    </select>
+                    <svg className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
                   <p className="text-xs text-slate-500 mt-1">
                     AI skill level for all bots
                   </p>
@@ -586,55 +606,43 @@ function CreateGameModal({ isOpen, onClose, onCreate, loading }) {
 
               {/* Fill Strategy */}
               {botCount > 0 && (
-                <div className="mb-5">
-                  <label className="block text-sm font-medium text-slate-300 mb-3">
+                <div className="mb-6">
+                  <label className="block text-xs font-medium text-slate-500 mb-2">
                     Bot Fill Strategy
                   </label>
-                  <div className="flex gap-3">
-                    <label
-                      className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl cursor-pointer transition-all ${
-                        fillStrategy === 'fixed' ? 'text-white' : 'text-slate-400'
+                  <div className="flex gap-2 p-1 rounded-xl" style={{ background: 'rgba(15, 23, 42, 0.5)' }}>
+                    <motion.button
+                      type="button"
+                      onClick={() => setFillStrategy('fixed')}
+                      whileTap={{ scale: 0.98 }}
+                      className={`flex-1 py-3 px-4 rounded-lg font-semibold text-sm transition-all duration-200 ${
+                        fillStrategy === 'fixed'
+                          ? 'text-white shadow-lg'
+                          : 'text-slate-400 hover:text-slate-300'
                       }`}
                       style={fillStrategy === 'fixed' ? {
-                        background: 'linear-gradient(180deg, rgba(245, 158, 11, 0.2) 0%, rgba(217, 119, 6, 0.25) 100%)',
-                        border: '1px solid rgba(245, 158, 11, 0.4)',
-                      } : {
-                        background: 'rgba(15, 23, 42, 0.5)',
-                        border: '1px solid rgba(71, 85, 105, 0.3)',
-                      }}
+                        background: 'linear-gradient(180deg, #f59e0b 0%, #d97706 100%)',
+                        boxShadow: '0 4px 15px rgba(245, 158, 11, 0.3)',
+                      } : {}}
                     >
-                      <input
-                        type="radio"
-                        name="fillStrategy"
-                        value="fixed"
-                        checked={fillStrategy === 'fixed'}
-                        onChange={(e) => setFillStrategy(e.target.value)}
-                        className="w-4 h-4 text-amber-500 bg-slate-700 border-slate-600 focus:ring-amber-500"
-                      />
-                      <span className="text-sm font-medium">Fixed Count</span>
-                    </label>
-                    <label
-                      className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl cursor-pointer transition-all ${
-                        fillStrategy === 'fill_empty' ? 'text-white' : 'text-slate-400'
+                      Fixed Count
+                    </motion.button>
+                    <motion.button
+                      type="button"
+                      onClick={() => setFillStrategy('fill_empty')}
+                      whileTap={{ scale: 0.98 }}
+                      className={`flex-1 py-3 px-4 rounded-lg font-semibold text-sm transition-all duration-200 ${
+                        fillStrategy === 'fill_empty'
+                          ? 'text-white shadow-lg'
+                          : 'text-slate-400 hover:text-slate-300'
                       }`}
                       style={fillStrategy === 'fill_empty' ? {
-                        background: 'linear-gradient(180deg, rgba(245, 158, 11, 0.2) 0%, rgba(217, 119, 6, 0.25) 100%)',
-                        border: '1px solid rgba(245, 158, 11, 0.4)',
-                      } : {
-                        background: 'rgba(15, 23, 42, 0.5)',
-                        border: '1px solid rgba(71, 85, 105, 0.3)',
-                      }}
+                        background: 'linear-gradient(180deg, #f59e0b 0%, #d97706 100%)',
+                        boxShadow: '0 4px 15px rgba(245, 158, 11, 0.3)',
+                      } : {}}
                     >
-                      <input
-                        type="radio"
-                        name="fillStrategy"
-                        value="fill_empty"
-                        checked={fillStrategy === 'fill_empty'}
-                        onChange={(e) => setFillStrategy(e.target.value)}
-                        className="w-4 h-4 text-amber-500 bg-slate-700 border-slate-600 focus:ring-amber-500"
-                      />
-                      <span className="text-sm font-medium">Fill Empty</span>
-                    </label>
+                      Fill Empty
+                    </motion.button>
                   </div>
                   <p className="text-xs text-slate-500 mt-2">
                     {fillStrategy === 'fixed'
@@ -647,62 +655,50 @@ function CreateGameModal({ isOpen, onClose, onCreate, loading }) {
           )}
 
           {/* Privacy Settings */}
-          <div className="mb-5">
-            <label className="block text-sm font-medium text-slate-300 mb-3">
+          <div className="mb-6">
+            <label className="block text-xs font-medium text-slate-500 mb-2">
               Privacy Settings
             </label>
-            <div className="flex gap-3 mb-3">
-              <label
-                className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl cursor-pointer transition-all ${
-                  privacy === 'public' ? 'text-white' : 'text-slate-400'
+            <div className="flex gap-2 p-1 rounded-xl" style={{ background: 'rgba(15, 23, 42, 0.5)' }}>
+              <motion.button
+                type="button"
+                onClick={() => {
+                  setPrivacy('public');
+                  setPassword('');
+                  setError('');
+                }}
+                whileTap={{ scale: 0.98 }}
+                className={`flex-1 py-3 px-4 rounded-lg font-semibold text-sm transition-all duration-200 ${
+                  privacy === 'public'
+                    ? 'text-white shadow-lg'
+                    : 'text-slate-400 hover:text-slate-300'
                 }`}
                 style={privacy === 'public' ? {
-                  background: 'linear-gradient(180deg, rgba(34, 197, 94, 0.2) 0%, rgba(22, 163, 74, 0.25) 100%)',
-                  border: '1px solid rgba(34, 197, 94, 0.4)',
-                } : {
-                  background: 'rgba(15, 23, 42, 0.5)',
-                  border: '1px solid rgba(71, 85, 105, 0.3)',
-                }}
+                  background: 'linear-gradient(180deg, #22c55e 0%, #16a34a 100%)',
+                  boxShadow: '0 4px 15px rgba(34, 197, 94, 0.3)',
+                } : {}}
               >
-                <input
-                  type="radio"
-                  name="privacy"
-                  value="public"
-                  checked={privacy === 'public'}
-                  onChange={(e) => {
-                    setPrivacy(e.target.value);
-                    setPassword('');
-                    setError('');
-                  }}
-                  className="w-4 h-4 text-green-500 bg-slate-700 border-slate-600 focus:ring-green-500"
-                />
-                <span className="text-sm font-medium">Public</span>
-              </label>
-              <label
-                className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl cursor-pointer transition-all ${
-                  privacy === 'private' ? 'text-white' : 'text-slate-400'
+                Public
+              </motion.button>
+              <motion.button
+                type="button"
+                onClick={() => {
+                  setPrivacy('private');
+                  setError('');
+                }}
+                whileTap={{ scale: 0.98 }}
+                className={`flex-1 py-3 px-4 rounded-lg font-semibold text-sm transition-all duration-200 ${
+                  privacy === 'private'
+                    ? 'text-white shadow-lg'
+                    : 'text-slate-400 hover:text-slate-300'
                 }`}
                 style={privacy === 'private' ? {
-                  background: 'linear-gradient(180deg, rgba(245, 158, 11, 0.2) 0%, rgba(217, 119, 6, 0.25) 100%)',
-                  border: '1px solid rgba(245, 158, 11, 0.4)',
-                } : {
-                  background: 'rgba(15, 23, 42, 0.5)',
-                  border: '1px solid rgba(71, 85, 105, 0.3)',
-                }}
+                  background: 'linear-gradient(180deg, #f59e0b 0%, #d97706 100%)',
+                  boxShadow: '0 4px 15px rgba(245, 158, 11, 0.3)',
+                } : {}}
               >
-                <input
-                  type="radio"
-                  name="privacy"
-                  value="private"
-                  checked={privacy === 'private'}
-                  onChange={(e) => {
-                    setPrivacy(e.target.value);
-                    setError('');
-                  }}
-                  className="w-4 h-4 text-amber-500 bg-slate-700 border-slate-600 focus:ring-amber-500"
-                />
-                <span className="text-sm font-medium">Private</span>
-              </label>
+                Private
+              </motion.button>
             </div>
 
             {/* Password Input (only shown for private) */}
@@ -714,7 +710,7 @@ function CreateGameModal({ isOpen, onClose, onCreate, loading }) {
                   exit={{ opacity: 0, height: 0 }}
                   className="mt-3 overflow-hidden"
                 >
-                  <label htmlFor="password" className="block text-sm font-medium text-slate-300 mb-2">
+                  <label htmlFor="password" className="block text-xs font-medium text-slate-500 mb-2">
                     Room Password
                   </label>
                   <input
@@ -739,19 +735,24 @@ function CreateGameModal({ isOpen, onClose, onCreate, loading }) {
 
           {/* Game Speed */}
           <div className="mb-6">
-            <label htmlFor="gameSpeed" className="block text-sm font-medium text-slate-300 mb-2">
+            <label htmlFor="gameSpeed" className="block text-xs font-medium text-slate-500 mb-2">
               Game Speed
             </label>
-            <select
-              id="gameSpeed"
-              value={gameSpeed}
-              onChange={(e) => setGameSpeed(e.target.value)}
-              className="w-full text-white px-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/50 transition-all"
-              style={inputStyle}
-            >
-              <option value="normal">Normal (1 min per turn)</option>
-              <option value="turbo">Turbo (30s per turn)</option>
-            </select>
+            <div className="relative">
+              <select
+                id="gameSpeed"
+                value={gameSpeed}
+                onChange={(e) => setGameSpeed(e.target.value)}
+                className="w-full text-white px-4 pr-10 py-3 rounded-xl appearance-none focus:outline-none focus:ring-2 focus:ring-amber-500/50 transition-all"
+                style={inputStyle}
+              >
+                <option value="normal">Normal (1 min per turn)</option>
+                <option value="turbo">Turbo (30s per turn)</option>
+              </select>
+              <svg className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
             <p className="text-xs text-slate-500 mt-1">
               Turn time limit for each player
             </p>
