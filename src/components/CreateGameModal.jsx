@@ -775,14 +775,20 @@ function CreateGameModal({ isOpen, onClose, onCreate, loading }) {
             </div>
 
             {/* Footer with Action Buttons */}
-            <div className="px-6 py-4 border-t border-slate-700/50">
+            <div className="px-6 py-5 border-t border-slate-700/50">
               <div className="flex gap-3">
                 <motion.button
                   type="button"
                   onClick={handleClose}
                   disabled={loading}
-                  whileTap={{ scale: 0.98 }}
-                  className="flex-1 bg-slate-700/50 hover:bg-slate-600/50 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3.5 rounded-xl transition-colors border border-slate-600/30"
+                  whileTap={{ y: 2, boxShadow: '0 0px 0 rgba(51, 65, 85, 0.7), 0 1px 4px rgba(0, 0, 0, 0.15)' }}
+                  className="flex-1 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-2xl flex items-center justify-center"
+                  style={{
+                    minHeight: '52px',
+                    background: 'rgba(51, 65, 85, 0.6)',
+                    border: '1px solid rgba(71, 85, 105, 0.3)',
+                    boxShadow: '0 3px 0 rgba(51, 65, 85, 0.7), 0 5px 12px rgba(0, 0, 0, 0.2)',
+                  }}
                 >
                   Cancel
                 </motion.button>
@@ -790,12 +796,13 @@ function CreateGameModal({ isOpen, onClose, onCreate, loading }) {
                   type="button"
                   onClick={handleSubmit}
                   disabled={loading || (privacy === 'private' && !password.trim())}
-                  whileTap={{ scale: 0.98 }}
-                  className="flex-1 font-bold py-3.5 rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  whileTap={{ y: 4, boxShadow: '0 1px 0 #b45309, 0 3px 10px rgba(180, 83, 9, 0.2)' }}
+                  className="flex-1 font-bold rounded-2xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
                   style={{
-                    background: 'linear-gradient(180deg, #f59e0b 0%, #d97706 100%)',
+                    minHeight: '52px',
+                    background: 'linear-gradient(180deg, #fbbf24 0%, #f59e0b 50%, #d97706 100%)',
                     color: 'white',
-                    boxShadow: '0 4px 15px rgba(245, 158, 11, 0.3)',
+                    boxShadow: '0 5px 0 #b45309, 0 7px 18px rgba(180, 83, 9, 0.3)',
                   }}
                 >
                   {loading ? 'Creating...' : 'Create Table'}
