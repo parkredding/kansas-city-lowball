@@ -2555,6 +2555,7 @@ export class GameService {
     // Determine game type from config
     const gameType = tableData.config?.gameType || 'lowball_27';
     const isHoldem = gameType === 'holdem';
+    const isSingleDraw = gameType === 'single_draw_27';
 
     // Phase transitions depend on game type
     const phaseAfterBet = isHoldem ? {
@@ -2562,6 +2563,9 @@ export class GameService {
       FLOP: 'TURN',
       TURN: 'RIVER',
       RIVER: 'SHOWDOWN',
+    } : isSingleDraw ? {
+      BETTING_1: 'DRAW_1',
+      BETTING_2: 'SHOWDOWN',
     } : {
       BETTING_1: 'DRAW_1',
       BETTING_2: 'DRAW_2',
@@ -2727,6 +2731,9 @@ export class GameService {
             FLOP: 'TURN',
             TURN: 'RIVER',
             RIVER: 'SHOWDOWN',
+          } : isSingleDraw ? {
+            BETTING_1: 'DRAW_1',
+            BETTING_2: 'SHOWDOWN',
           } : {
             BETTING_1: 'DRAW_1',
             BETTING_2: 'DRAW_2',
@@ -3126,15 +3133,25 @@ export class GameService {
 
     const roundComplete = nextPlayerIndex === -1;
 
+    // Get game type to determine phase transitions
+    const gameType = tableData.config?.gameType || 'lowball_27';
+    const isSingleDraw = gameType === 'single_draw_27';
+
     // Determine next phase - normally goes to betting, but if no one can bet, skip to next draw
-    const phaseAfterDraw = {
+    // For single draw, DRAW_1 goes directly to BETTING_2, then SHOWDOWN
+    const phaseAfterDraw = isSingleDraw ? {
+      DRAW_1: 'BETTING_2',
+    } : {
       DRAW_1: 'BETTING_2',
       DRAW_2: 'BETTING_3',
       DRAW_3: 'BETTING_4',
     };
-    
+
     // Map betting phases to their subsequent draw phases (for skipping when all are all-in)
-    const phaseAfterBetting = {
+    // For single draw, BETTING_2 goes directly to SHOWDOWN (no more draws)
+    const phaseAfterBetting = isSingleDraw ? {
+      BETTING_2: 'SHOWDOWN',
+    } : {
       BETTING_2: 'DRAW_2',
       BETTING_3: 'DRAW_3',
       BETTING_4: 'SHOWDOWN',
@@ -3178,7 +3195,7 @@ export class GameService {
         if (phaseAfterSkippedBetting === 'SHOWDOWN') {
           // After DRAW_3, there are no more draw opportunities - go to showdown
           // Use lastAggressor from the table for proper reveal order
-          const showdownResult = calculateShowdownResult(players, tableData.pot, 'lowball_27', [], tableData.lastAggressor, tableData.dealerIndex);
+          const showdownResult = calculateShowdownResult(players, tableData.pot, gameType, [], tableData.lastAggressor, tableData.dealerIndex);
 
           // Award pot to winner(s)
           const updatedPlayers = players.map(p => {
