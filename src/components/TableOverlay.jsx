@@ -54,8 +54,27 @@ export function DrawRoundIndicator({ phase, gameType = 'lowball_27' }) {
   // Only show for draw poker variants
   if (gameType === 'holdem') return null;
 
+  const isSingleDraw = gameType === 'single_draw_27';
+
   // Parse the phase to determine what to display
   const getDrawInfo = () => {
+    // For single draw, use simplified phase labels
+    if (isSingleDraw) {
+      switch (phase) {
+        case 'BETTING_1':
+          return { label: 'Pre-Draw', sublabel: 'First Betting Round', number: 0 };
+        case 'DRAW_1':
+          return { label: 'Draw', sublabel: 'Select cards to discard', number: 1 };
+        case 'BETTING_2':
+          return { label: 'Post-Draw', sublabel: 'Final Betting Round', number: 1 };
+        case 'SHOWDOWN':
+          return { label: 'Showdown', sublabel: 'Reveal hands', number: 2 };
+        default:
+          return null;
+      }
+    }
+
+    // Triple draw phases
     switch (phase) {
       case 'BETTING_1':
         return { label: 'Pre-Draw', sublabel: 'First Betting Round', number: 0 };

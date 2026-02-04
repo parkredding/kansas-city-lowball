@@ -77,7 +77,8 @@ function VictoryModal({
 
   // Game type display name
   const gameTypeDisplay =
-    gameType === 'holdem' ? "Texas Hold'em" : 'Kansas City Lowball';
+    gameType === 'holdem' ? "Texas Hold'em" :
+    gameType === 'single_draw_27' ? '2-7 Single Draw' : 'Kansas City Lowball';
 
   return (
     <AnimatePresence>

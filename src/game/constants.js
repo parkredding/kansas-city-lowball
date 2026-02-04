@@ -15,6 +15,9 @@ export const CARDS_PER_HAND = 5;
 // Number of draw rounds in Triple Draw
 export const NUM_DRAW_ROUNDS = 3;
 
+// Number of draw rounds in Single Draw
+export const NUM_SINGLE_DRAW_ROUNDS = 1;
+
 // ============================================
 // TEXAS HOLD'EM CONFIG
 // ============================================
@@ -67,6 +70,7 @@ export const SUIT_VALUES = {
 // Game types
 export const GAME_TYPES = {
   LOWBALL_27: 'lowball_27',
+  SINGLE_DRAW_27: 'single_draw_27',
   HOLDEM: 'holdem',
 };
 
@@ -252,6 +256,15 @@ export function getGameConfig(gameType) {
         communityCards: HOLDEM_COMMUNITY_CARDS,
         hasDrawPhase: false,
         phases: ['PREFLOP', 'FLOP', 'TURN', 'RIVER', 'SHOWDOWN'],
+      };
+    case GAME_TYPES.SINGLE_DRAW_27:
+      return {
+        holeCards: CARDS_PER_HAND,
+        communityCards: 0,
+        hasDrawPhase: true,
+        drawRounds: NUM_SINGLE_DRAW_ROUNDS,
+        phases: ['BETTING_1', 'DRAW_1', 'BETTING_2', 'SHOWDOWN'],
+        defaultBettingType: 'no_limit', // 2-7 Single Draw is typically No Limit
       };
     case GAME_TYPES.LOWBALL_27:
     default:

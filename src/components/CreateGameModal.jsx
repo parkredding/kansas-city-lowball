@@ -295,6 +295,7 @@ function CreateGameModal({ isOpen, onClose, onCreate, loading }) {
                 style={inputStyle}
               >
                 <option value="lowball_27">Kansas City Lowball (2-7 Triple Draw)</option>
+                <option value="single_draw_27">2-7 Single Draw (No Limit)</option>
                 <option value="holdem">Texas Hold'em</option>
                 <option value="plo" disabled>PLO (Coming Soon)</option>
               </select>
