@@ -2958,51 +2958,58 @@ export class GameService {
   }
 
   /**
-   * Claim a timeout via Cloud Function (Passive Timer System)
+   * Request server-side timeout processing (Server-Hosted Architecture)
    *
-   * This is the primary method for enforcing timeouts. It can be called by ANY
-   * player at the table when the timer expires. The Cloud Function validates
-   * that the deadline has actually passed using server time.
+   * In the server-hosted model, the server proactively processes timeouts
+   * via a scheduled function every minute. However, clients can request
+   * immediate processing to reduce latency when a timer expires.
    *
-   * ANTI-HANG LOGIC:
-   * - ANY player can trigger timeout (not just the active player)
-   * - Server validates turnDeadline against server time (anti-cheat)
-   * - Atomic transaction ensures exactly one timeout action
-   * - Fallback to client-side timeout if Cloud Function unavailable
+   * This method calls the Cloud Function which:
+   * - Validates using server time (anti-cheat)
+   * - Performs the timeout action atomically
+   * - Returns the result
+   *
+   * Note: Even if this call fails or is not made, the server's scheduled
+   * function will eventually process the timeout (within ~1 minute).
    *
    * @param {string} tableId - The table ID
    * @returns {Promise<Object>} - { success: boolean, action?: string, message?: string }
    */
-  static async claimTimeout(tableId) {
+  static async requestTimeoutProcessing(tableId) {
     try {
-      // Call the Cloud Function for server-validated timeout
+      // Call the Cloud Function for immediate server-side timeout processing
       const handleTimeoutFn = httpsCallable(functions, 'handleTimeout');
       const result = await handleTimeoutFn({ tableId });
       return result.data;
     } catch (error) {
-      console.error('claimTimeout error:', error);
+      console.error('requestTimeoutProcessing error:', error);
 
-      // If Cloud Function fails, return error info
-      // The caller can decide whether to fall back to client-side handling
+      // In server-hosted model, failure is acceptable - the scheduled
+      // function will process the timeout eventually
       return {
         success: false,
-        error: error.message || 'Failed to claim timeout',
+        error: error.message || 'Failed to request timeout processing',
         code: error.code,
+        // Important: indicate that server will handle it eventually
+        serverWillRetry: true,
       };
     }
   }
 
   /**
+   * @deprecated Use requestTimeoutProcessing() instead
+   * Kept for backward compatibility during transition
+   */
+  static async claimTimeout(tableId) {
+    return GameService.requestTimeoutProcessing(tableId);
+  }
+
+  /**
    * Fallback client-side timeout handler (legacy)
    *
-   * This method is kept for backwards compatibility and as a fallback
-   * when Cloud Functions are unavailable. It should only be used when:
-   * 1. Cloud Functions are not deployed
-   * 2. The calling player IS the active player (for security)
-   *
-   * For production, use claimTimeout() instead.
-   *
-   * @deprecated Use claimTimeout() for server-validated timeouts
+   * @deprecated No longer needed in server-hosted architecture.
+   * The server's scheduled function handles all timeouts automatically.
+   * Kept only for emergency fallback if Cloud Functions are completely unavailable.
    */
   static async handleTimeoutFallback(tableId, tableData, playerUid) {
     // Same logic as original handleTimeout

@@ -1,22 +1,23 @@
 /**
  * Cloud Functions for Kansas City Lowball Poker
  *
- * PASSIVE TIMER SYSTEM (Timestamp & Client-Claim)
- * ================================================
+ * SERVER-HOSTED GAME STATE ARCHITECTURE
+ * =====================================
  *
- * This implements a cost-effective timeout system that:
- * 1. Server writes `turnDeadline` ONCE when a turn begins (no intervals)
- * 2. Clients display countdown locally using (turnDeadline - Date.now())
- * 3. ANY client can claim a timeout by calling handleTimeout when timer hits 0
- * 4. Server validates using server time to prevent cheating
+ * This implements a server-authoritative game hosting model where:
+ * 1. Scheduled function runs every minute to process ALL expired timeouts
+ * 2. Server is the single source of truth for game state transitions
+ * 3. Clients only display state - no more client-triggered timeout claims
  *
- * This approach stays within Firebase Free Tier limits by:
- * - No server-side intervals or scheduled functions
- * - Single write per turn (not per second)
- * - Client-triggered enforcement (on-demand invocation)
+ * Benefits:
+ * - No race conditions from player refresh/back button
+ * - Consistent game state regardless of client connectivity
+ * - Future-proofed for scaling beyond free tier
+ * - Eliminates timer hang bugs caused by client-side claiming
  */
 
-const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { onCall, HttpsError, onRequest } = require("firebase-functions/v2/https");
+const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore, FieldValue, Timestamp } = require("firebase-admin/firestore");
 
@@ -40,21 +41,289 @@ function removeUndefinedValues(obj) {
 }
 
 /**
- * handleTimeout - Secure Cloud Function to enforce turn timeouts
+ * SCHEDULED FUNCTION: Process all expired timeouts
  *
- * This function can be triggered by ANY authenticated player when a timer expires.
- * It validates that the deadline has actually passed using server time,
- * preventing clients from cheating by triggering early.
+ * Runs every minute to check all active tables and process any expired turns.
+ * This is the core of the server-hosted architecture - the server proactively
+ * manages game state instead of waiting for client triggers.
  *
- * ANTI-HANG LOGIC:
- * - Any player at the table can trigger timeout for the active player
- * - Server validates turnDeadline against server time
- * - Atomic transaction ensures exactly one timeout action executes
- * - Idempotent: multiple calls for same timeout are safely ignored
+ * Schedule: Every 1 minute (to stay within free tier limits while being responsive)
+ */
+exports.processTimeouts = onSchedule({
+  schedule: "every 1 minutes",
+  timeZone: "America/Chicago",
+  retryCount: 0,  // Don't retry - next scheduled run will handle it
+}, async (event) => {
+  console.log("Processing timeouts - scheduled run started");
+
+  try {
+    const now = Timestamp.now();
+    const nowMs = now.toMillis();
+
+    // Query all tables with expired turnDeadlines
+    // A deadline is expired if it's in the past (with grace period)
+    const tablesSnapshot = await db.collection("tables")
+      .where("turnDeadline", "!=", null)
+      .get();
+
+    if (tablesSnapshot.empty) {
+      console.log("No tables with active turn deadlines");
+      return;
+    }
+
+    let processedCount = 0;
+    let skippedCount = 0;
+
+    // Process each table with a potential timeout
+    const promises = tablesSnapshot.docs.map(async (tableDoc) => {
+      const tableData = tableDoc.data();
+      const { turnDeadline, phase } = tableData;
+
+      if (!turnDeadline) {
+        return { skipped: true, reason: "no deadline" };
+      }
+
+      // Check if deadline has passed
+      let deadlineMs;
+      if (turnDeadline.toDate) {
+        deadlineMs = turnDeadline.toDate().getTime();
+      } else if (turnDeadline.seconds) {
+        deadlineMs = turnDeadline.seconds * 1000;
+      } else {
+        deadlineMs = new Date(turnDeadline).getTime();
+      }
+
+      // Only process if deadline + grace period has passed
+      if (nowMs < deadlineMs + GRACE_PERIOD_MS) {
+        return { skipped: true, reason: "not yet expired" };
+      }
+
+      // Check if game is in a timed phase
+      const isDrawPhase = phase?.startsWith("DRAW_");
+      const isBettingPhase = phase?.startsWith("BETTING_") ||
+                            ["PREFLOP", "FLOP", "TURN", "RIVER"].includes(phase);
+
+      if (!isDrawPhase && !isBettingPhase) {
+        return { skipped: true, reason: "not in timed phase" };
+      }
+
+      // Process timeout for this table
+      try {
+        const result = await processTableTimeout(tableDoc.ref, tableData);
+        return { processed: true, tableId: tableDoc.id, result };
+      } catch (err) {
+        console.error(`Error processing timeout for table ${tableDoc.id}:`, err);
+        return { error: true, tableId: tableDoc.id, message: err.message };
+      }
+    });
+
+    const results = await Promise.all(promises);
+
+    processedCount = results.filter(r => r.processed).length;
+    skippedCount = results.filter(r => r.skipped).length;
+    const errorCount = results.filter(r => r.error).length;
+
+    console.log(`Timeout processing complete: ${processedCount} processed, ${skippedCount} skipped, ${errorCount} errors`);
+
+  } catch (error) {
+    console.error("Error in processTimeouts:", error);
+  }
+});
+
+/**
+ * Process timeout for a single table
+ * Uses a transaction to ensure atomic state updates
+ */
+async function processTableTimeout(tableRef, initialData) {
+  return await db.runTransaction(async (transaction) => {
+    // Re-read within transaction for consistency
+    const tableDoc = await transaction.get(tableRef);
+
+    if (!tableDoc.exists) {
+      return { success: false, message: "Table not found" };
+    }
+
+    const tableData = tableDoc.data();
+    const { players, phase, activePlayerIndex, turnDeadline } = tableData;
+
+    // Re-validate deadline within transaction
+    if (!turnDeadline) {
+      return { success: false, message: "No deadline" };
+    }
+
+    const nowMs = Date.now();
+    let deadlineMs;
+    if (turnDeadline.toDate) {
+      deadlineMs = turnDeadline.toDate().getTime();
+    } else if (turnDeadline.seconds) {
+      deadlineMs = turnDeadline.seconds * 1000;
+    } else {
+      deadlineMs = new Date(turnDeadline).getTime();
+    }
+
+    if (nowMs < deadlineMs + GRACE_PERIOD_MS) {
+      return { success: false, message: "Deadline not yet passed" };
+    }
+
+    // Check phase
+    const isDrawPhase = phase?.startsWith("DRAW_");
+    const isBettingPhase = phase?.startsWith("BETTING_") ||
+                          ["PREFLOP", "FLOP", "TURN", "RIVER"].includes(phase);
+
+    if (!isDrawPhase && !isBettingPhase) {
+      return { success: false, message: "Not in timed phase" };
+    }
+
+    // Get the active player
+    const activePlayer = players[activePlayerIndex];
+    if (!activePlayer) {
+      return { success: false, message: "No active player" };
+    }
+
+    if (activePlayer.status !== "active" && activePlayer.status !== "all-in") {
+      return { success: false, message: "Active player cannot timeout" };
+    }
+
+    // Perform timeout action
+    const updatedPlayers = players.map(p => removeUndefinedValues({ ...p }));
+    const player = updatedPlayers[activePlayerIndex];
+    let actionDescription = "";
+    let actionTaken = "";
+
+    if (isDrawPhase) {
+      player.cardsToDiscard = [];
+      player.hasActedThisRound = true;
+      player.lastAction = "Stood Pat (timeout)";
+      actionDescription = `${player.displayName} stood pat (timeout)`;
+      actionTaken = "STAND_PAT";
+    } else if (isBettingPhase) {
+      const currentBet = tableData.currentBet || 0;
+
+      if ((player.currentRoundBet || 0) >= currentBet) {
+        player.hasActedThisRound = true;
+        player.lastAction = "Check (timeout)";
+        actionDescription = `${player.displayName} checked (timeout)`;
+        actionTaken = "CHECK";
+      } else {
+        player.status = "folded";
+        player.hasActedThisRound = true;
+        player.lastAction = "Fold (timeout)";
+        actionDescription = `${player.displayName} folded (timeout)`;
+        actionTaken = "FOLD";
+      }
+    }
+
+    // Find next player
+    const nextPlayerResult = findNextPlayerAndCheckRound(
+      updatedPlayers,
+      activePlayerIndex,
+      tableData
+    );
+
+    // Build update object
+    const updates = {
+      players: updatedPlayers,
+      lastUpdated: FieldValue.serverTimestamp(),
+      lastTimeoutProcessed: FieldValue.serverTimestamp(),
+    };
+
+    // Add activity log
+    const chatLog = [...(tableData.chatLog || [])];
+    chatLog.push({
+      type: "activity",
+      text: actionDescription,
+      timestamp: Date.now(),
+    });
+    if (chatLog.length > 100) {
+      updates.chatLog = chatLog.slice(-100);
+    } else {
+      updates.chatLog = chatLog;
+    }
+
+    // Handle phase transitions and next player
+    if (nextPlayerResult.roundComplete) {
+      const nextPhaseResult = getNextPhase(phase, updatedPlayers, tableData);
+      updates.phase = nextPhaseResult.phase;
+      updates.activePlayerIndex = nextPhaseResult.firstToAct;
+      updates.currentBet = 0;
+
+      updates.players = updatedPlayers.map(p => removeUndefinedValues({
+        ...p,
+        hasActedThisRound: false,
+      }));
+
+      if (nextPhaseResult.phase === "SHOWDOWN") {
+        updates.turnDeadline = null;
+      } else {
+        updates.turnDeadline = calculateTurnDeadline();
+      }
+    } else if (nextPlayerResult.nextPlayerIndex !== -1) {
+      updates.activePlayerIndex = nextPlayerResult.nextPlayerIndex;
+      updates.turnDeadline = calculateTurnDeadline();
+    } else {
+      updates.phase = "SHOWDOWN";
+      updates.turnDeadline = null;
+    }
+
+    transaction.update(tableRef, updates);
+
+    return {
+      success: true,
+      action: actionTaken,
+      message: actionDescription,
+      timedOutPlayer: player.displayName,
+      nextPhase: updates.phase,
+    };
+  });
+}
+
+/**
+ * HTTP endpoint to manually trigger timeout processing
+ * Useful for testing and for clients to request immediate processing
+ * after a timeout expires (reduces latency from 1 minute to near-instant)
+ */
+exports.triggerTimeoutCheck = onRequest({
+  cors: true,
+  maxInstances: 10,
+}, async (req, res) => {
+  // Only allow POST requests
+  if (req.method !== "POST") {
+    res.status(405).send("Method not allowed");
+    return;
+  }
+
+  const { tableId } = req.body;
+
+  if (!tableId) {
+    res.status(400).json({ success: false, error: "tableId is required" });
+    return;
+  }
+
+  try {
+    const tableRef = db.collection("tables").doc(tableId);
+    const tableDoc = await tableRef.get();
+
+    if (!tableDoc.exists) {
+      res.status(404).json({ success: false, error: "Table not found" });
+      return;
+    }
+
+    const tableData = tableDoc.data();
+    const result = await processTableTimeout(tableRef, tableData);
+
+    res.json(result);
+  } catch (error) {
+    console.error("Error in triggerTimeoutCheck:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * handleTimeout - Legacy Cloud Function for backward compatibility
  *
- * @param {Object} data - { tableId: string }
- * @param {Object} context - Firebase auth context
- * @returns {Object} - { success: boolean, action?: string, message?: string }
+ * Clients can still call this, but the scheduled function is now the
+ * primary mechanism. This provides a fallback and allows clients to
+ * request immediate processing instead of waiting for the next scheduled run.
  */
 exports.handleTimeout = onCall({
   cors: true,
