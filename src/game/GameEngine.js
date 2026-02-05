@@ -203,6 +203,15 @@ export const GAME_TYPE_REGISTRY = {
     cardsPerHand: 5,
     communityCards: 0,
   },
+  single_draw_27: {
+    name: '2-7 Single Draw (No Limit)',
+    shortName: '2-7 Single Draw',
+    description: 'Single-draw poker where the lowest hand wins. One draw round, no limit betting.',
+    hasDrawPhase: true,
+    drawRounds: 1,
+    cardsPerHand: 5,
+    communityCards: 0,
+  },
   holdem: {
     name: 'Texas Hold\'em',
     shortName: 'Hold\'em',
