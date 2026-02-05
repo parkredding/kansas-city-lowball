@@ -2,27 +2,34 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 
 const TOTAL_TIME = 45; // seconds
 
-// Time after deadline when any player can claim timeout (prevents hangs if active player disconnects)
-const GRACE_PERIOD_SECONDS = 2;
+// Time after deadline when we request immediate server processing
+// This is just an optimization - server will process automatically within ~1 minute anyway
+const REQUEST_PROCESSING_DELAY_SECONDS = 2;
 
 /**
- * TurnTimer component that displays remaining time and triggers timeout callback
+ * TurnTimer component that displays remaining time and optionally requests
+ * immediate server-side timeout processing
  *
- * PASSIVE TIMER SYSTEM:
- * - Timer displays locally using (turnDeadline - Date.now())
- * - When timer hits 0, the active player gets first chance to claim timeout
- * - After GRACE_PERIOD_SECONDS, ANY player can claim (anti-hang protection)
- * - Server validates all claims using server time (anti-cheat)
+ * SERVER-HOSTED ARCHITECTURE:
+ * - Timer is DISPLAY ONLY - it shows the countdown to the user
+ * - Server processes ALL timeouts automatically via scheduled function (every ~1 minute)
+ * - When timer expires, client can REQUEST immediate processing to reduce latency
+ * - This request is fire-and-forget - server handles everything
+ *
+ * Benefits over passive timer system:
+ * - No race conditions from player refresh/back button
+ * - No timer hang bugs from client-side claiming failures
+ * - Server is single source of truth for all state transitions
  *
  * @param {Object} turnDeadline - Firestore Timestamp or Date for when turn expires
- * @param {Function} onTimeout - Callback when timer expires (called for server-validated claim)
- * @param {boolean} isMyTurn - Whether it's the current user's turn
- * @param {boolean} canTriggerTimeout - Whether this client can trigger the timeout (for bot handling)
+ * @param {Function} onTimeout - Optional callback to request immediate server processing
+ * @param {boolean} isMyTurn - Whether it's the current user's turn (for display only)
+ * @param {boolean} canTriggerTimeout - Whether this client should request immediate processing
  * @param {boolean} isAtTable - Whether the user is at this table (player or railbird)
  */
 function TurnTimer({ turnDeadline, onTimeout, isMyTurn, canTriggerTimeout = false, isAtTable = true }) {
   const [secondsLeft, setSecondsLeft] = useState(TOTAL_TIME);
-  const hasClaimedRef = useRef(false);
+  const hasRequestedRef = useRef(false);
 
   const calculateSecondsLeft = useCallback(() => {
     if (!turnDeadline) return TOTAL_TIME;
@@ -43,8 +50,8 @@ function TurnTimer({ turnDeadline, onTimeout, isMyTurn, canTriggerTimeout = fals
   }, [turnDeadline]);
 
   useEffect(() => {
-    // Reset claim flag when deadline changes (new turn)
-    hasClaimedRef.current = false;
+    // Reset request flag when deadline changes (new turn)
+    hasRequestedRef.current = false;
 
     // Initial calculation
     setSecondsLeft(calculateSecondsLeft());
@@ -54,23 +61,26 @@ function TurnTimer({ turnDeadline, onTimeout, isMyTurn, canTriggerTimeout = fals
       const remaining = calculateSecondsLeft();
       setSecondsLeft(remaining);
 
-      // Don't try to claim if already claimed or no callback
-      if (hasClaimedRef.current || !onTimeout || !isAtTable) return;
+      // Don't request if already requested, no callback, or not at table
+      if (hasRequestedRef.current || !onTimeout || !isAtTable) return;
 
-      // PASSIVE TIMER CLAIM LOGIC:
-      // 1. Active player (or bot handler) can claim immediately when timer hits 0
-      // 2. Any other player can claim after GRACE_PERIOD_SECONDS past deadline
-      //    This prevents hangs when active player disconnects
-
-      const canClaimNow = (
-        // Active player or bot handler can claim at 0
+      // SERVER-HOSTED TIMEOUT REQUEST LOGIC:
+      // Request immediate server processing when timer expires
+      // This is just an optimization - server processes automatically anyway
+      //
+      // We wait a couple seconds past deadline before requesting to:
+      // 1. Give the active player a chance to act
+      // 2. Reduce unnecessary server calls
+      const shouldRequestNow = (
+        // Active player or designated handler can request immediately at 0
         (remaining <= 0 && (isMyTurn || canTriggerTimeout)) ||
-        // Any player can claim after grace period (anti-hang protection)
-        (remaining <= -GRACE_PERIOD_SECONDS)
+        // After delay, any player can request (reduces latency vs waiting for scheduled function)
+        (remaining <= -REQUEST_PROCESSING_DELAY_SECONDS)
       );
 
-      if (canClaimNow) {
-        hasClaimedRef.current = true;
+      if (shouldRequestNow) {
+        hasRequestedRef.current = true;
+        // Fire-and-forget: server handles everything
         onTimeout();
       }
     }, 1000);

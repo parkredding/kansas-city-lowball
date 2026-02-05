@@ -35,8 +35,9 @@ export function GameProvider({ children }) {
   const [userWallet, setUserWallet] = useState(null);
   const [walletLoading, setWalletLoading] = useState(false);
 
-  // Track if we've processed a timeout to avoid duplicates
-  const timeoutProcessedRef = useRef(false);
+  // Track if we've requested timeout processing to avoid duplicate requests
+  // Note: In server-hosted model, the server handles deduplication via transactions
+  const timeoutRequestedRef = useRef(false);
 
   // Initialize user wallet when logged in
   useEffect(() => {
@@ -88,8 +89,8 @@ export function GameProvider({ children }) {
       } else {
         setTableData(data);
         setError(null);
-        // Reset timeout flag when table data changes
-        timeoutProcessedRef.current = false;
+        // Reset timeout request flag when table data changes (new turn started)
+        timeoutRequestedRef.current = false;
       }
     });
 
@@ -424,48 +425,45 @@ export function GameProvider({ children }) {
     }
   }, [currentTableId, currentUser]);
 
-  // Handle turn timeout via Cloud Function (Passive Timer System)
+  // Request server-side timeout processing (Server-Hosted Architecture)
   //
-  // ANTI-HANG LOGIC:
-  // - Any player at the table can claim a timeout when timer expires
-  // - Server validates using server time (prevents cheating)
-  // - Atomic transaction ensures exactly one timeout action
-  // - If Cloud Function fails, falls back to client-side handling (legacy)
+  // In the server-hosted model:
+  // - The server's scheduled function processes ALL timeouts automatically (every ~1 minute)
+  // - Clients can request IMMEDIATE processing to reduce latency
+  // - This is fire-and-forget - the server handles everything
+  // - No need for client-side fallback - server will always process eventually
+  //
+  // Benefits over the old passive timer system:
+  // - No race conditions from player refresh/back button
+  // - No timer hang bugs from client-side claiming failures
+  // - Server is single source of truth for all state transitions
   const handleTimeout = useCallback(async () => {
     if (!currentTableId || !tableData || !currentUser) return;
-    if (timeoutProcessedRef.current) return;
+    if (timeoutRequestedRef.current) return;
 
     const activePlayer = tableData.players[tableData.activePlayerIndex];
     if (!activePlayer) return;
 
-    // Mark as processing to prevent duplicate calls
-    timeoutProcessedRef.current = true;
+    // Mark as requested to avoid duplicate requests
+    // The server handles actual deduplication via transactions
+    timeoutRequestedRef.current = true;
 
     try {
-      // Try server-validated timeout first (via Cloud Function)
-      const result = await GameService.claimTimeout(currentTableId);
+      // Request immediate server-side processing (fire-and-forget)
+      // Even if this fails, the server's scheduled function will process it
+      const result = await GameService.requestTimeoutProcessing(currentTableId);
 
       if (result.success) {
-        // Cloud Function successfully processed the timeout
-        console.log('Timeout claimed:', result.message);
-      } else if (result.error) {
-        // Cloud Function call failed - check if we should fallback
-        console.warn('Timeout claim failed:', result.error);
-
-        // Only fallback if we're the active player (security measure)
-        // This ensures only authorized clients can force actions
-        const isActivePlayer = activePlayer.uid === currentUser.uid;
-        const isCreatorAndBotTurn = tableData.createdBy === currentUser.uid && activePlayer.isBot;
-
-        if (isActivePlayer || isCreatorAndBotTurn) {
-          console.log('Falling back to client-side timeout');
-          await GameService.handleTimeoutFallback(currentTableId, tableData, activePlayer.uid);
-        }
+        console.log('Server processed timeout:', result.message);
+      } else if (result.serverWillRetry) {
+        // Server will handle it via scheduled function - no action needed
+        console.log('Timeout request queued, server will process automatically');
       }
-      // If result says timeout not valid yet (player acted in time), that's fine
+      // Note: No client-side fallback needed in server-hosted model
     } catch (err) {
-      console.error('Error handling timeout:', err);
-      timeoutProcessedRef.current = false;
+      console.error('Error requesting timeout processing:', err);
+      // Reset flag to allow retry, but server will handle it anyway
+      timeoutRequestedRef.current = false;
     }
   }, [currentTableId, tableData, currentUser]);
 
