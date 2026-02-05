@@ -21,6 +21,7 @@ import { useTurnNotification, playNotificationSound } from '../hooks/useTurnNoti
 import { SoundManager } from '../audio/SoundManager';
 import { MuckPile, DiscardAnimationOverlay, OpponentDiscardAnimation, useDiscardAnimation } from '../components/AnimatedCard';
 import { CommunityCards } from '../components/CommunityCards';
+import { getGameTypeInfo } from '../game/GameEngine';
 
 /**
  * Error Boundary component to catch rendering errors and prevent white screens
@@ -2166,6 +2167,11 @@ function GameView() {
                 <span className="text-slate-400 text-xs">Table: </span>
                 <span className="text-slate-100 font-mono font-bold text-sm">{currentTableId}</span>
               </div>
+              {getGameTypeInfo(gameType) && (
+                <div className="bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-700/50">
+                  <span className="text-emerald-300 font-semibold text-sm">{getGameTypeInfo(gameType).shortName}</span>
+                </div>
+              )}
               <PhaseIndicator phase={tableData?.phase} />
               {/* Tournament badge */}
               {isTournament && tournamentInfo && (
@@ -2193,7 +2199,7 @@ function GameView() {
                   blindTimer={tournamentInfo.blindTimer}
                   tournamentRunning={tournamentRunning}
                   onLevelUp={increaseBlindLevel}
-                  canTriggerLevelUp={userIsTableCreator}
+                  canTriggerLevelUp={true}
                 />
               )}
             </div>
@@ -2720,11 +2726,14 @@ function GameView() {
                 )}
               </div>
 
-              {/* Center: Table ID, Phase, Add Bot */}
+              {/* Center: Table ID, Game Name, Phase, Add Bot */}
               <div className="flex items-center gap-1.5">
                 <div className="bg-slate-800/80 px-1.5 py-0.5 rounded">
                   <span className="text-white font-mono font-bold text-[10px]">{currentTableId}</span>
                 </div>
+                {getGameTypeInfo(gameType) && (
+                  <span className="text-emerald-300 font-semibold text-[10px]">{getGameTypeInfo(gameType).shortName}</span>
+                )}
                 <PhaseIndicator phase={tableData?.phase} />
                 {/* Add Bot icon button - in header for table creator */}
                 {userIsTableCreator && !isTournament && (tableData?.players?.length || 0) < 6 && (

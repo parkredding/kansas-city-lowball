@@ -623,8 +623,13 @@ function getNextPhase(currentPhase, players, tableData) {
 
     return { phase: nextPhase, firstToAct };
   } else {
-    // Lowball phase order
-    const phaseOrder = {
+    // Draw poker phase order - varies by game type
+    const isSingleDraw = gameType === "single_draw_27";
+    const phaseOrder = isSingleDraw ? {
+      "BETTING_1": "DRAW_1",
+      "DRAW_1": "BETTING_2",
+      "BETTING_2": "SHOWDOWN",
+    } : {
       "BETTING_1": "DRAW_1",
       "DRAW_1": "BETTING_2",
       "BETTING_2": "DRAW_2",
