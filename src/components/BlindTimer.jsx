@@ -62,7 +62,14 @@ function BlindTimer({ blindTimer, tournamentRunning, onLevelUp, canTriggerLevelU
         const isMaxLevel = currentLevel >= SNG_BLIND_STRUCTURE.length - 1;
         if (!isMaxLevel) {
           hasTriggeredRef.current = true;
-          onLevelUp();
+          Promise.resolve(onLevelUp()).then(result => {
+            // If the increase failed, reset trigger so next tick can retry
+            if (!result || !result.success) {
+              hasTriggeredRef.current = false;
+            }
+          }).catch(() => {
+            hasTriggeredRef.current = false;
+          });
         }
       }
     }, 1000);
