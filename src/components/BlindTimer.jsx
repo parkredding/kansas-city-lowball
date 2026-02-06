@@ -214,4 +214,132 @@ export function CompactBlindTimer({ blindTimer, tournamentRunning }) {
   );
 }
 
+/**
+ * MobileBlindBanner - Prominent blind level + timer display for mobile
+ * Full-width banner shown below the mobile header during tournaments
+ */
+export function MobileBlindBanner({ blindTimer, tournamentRunning, onLevelUp, canTriggerLevelUp = false }) {
+  const [secondsLeft, setSecondsLeft] = useState(0);
+  const hasTriggeredRef = useRef(false);
+  const lastLevelRef = useRef(blindTimer?.currentLevel || 0);
+
+  const calculateSecondsLeft = useCallback(() => {
+    if (!blindTimer?.nextLevelAt) return 0;
+
+    let nextLevelMs;
+    if (blindTimer.nextLevelAt.toDate) {
+      nextLevelMs = blindTimer.nextLevelAt.toDate().getTime();
+    } else if (blindTimer.nextLevelAt.seconds) {
+      nextLevelMs = blindTimer.nextLevelAt.seconds * 1000;
+    } else {
+      nextLevelMs = new Date(blindTimer.nextLevelAt).getTime();
+    }
+
+    const now = Date.now();
+    return Math.max(0, Math.floor((nextLevelMs - now) / 1000));
+  }, [blindTimer?.nextLevelAt]);
+
+  // Reset trigger flag when level changes
+  useEffect(() => {
+    const currentLevel = blindTimer?.currentLevel || 0;
+    if (currentLevel !== lastLevelRef.current) {
+      hasTriggeredRef.current = false;
+      lastLevelRef.current = currentLevel;
+    }
+  }, [blindTimer?.currentLevel]);
+
+  useEffect(() => {
+    if (!tournamentRunning || !blindTimer) return;
+
+    setSecondsLeft(calculateSecondsLeft());
+
+    const interval = setInterval(() => {
+      const remaining = calculateSecondsLeft();
+      setSecondsLeft(remaining);
+
+      if (remaining <= 0 && canTriggerLevelUp && onLevelUp && !hasTriggeredRef.current) {
+        const currentLevel = blindTimer?.currentLevel || 0;
+        const isMaxLevel = currentLevel >= SNG_BLIND_STRUCTURE.length - 1;
+        if (!isMaxLevel) {
+          hasTriggeredRef.current = true;
+          Promise.resolve(onLevelUp()).then(result => {
+            if (!result || !result.success) {
+              hasTriggeredRef.current = false;
+            }
+          }).catch(() => {
+            hasTriggeredRef.current = false;
+          });
+        }
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [blindTimer, tournamentRunning, calculateSecondsLeft, canTriggerLevelUp, onLevelUp]);
+
+  if (!tournamentRunning || !blindTimer) return null;
+
+  const currentLevel = blindTimer.currentLevel || 0;
+  const blindInfo = getBlindLevel(currentLevel);
+  const nextBlindInfo = getBlindLevel(currentLevel + 1);
+  const isMaxLevel = currentLevel >= SNG_BLIND_STRUCTURE.length - 1;
+
+  const minutes = Math.floor(secondsLeft / 60);
+  const seconds = secondsLeft % 60;
+  const timeDisplay = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+
+  const totalDuration = BLIND_LEVEL_DURATION_MS / 1000;
+  const percentage = Math.min(100, Math.max(0, (secondsLeft / totalDuration) * 100));
+
+  let timerColor = 'text-green-400';
+  let progressColor = 'bg-green-500';
+  let bgAccent = 'border-slate-600/50';
+  if (percentage <= 20) {
+    timerColor = 'text-red-400';
+    progressColor = 'bg-red-500';
+    bgAccent = 'border-red-500/40';
+  } else if (percentage <= 50) {
+    timerColor = 'text-yellow-400';
+    progressColor = 'bg-yellow-500';
+    bgAccent = 'border-yellow-500/30';
+  }
+
+  const pulseClass = percentage <= 20 ? 'animate-pulse' : '';
+
+  return (
+    <div className={`flex-shrink-0 bg-slate-800/95 border-b ${bgAccent} px-3 py-1.5 ${pulseClass}`}>
+      <div className="flex items-center justify-between">
+        {/* Left: Level badge + blinds */}
+        <div className="flex items-center gap-2">
+          <span className="bg-violet-600/80 text-violet-100 text-[10px] font-bold px-1.5 py-0.5 rounded">
+            LVL {blindInfo.level}
+          </span>
+          <span className="text-amber-400 font-bold text-sm">
+            {blindInfo.smallBlind.toLocaleString()}/{blindInfo.bigBlind.toLocaleString()}
+          </span>
+        </div>
+
+        {/* Right: Timer + progress */}
+        {!isMaxLevel ? (
+          <div className="flex items-center gap-2">
+            <div className="w-16 h-1.5 bg-slate-700 rounded-full overflow-hidden">
+              <div
+                className={`h-full ${progressColor} transition-all duration-1000 ease-linear`}
+                style={{ width: `${percentage}%` }}
+              />
+            </div>
+            <span className={`font-mono font-bold text-sm ${timerColor}`}>{timeDisplay}</span>
+            {!isMaxLevel && nextBlindInfo && (
+              <span className="text-slate-500 text-[10px]">
+                {nextBlindInfo.smallBlind}/{nextBlindInfo.bigBlind}
+              </span>
+            )}
+          </div>
+        ) : (
+          <span className="text-slate-400 text-xs font-medium">Max Level</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default BlindTimer;

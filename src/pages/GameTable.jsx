@@ -7,7 +7,7 @@ import { MAX_PLAYERS } from '../game/constants';
 import BuyInModal from '../components/BuyInModal';
 import BettingControls from '../components/BettingControls';
 import TurnTimer, { CircularTimer } from '../components/TurnTimer';
-import BlindTimer from '../components/BlindTimer';
+import BlindTimer, { MobileBlindBanner } from '../components/BlindTimer';
 import UsernameModal from '../components/UsernameModal';
 import CreateGameModal from '../components/CreateGameModal';
 import JoinTableModal from '../components/JoinTableModal';
@@ -2757,6 +2757,16 @@ function GameView() {
               </div>
             </div>
           </div>
+
+          {/* Mobile Blind Timer Banner - prominent display for tournaments */}
+          {isTournament && tournamentRunning && tournamentInfo?.blindTimer && (
+            <MobileBlindBanner
+              blindTimer={tournamentInfo.blindTimer}
+              tournamentRunning={tournamentRunning}
+              onLevelUp={increaseBlindLevel}
+              canTriggerLevelUp={true}
+            />
+          )}
 
           {/* Main Content Area - Fixed height, no scrolling */}
           <div className="flex-1 flex flex-col overflow-hidden px-2 py-1">
