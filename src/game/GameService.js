@@ -2367,9 +2367,26 @@ export class GameService {
             throw new Error('You have no chips to go all-in with');
           }
 
-          pot += allInAmount;
-          player.currentRoundBet = playerCurrentRoundBet + allInAmount;
-          player.totalContribution = (player.totalContribution || 0) + allInAmount;
+          // Cap the effective all-in at the maximum any other player can match.
+          // Find the max total contribution any opponent could make (their current
+          // contribution + remaining chips). The player only needs to risk enough
+          // to cover the largest opponent — excess chips can never be won by anyone.
+          const opponents = players.filter(
+            (p, i) => i !== playerIndex && (p.status === 'active' || p.status === 'all-in')
+          );
+          let effectiveAllIn = allInAmount;
+          if (opponents.length > 0) {
+            const maxOpponentContribution = Math.max(
+              ...opponents.map(p => (p.totalContribution || 0) + (p.chips || 0))
+            );
+            const playerCurrentContribution = (player.totalContribution || 0);
+            const maxNeeded = Math.max(0, maxOpponentContribution - playerCurrentContribution);
+            effectiveAllIn = Math.min(allInAmount, maxNeeded);
+          }
+
+          pot += effectiveAllIn;
+          player.currentRoundBet = playerCurrentRoundBet + effectiveAllIn;
+          player.totalContribution = (player.totalContribution || 0) + effectiveAllIn;
 
           // If this all-in is a raise (exceeds current bet), update the bet and reset other players
           if (player.currentRoundBet > currentBet) {
@@ -2384,10 +2401,11 @@ export class GameService {
           }
           player.lastAction = 'All-In';
 
-          player.chips = 0;
+          // Return any excess chips that no opponent can cover
+          player.chips = allInAmount - effectiveAllIn;
           player.status = 'all-in';
           player.hasActedThisRound = true;
-          actionDescription = `${player.displayName} went all-in for $${allInAmount}`;
+          actionDescription = `${player.displayName} went all-in for $${effectiveAllIn}`;
         }
         break;
 
