@@ -1767,12 +1767,14 @@ export class GameService {
   // ============================================
 
   /**
-   * Calculate turn deadline timestamp (45 seconds from now)
+   * Calculate turn deadline timestamp
+   * @param {number} [turnTimeLimit] - Seconds per turn from table config. Falls back to TURN_TIME_SECONDS constant.
    * @returns {Timestamp} - Firestore Timestamp
    */
-  static calculateTurnDeadline() {
+  static calculateTurnDeadline(turnTimeLimit) {
+    const seconds = turnTimeLimit || TURN_TIME_SECONDS;
     const deadline = new Date();
-    deadline.setSeconds(deadline.getSeconds() + TURN_TIME_SECONDS);
+    deadline.setSeconds(deadline.getSeconds() + seconds);
     return Timestamp.fromDate(deadline);
   }
 
@@ -1904,7 +1906,7 @@ export class GameService {
         dealerSeatIndex: dealerSeatIndex,
         smallBlindSeatIndex: sbSeatIndex,
         bigBlindSeatIndex: bbSeatIndex,
-        turnDeadline: GameService.calculateTurnDeadline(),
+        turnDeadline: GameService.calculateTurnDeadline(tableData.config?.turnTimeLimit),
         hasHadFirstDeal: true, // Mark that dealer has been determined
         cutForDealerComplete: null, // Clear cut for dealer state
         cutForDealerWinner: null,
@@ -2040,7 +2042,7 @@ export class GameService {
         smallBlindSeatIndex: sbSeatIndex,
         bigBlindSeatIndex: bbSeatIndex,
         communityCards: [], // Initialize empty community cards
-        turnDeadline: GameService.calculateTurnDeadline(),
+        turnDeadline: GameService.calculateTurnDeadline(tableData.config?.turnTimeLimit),
         hasHadFirstDeal: true,
         cutForDealerComplete: null,
         cutForDealerWinner: null,
@@ -2113,7 +2115,7 @@ export class GameService {
       lastRaiseAmount: 0, // Reset raise tracking for new betting round
       phase: street,
       activePlayerIndex: firstToAct >= 0 ? firstToAct : 0,
-      turnDeadline: GameService.calculateTurnDeadline(),
+      turnDeadline: GameService.calculateTurnDeadline(tableData.config?.turnTimeLimit),
     });
   }
 
@@ -2710,7 +2712,7 @@ export class GameService {
         lastRaiseAmount: 0, // Reset raise tracking for new betting round
         phase: nextPhase,
         activePlayerIndex: firstToAct,
-        turnDeadline: isShowdown ? null : GameService.calculateTurnDeadline(),
+        turnDeadline: isShowdown ? null : GameService.calculateTurnDeadline(tableData.config?.turnTimeLimit),
         chatLog: updatedActivityLog,
         showdownResult: isShowdown ? showdownResult : null,
         lastAggressor: nextLastAggressor,
@@ -2858,7 +2860,7 @@ export class GameService {
             lastRaiseAmount: 0, // Reset raise tracking for new betting round
             phase: nextPhase,
             activePlayerIndex: firstToActInner,
-            turnDeadline: isShowdown ? null : GameService.calculateTurnDeadline(),
+            turnDeadline: isShowdown ? null : GameService.calculateTurnDeadline(tableData.config?.turnTimeLimit),
             chatLog: updatedActivityLog,
             showdownResult: isShowdown ? showdownResult : null,
             lastAggressor: nextLastAggressorInner,
@@ -2880,7 +2882,7 @@ export class GameService {
           pot,
           currentBet: newCurrentBet,
           activePlayerIndex: nextPlayerIndex,
-          turnDeadline: GameService.calculateTurnDeadline(),
+          turnDeadline: GameService.calculateTurnDeadline(tableData.config?.turnTimeLimit),
           chatLog: activityLog,
           ...(isAggressiveAction && { lastAggressor: player.uid }),
         });
@@ -3269,7 +3271,7 @@ export class GameService {
           // Skip to next draw phase (DRAW_2 or DRAW_3)
           // All-in players still get to draw cards
           updates.phase = phaseAfterSkippedBetting;
-          updates.turnDeadline = GameService.calculateTurnDeadline();
+          updates.turnDeadline = GameService.calculateTurnDeadline(tableData.config?.turnTimeLimit);
 
           // Draw phase: start with first player after dealer (includes all-in players)
           updates.activePlayerIndex = GameService.getFirstToActAfterDealer(players, tableData, true);
@@ -3287,13 +3289,13 @@ export class GameService {
         updates.phase = nextPhase;
         updates.activePlayerIndex = validFirstToAct;
         updates.currentBet = 0;
-        updates.turnDeadline = GameService.calculateTurnDeadline();
+        updates.turnDeadline = GameService.calculateTurnDeadline(tableData.config?.turnTimeLimit);
         updates.players = players;
       }
     } else {
       // Move to next player who hasn't acted yet
       updates.activePlayerIndex = nextPlayerIndex;
-      updates.turnDeadline = GameService.calculateTurnDeadline();
+      updates.turnDeadline = GameService.calculateTurnDeadline(tableData.config?.turnTimeLimit);
     }
 
     await GameService.updateTable(tableId, updates);

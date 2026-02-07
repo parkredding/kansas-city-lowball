@@ -860,7 +860,7 @@ function getBetChipPosition(relativeIndex, totalPlayers) {
   return { x: `${betX}%`, y: `${betY}%` };
 }
 
-function PlayerSlot({ player, isCurrentUser, isActive, showCards, handResult, turnDeadline, isDealer, isSmallBlind, isBigBlind, isViewerRailbird = false, canKick = false, onKick, showdownResult = null, isMobile = false, allPlayers = [] }) {
+function PlayerSlot({ player, isCurrentUser, isActive, showCards, handResult, turnDeadline, isDealer, isSmallBlind, isBigBlind, isViewerRailbird = false, canKick = false, onKick, showdownResult = null, isMobile = false, allPlayers = [], turnTimeLimit }) {
   // Determine if this player's cards should actually be shown at showdown
   // PRIVACY ENFORCEMENT: "Winner Shows, Loser Mucks" rule
   const isWinner = showdownResult?.winners?.some(w => w.uid === player.uid);
@@ -936,7 +936,7 @@ function PlayerSlot({ player, isCurrentUser, isActive, showCards, handResult, tu
       {/* Circular timer when active */}
       {isActive && turnDeadline && (
         <div className="absolute -top-1 -right-1 z-30">
-          <CircularTimer turnDeadline={turnDeadline} size={32} isActive={isActive} />
+          <CircularTimer turnDeadline={turnDeadline} size={32} isActive={isActive} turnTimeLimit={turnTimeLimit} />
         </div>
       )}
 
@@ -1890,6 +1890,7 @@ function GameView() {
             isMyTurn={myTurn}
             canTriggerTimeout={tableData?.createdBy === currentUser?.uid && activePlayer?.isBot}
             isAtTable={true}
+            turnTimeLimit={tableData?.config?.turnTimeLimit}
           />
         </div>
       )}
@@ -2349,6 +2350,7 @@ function GameView() {
                         showdownResult={tableData?.showdownResult}
                         allPlayers={tableData?.players || []}
                         isMobile={false}
+                        turnTimeLimit={tableData?.config?.turnTimeLimit}
                       />
                     </motion.div>
                   );
@@ -2786,6 +2788,7 @@ function GameView() {
                   isMyTurn={myTurn}
                   canTriggerTimeout={tableData?.createdBy === currentUser?.uid && activePlayer?.isBot}
                   isAtTable={true}
+                  turnTimeLimit={tableData?.config?.turnTimeLimit}
                 />
               </div>
             )}
@@ -2880,6 +2883,7 @@ function GameView() {
                 showdownResult={tableData?.showdownResult}
                 allPlayers={tableData?.players || []}
                 isMobile={true}
+                turnTimeLimit={tableData?.config?.turnTimeLimit}
               />
             </motion.div>
           );

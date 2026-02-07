@@ -255,11 +255,11 @@ async function processTableTimeout(tableRef, initialData) {
       if (nextPhaseResult.phase === "SHOWDOWN") {
         updates.turnDeadline = null;
       } else {
-        updates.turnDeadline = calculateTurnDeadline();
+        updates.turnDeadline = calculateTurnDeadline(tableData.config?.turnTimeLimit);
       }
     } else if (nextPlayerResult.nextPlayerIndex !== -1) {
       updates.activePlayerIndex = nextPlayerResult.nextPlayerIndex;
-      updates.turnDeadline = calculateTurnDeadline();
+      updates.turnDeadline = calculateTurnDeadline(tableData.config?.turnTimeLimit);
     } else {
       updates.phase = "SHOWDOWN";
       updates.turnDeadline = null;
@@ -487,11 +487,11 @@ exports.handleTimeout = onCall({
         if (nextPhaseResult.phase === "SHOWDOWN") {
           updates.turnDeadline = null;
         } else {
-          updates.turnDeadline = calculateTurnDeadline();
+          updates.turnDeadline = calculateTurnDeadline(tableData.config?.turnTimeLimit);
         }
       } else if (nextPlayerResult.nextPlayerIndex !== -1) {
         updates.activePlayerIndex = nextPlayerResult.nextPlayerIndex;
-        updates.turnDeadline = calculateTurnDeadline();
+        updates.turnDeadline = calculateTurnDeadline(tableData.config?.turnTimeLimit);
       } else {
         // Edge case: no next player but round not complete
         // This shouldn't happen, but handle gracefully
@@ -524,11 +524,13 @@ exports.handleTimeout = onCall({
 });
 
 /**
- * Calculate turn deadline (45 seconds from now)
+ * Calculate turn deadline using table config or default
+ * @param {number} [turnTimeLimit] - Seconds per turn from table config
  */
-function calculateTurnDeadline() {
+function calculateTurnDeadline(turnTimeLimit) {
+  const seconds = turnTimeLimit || TURN_TIME_SECONDS;
   const deadline = new Date();
-  deadline.setSeconds(deadline.getSeconds() + TURN_TIME_SECONDS);
+  deadline.setSeconds(deadline.getSeconds() + seconds);
   return Timestamp.fromDate(deadline);
 }
 
