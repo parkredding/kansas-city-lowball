@@ -141,6 +141,8 @@ export class LowballBotStrategy extends BotStrategy {
     const playerChips = player.chips || 0;
     const minBet = gameState.minBet || 50;
     const minRaise = currentBet + minBet;
+    // Use BET when no current bet, RAISE when facing a bet
+    const raiseAction = currentBet === 0 ? BetAction.BET : BetAction.RAISE;
 
     // Determine available actions
     const canCheck = legalActions.includes(BetAction.CHECK);
@@ -157,7 +159,7 @@ export class LowballBotStrategy extends BotStrategy {
         return { action: canCheck ? BetAction.CHECK : BetAction.CALL, amount: 0 };
       } else if (canRaise) {
         const raiseAmount = Math.min(minRaise, playerChips);
-        return { action: BetAction.RAISE, amount: raiseAmount };
+        return { action: raiseAction, amount: raiseAmount };
       } else if (canCheck) {
         return { action: BetAction.CHECK, amount: 0 };
       } else {
@@ -171,13 +173,13 @@ export class LowballBotStrategy extends BotStrategy {
       // Bluff: 10% chance to raise big when holding snow
       if (isSnow && Math.random() < 0.1 && canRaise) {
         const bluffRaise = Math.min(minRaise * 2, playerChips);
-        return { action: BetAction.RAISE, amount: bluffRaise };
+        return { action: raiseAction, amount: bluffRaise };
       }
 
       // Strength > 80 (Pat 8 or better): Aggressive Raise
       if (handStrength > 80 && canRaise) {
         const raiseAmount = Math.min(minRaise * 1.5, playerChips);
-        return { action: BetAction.RAISE, amount: Math.floor(raiseAmount) };
+        return { action: raiseAction, amount: Math.floor(raiseAmount) };
       }
 
       // Strength < 40 (Drawing 2+ cards): Fold to any raise

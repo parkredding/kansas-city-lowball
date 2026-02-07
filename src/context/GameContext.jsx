@@ -540,8 +540,11 @@ export function GameProvider({ children }) {
   }, [tableData, currentUser]);
 
   // Calculate minimum raise
-  // For No Limit / Pot Limit: minimum raise = current bet + big blind
-  // For Fixed Limit: retain existing fixed-limit logic
+  // For No Limit / Pot Limit:
+  //   - BET (currentBet = 0): minimum is the big blind
+  //   - RAISE: minimum is currentBet + max(bigBlind, lastRaiseAmount)
+  //     This ensures raises are always at least 2x the big blind
+  // For Fixed Limit: raises are in fixed increments of the big blind
   const getMinRaise = useCallback(() => {
     if (!tableData) return 0;
     const currentBet = tableData.currentBet || 0;
@@ -561,15 +564,21 @@ export function GameProvider({ children }) {
       bigBlind = tableData.minBet || DEFAULT_MIN_BET;
     }
 
-    // For No Limit and Pot Limit: min raise = currentBet + bigBlind
-    // For Fixed Limit: use fixed bet sizing (retain existing logic)
+    // For Fixed Limit: raises are in fixed increments of the big blind
     if (bettingType === 'fixed_limit') {
-      // In Fixed Limit, raises are in fixed increments of the big blind
       return currentBet + bigBlind;
     }
 
-    // No Limit / Pot Limit: minimum raise is the big blind
-    return currentBet + bigBlind;
+    // No Limit / Pot Limit:
+    // BET (no current bet): minimum is the big blind
+    if (currentBet === 0) {
+      return bigBlind;
+    }
+
+    // RAISE: minimum raise increment must match previous raise or big blind (whichever is larger)
+    const lastRaise = tableData.lastRaiseAmount || 0;
+    const minRaiseIncrement = Math.max(bigBlind, lastRaise);
+    return currentBet + minRaiseIncrement;
   }, [tableData]);
 
   // Check if player can check

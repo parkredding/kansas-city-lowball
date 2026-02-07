@@ -1737,7 +1737,9 @@ function GameView() {
   const handleRaise = async (amount, e) => {
     e?.preventDefault();
     e?.stopPropagation();
-    const result = await performBetAction(BetAction.RAISE, amount);
+    const currentBetAmount = tableData?.currentBet || 0;
+    const action = currentBetAmount === 0 ? BetAction.BET : BetAction.RAISE;
+    const result = await performBetAction(action, amount);
     if (result.success) {
       SoundManager.playChipClack();
     } else {
