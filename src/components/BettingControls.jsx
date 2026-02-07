@@ -114,7 +114,7 @@ function BettingControls({
         <div className="mb-3 p-2.5 bg-slate-900/80 rounded-lg border border-slate-700/50">
           {/* Amount display with editable input */}
           <div className="flex justify-between items-center mb-2">
-            <span className="text-slate-400 text-xs">Raise to</span>
+            <span className="text-slate-400 text-xs">{currentBet > 0 ? 'Raise to' : 'Bet'}</span>
             <div className="flex items-center gap-1">
               <span className="text-slate-400 text-sm">$</span>
               <input
@@ -184,7 +184,7 @@ function BettingControls({
               disabled={disabled || raiseAmount < minRaise || raiseAmount > trueMaxRaise}
               className="flex-1 py-2 bg-amber-600 hover:bg-amber-500 disabled:bg-amber-900 text-white rounded-lg text-xs font-bold transition-colors"
             >
-              Raise ${formatAmount(raiseAmount)}
+              {currentBet > 0 ? 'Raise' : 'Bet'} ${formatAmount(raiseAmount)}
             </button>
           </div>
         </div>

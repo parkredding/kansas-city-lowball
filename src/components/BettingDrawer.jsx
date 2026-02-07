@@ -418,6 +418,7 @@ export function ActionBar({
   onAllIn,
   canCheck = false,
   callAmount = 0,
+  currentBet = 0,
   minRaise = 0,
   maxRaise = 0,
   canRaise = true,
@@ -494,7 +495,7 @@ export function ActionBar({
           className="flex-1 py-4 rounded-xl font-bold text-base bg-amber-500 hover:bg-amber-400 active:scale-95 text-slate-900 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-amber-500/30"
         >
           <span className="block text-sm">
-            {callAmount > 0 ? 'Raise' : 'Bet'}
+            {currentBet > 0 ? 'Raise' : 'Bet'}
           </span>
           <span className="block text-xs opacity-70">${formatAmount(minRaise)}+</span>
         </button>
