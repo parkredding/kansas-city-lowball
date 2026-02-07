@@ -2399,12 +2399,11 @@ export class GameService {
           const totalBetAmount = Math.floor(amount);
           const additionalAmount = Math.floor(totalBetAmount - playerCurrentRoundBet);
 
-          // Calculate minimum raise per NL rules:
+          // Calculate minimum raise per house rules:
           // - For a BET (currentBet = 0): minimum is the big blind
-          // - For a RAISE: minimum is the previous raise amount OR the big blind, whichever is larger
-          // Example: If Player A bets $10, Player B must raise to at least $20 (call $10 + raise $10)
-          const lastRaise = Math.floor(tableData.lastRaiseAmount || 0);
-          const minRaiseIncrement = Math.max(minBet, lastRaise); // Minimum raise must match previous raise
+          // - For a RAISE: minimum raise increment is always the big blind (2x BB total pre-flop)
+          // - If a player cannot meet the minimum, they must go all-in
+          const minRaiseIncrement = minBet;
           const minTotalBet = currentBet === 0 ? minBet : currentBet + minRaiseIncrement;
 
           // Validate minimum raise (unless going all-in)
@@ -2436,10 +2435,8 @@ export class GameService {
             const allInRaiseIncrement = player.currentRoundBet - currentBet;
             if (player.currentRoundBet > currentBet) {
               newCurrentBet = Math.floor(player.currentRoundBet);
-              // Track the raise amount for next player's min-raise (if it's a valid raise)
-              if (allInRaiseIncrement >= minRaiseIncrement) {
-                tableData.lastRaiseAmount = allInRaiseIncrement;
-              }
+              // Track the raise amount for informational purposes
+              tableData.lastRaiseAmount = allInRaiseIncrement;
             }
             player.chips = 0;
             player.status = 'all-in';
@@ -2461,7 +2458,7 @@ export class GameService {
             player.totalContribution = (player.totalContribution || 0) + additionalAmount;
             pot += additionalAmount;
             newCurrentBet = totalBetAmount;
-            // Track the raise amount for next player's min-raise
+            // Track the raise amount for informational purposes
             tableData.lastRaiseAmount = raiseIncrement;
             player.hasActedThisRound = true;
             player.lastAction = currentBet === 0 ? 'Bet' : 'Raise';
