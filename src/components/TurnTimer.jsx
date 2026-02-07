@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 
-const TOTAL_TIME = 45; // seconds
+const DEFAULT_TOTAL_TIME = 45; // fallback seconds
 
 // Time after deadline when we request immediate server processing
 // This is just an optimization - server will process automatically within ~1 minute anyway
@@ -26,13 +26,15 @@ const REQUEST_PROCESSING_DELAY_SECONDS = 2;
  * @param {boolean} isMyTurn - Whether it's the current user's turn (for display only)
  * @param {boolean} canTriggerTimeout - Whether this client should request immediate processing
  * @param {boolean} isAtTable - Whether the user is at this table (player or railbird)
+ * @param {number} turnTimeLimit - Seconds per turn from table config (for display bar calculation)
  */
-function TurnTimer({ turnDeadline, onTimeout, isMyTurn, canTriggerTimeout = false, isAtTable = true }) {
-  const [secondsLeft, setSecondsLeft] = useState(TOTAL_TIME);
+function TurnTimer({ turnDeadline, onTimeout, isMyTurn, canTriggerTimeout = false, isAtTable = true, turnTimeLimit }) {
+  const totalTime = turnTimeLimit || DEFAULT_TOTAL_TIME;
+  const [secondsLeft, setSecondsLeft] = useState(totalTime);
   const hasRequestedRef = useRef(false);
 
   const calculateSecondsLeft = useCallback(() => {
-    if (!turnDeadline) return TOTAL_TIME;
+    if (!turnDeadline) return totalTime;
 
     // Handle Firestore Timestamp object
     let deadlineMs;
@@ -47,7 +49,7 @@ function TurnTimer({ turnDeadline, onTimeout, isMyTurn, canTriggerTimeout = fals
     const now = Date.now();
     // Allow negative values to track time past deadline
     return Math.floor((deadlineMs - now) / 1000);
-  }, [turnDeadline]);
+  }, [turnDeadline, totalTime]);
 
   useEffect(() => {
     // Reset request flag when deadline changes (new turn)
@@ -61,8 +63,8 @@ function TurnTimer({ turnDeadline, onTimeout, isMyTurn, canTriggerTimeout = fals
       const remaining = calculateSecondsLeft();
       setSecondsLeft(remaining);
 
-      // Don't request if already requested, no callback, or not at table
-      if (hasRequestedRef.current || !onTimeout || !isAtTable) return;
+      // Don't request if no callback or not at table
+      if (!onTimeout || !isAtTable) return;
 
       // SERVER-HOSTED TIMEOUT REQUEST LOGIC:
       // Request immediate server processing when timer expires
@@ -78,10 +80,20 @@ function TurnTimer({ turnDeadline, onTimeout, isMyTurn, canTriggerTimeout = fals
         (remaining <= -REQUEST_PROCESSING_DELAY_SECONDS)
       );
 
-      if (shouldRequestNow) {
+      if (shouldRequestNow && !hasRequestedRef.current) {
         hasRequestedRef.current = true;
         // Fire-and-forget: server handles everything
         onTimeout();
+      }
+
+      // Retry every 5 seconds if timeout was requested but game state hasn't changed
+      // This handles cases where the first request failed or was rejected
+      if (hasRequestedRef.current && remaining <= -REQUEST_PROCESSING_DELAY_SECONDS - 5) {
+        // Allow retry by resetting the flag every 5 seconds past the initial request
+        const secondsPastInitialRequest = Math.abs(remaining) - REQUEST_PROCESSING_DELAY_SECONDS;
+        if (secondsPastInitialRequest > 0 && secondsPastInitialRequest % 5 === 0) {
+          hasRequestedRef.current = false;
+        }
       }
     }, 1000);
 
@@ -90,7 +102,7 @@ function TurnTimer({ turnDeadline, onTimeout, isMyTurn, canTriggerTimeout = fals
 
   // Calculate percentage for progress bar (clamp to 0-100)
   const displaySeconds = Math.max(0, secondsLeft);
-  const percentage = Math.min(100, Math.max(0, (displaySeconds / TOTAL_TIME) * 100));
+  const percentage = Math.min(100, Math.max(0, (displaySeconds / totalTime) * 100));
 
   // Determine color based on time remaining
   let barColor = 'bg-green-500';
@@ -133,11 +145,12 @@ function TurnTimer({ turnDeadline, onTimeout, isMyTurn, canTriggerTimeout = fals
 }
 
 // Circular timer variant for player avatars
-export function CircularTimer({ turnDeadline, size = 48, isActive }) {
-  const [secondsLeft, setSecondsLeft] = useState(TOTAL_TIME);
+export function CircularTimer({ turnDeadline, size = 48, isActive, turnTimeLimit }) {
+  const totalTime = turnTimeLimit || DEFAULT_TOTAL_TIME;
+  const [secondsLeft, setSecondsLeft] = useState(totalTime);
 
   const calculateSecondsLeft = useCallback(() => {
-    if (!turnDeadline) return TOTAL_TIME;
+    if (!turnDeadline) return totalTime;
 
     let deadlineMs;
     if (turnDeadline.toDate) {
@@ -151,7 +164,7 @@ export function CircularTimer({ turnDeadline, size = 48, isActive }) {
     const now = Date.now();
     const remaining = Math.max(0, Math.floor((deadlineMs - now) / 1000));
     return remaining;
-  }, [turnDeadline]);
+  }, [turnDeadline, totalTime]);
 
   useEffect(() => {
     if (!isActive || !turnDeadline) return;
@@ -167,7 +180,7 @@ export function CircularTimer({ turnDeadline, size = 48, isActive }) {
 
   if (!isActive || !turnDeadline) return null;
 
-  const percentage = (secondsLeft / TOTAL_TIME) * 100;
+  const percentage = (secondsLeft / totalTime) * 100;
 
   // Color based on time
   let strokeColor = '#22c55e'; // green

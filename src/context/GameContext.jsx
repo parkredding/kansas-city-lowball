@@ -455,11 +455,12 @@ export function GameProvider({ children }) {
 
       if (result.success) {
         console.log('Server processed timeout:', result.message);
-      } else if (result.serverWillRetry) {
-        // Server will handle it via scheduled function - no action needed
-        console.log('Timeout request queued, server will process automatically');
+      } else {
+        // Reset flag to allow retry - the server may not have processed it yet
+        // (e.g., clock skew, deadline not yet passed on server side)
+        console.log('Timeout request not processed:', result.message);
+        timeoutRequestedRef.current = false;
       }
-      // Note: No client-side fallback needed in server-hosted model
     } catch (err) {
       console.error('Error requesting timeout processing:', err);
       // Reset flag to allow retry, but server will handle it anyway
