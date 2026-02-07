@@ -306,5 +306,12 @@ export function getPrizeStructure(playerCount) {
  * @returns {Array<number>} - Array of actual payout amounts
  */
 export function calculatePrizePayouts(totalPrizePool, prizeStructure) {
-  return prizeStructure.map(percentage => Math.floor(totalPrizePool * percentage));
+  const payouts = prizeStructure.map(percentage => Math.floor(totalPrizePool * percentage));
+  // Award any remainder from rounding to 1st place so no chips are lost
+  const totalDistributed = payouts.reduce((sum, amount) => sum + amount, 0);
+  const remainder = totalPrizePool - totalDistributed;
+  if (remainder > 0 && payouts.length > 0) {
+    payouts[0] += remainder;
+  }
+  return payouts;
 }

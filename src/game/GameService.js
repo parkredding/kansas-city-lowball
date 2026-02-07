@@ -3707,14 +3707,18 @@ export class GameService {
           }
 
           // Also refund any chips in the pot (split evenly among players if possible)
+          // Remainder from rounding goes to the first player so no chips are lost
           if (tableData.pot > 0 && tableData.players && tableData.players.length > 0) {
             const playersWithUid = tableData.players.filter(p => p.uid);
             if (playersWithUid.length > 0) {
               const refundPerPlayer = Math.floor(tableData.pot / playersWithUid.length);
-              for (const player of playersWithUid) {
+              const remainder = tableData.pot % playersWithUid.length;
+              for (let i = 0; i < playersWithUid.length; i++) {
+                const player = playersWithUid[i];
+                const refundAmount = refundPerPlayer + (i === 0 ? remainder : 0);
                 try {
-                  await GameService.refundPlayerChips(player.uid, refundPerPlayer);
-                  console.log(`[Cleanup] Refunded pot share $${refundPerPlayer} to ${player.displayName || player.uid}`);
+                  await GameService.refundPlayerChips(player.uid, refundAmount);
+                  console.log(`[Cleanup] Refunded pot share $${refundAmount} to ${player.displayName || player.uid}`);
                 } catch (refundError) {
                   errors.push(`Failed to refund pot to ${player.uid}: ${refundError.message}`);
                 }
