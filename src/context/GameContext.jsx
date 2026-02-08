@@ -4,6 +4,9 @@ import { GameService, BetAction } from '../game/GameService';
 import { HandEvaluator } from '../game/HandEvaluator';
 import { TexasHoldemHandEvaluator } from '../game/TexasHoldemHandEvaluator';
 import { DEFAULT_MIN_BET, GAME_TYPES, TABLE_MODES, TOURNAMENT_STATES, getBlindLevel } from '../game/constants';
+import { buildHandRecord, saveHandHistory, getPositionLabel } from '../services/HandHistoryService';
+import { updateRivalryForCurrentUser } from '../services/RivalsService';
+import { evaluateAction, saveGTOEvaluation } from '../services/GTOService';
 
 const GameContext = createContext();
 
@@ -370,6 +373,54 @@ export function GameProvider({ children }) {
     try {
       const result = await GameService.performBetAction(currentTableId, tableData, currentUser.uid, action, amount);
       setError(null);
+
+      // Evaluate the action against GTO and save the evaluation (fire-and-forget)
+      try {
+        const player = tableData.players.find((p) => p.uid === currentUser.uid);
+        if (player) {
+          const playerCount = tableData.players.length;
+          const dealerIndex = tableData.dealerIndex || 0;
+          const playerIndex = tableData.players.indexOf(player);
+          const position = getPositionLabel(playerIndex, dealerIndex, playerCount);
+          const stakeLevel = tableData.minBet || 50;
+
+          // Estimate hand strength (0-100 scale)
+          let handStrength = 50;
+          const gameType = tableData.config?.gameType || 'lowball_27';
+          if (player.hand && player.hand.length > 0) {
+            if (gameType === 'holdem') {
+              const community = tableData.communityCards || [];
+              const allCards = [...player.hand, ...community];
+              if (allCards.length >= 5) {
+                const evalResult = TexasHoldemHandEvaluator.evaluate(allCards);
+                // Higher rank = worse hand in standard ranking, invert for strength
+                handStrength = evalResult ? Math.max(0, 100 - (evalResult.rank / 7462) * 100) : 50;
+              }
+            } else if (player.hand.length === 5) {
+              const evalResult = HandEvaluator.evaluate(player.hand);
+              // For lowball, lower rank = better hand
+              handStrength = evalResult ? Math.max(0, 100 - (evalResult.rank / 7462) * 100) : 50;
+            }
+          }
+
+          const gtoEval = evaluateAction(action, {
+            position,
+            holeCards: player.hand || [],
+            potSize: tableData.pot || 0,
+            currentBet: tableData.currentBet || 0,
+            stakeLevel,
+            phase: tableData.phase,
+            handStrength,
+          });
+
+          const handId = `${tableData.id}_${tableData.handNumber || Date.now()}`;
+          saveGTOEvaluation(currentUser.uid, handId, gtoEval);
+        }
+      } catch (gtoErr) {
+        // Don't block game flow if GTO evaluation fails
+        console.error('GTO evaluation failed:', gtoErr);
+      }
+
       return { success: true, ...result };
     } catch (err) {
       // Set error for display in UI
@@ -406,11 +457,30 @@ export function GameProvider({ children }) {
     if (!currentTableId || !tableData) return;
 
     try {
+      // Record hand history and rivalry data BEFORE resetting the table state.
+      // At this point, tableData still contains showdown results, player hands, etc.
+      if (tableData.showdownResult && currentUser) {
+        try {
+          const handRecord = buildHandRecord(
+            tableData,
+            tableData.showdownResult.winners,
+            tableData.handNumber || Date.now()
+          );
+          // Save hand history (writes to /hand_histories and /users/{uid}/hand_logs)
+          await saveHandHistory(handRecord);
+          // Update rivalry stats for the current user
+          await updateRivalryForCurrentUser(currentUser.uid, handRecord);
+        } catch (recordErr) {
+          // Don't block the game flow if recording fails
+          console.error('Failed to record hand history:', recordErr);
+        }
+      }
+
       await GameService.startNextHand(currentTableId, tableData);
     } catch (err) {
       setError(err.message);
     }
-  }, [currentTableId, tableData]);
+  }, [currentTableId, tableData, currentUser]);
 
   // Reveal hand at showdown (show instead of muck)
   const revealHand = useCallback(async () => {
