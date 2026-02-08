@@ -5,28 +5,51 @@
 
 import { motion } from 'framer-motion';
 
+/** Thresholds for stat-based insight generation */
+const THRESHOLDS = {
+  MIN_HANDS: 5,
+  VPIP_WARNING: 40,
+  VPIP_CAUTION_LOOSE: 30,
+  VPIP_CAUTION_TIGHT: 15,
+  PFR_VPIP_GAP_WARNING: 15,
+  PFR_VPIP_GAP_GOOD: 5,
+  AF_HIGH: 3.5,
+  AF_LOW: 1.0,
+  AF_BALANCED_MIN: 1.5,
+  AF_BALANCED_MAX: 3.0,
+  WIN_RATE_STRONG: 55,
+  WIN_RATE_WEAK: 40,
+  EARLY_POS_LOSS_THRESHOLD: -100,
+  BB_MIN_HANDS: 5,
+  BB_WEAK_WIN_RATE: 30,
+  NET_RESULT_TILT_WARNING: -500,
+};
+
+const EARLY_POSITIONS = ['UTG', 'HJ'];
+const LATE_POSITIONS = ['BTN', 'CO'];
+
 /**
  * Generate play style insights from player stats
  */
 function generatePlayStyleInsights(stats) {
-  if (!stats || stats.totalHands < 5) return [];
+  if (!stats || stats.totalHands < THRESHOLDS.MIN_HANDS) return [];
 
   const insights = [];
 
   // VPIP analysis
-  if (stats.vpip > 40) {
+  if (stats.vpip > THRESHOLDS.VPIP_WARNING) {
     insights.push({
       category: 'Hand Selection',
       severity: 'warning',
       text: `Your VPIP of ${stats.vpip}% is very loose. You're voluntarily entering too many pots. Tighten your starting hand requirements — fold more marginal hands, especially from early position.`,
     });
-  } else if (stats.vpip > 30) {
+  } else if (stats.vpip > THRESHOLDS.VPIP_CAUTION_LOOSE) {
     insights.push({
       category: 'Hand Selection',
       severity: 'caution',
       text: `Your VPIP of ${stats.vpip}% is on the loose side. Consider being more selective with your starting hands in early and middle positions.`,
     });
-  } else if (stats.vpip < 15) {
+  } else if (stats.vpip < THRESHOLDS.VPIP_CAUTION_TIGHT) {
     insights.push({
       category: 'Hand Selection',
       severity: 'caution',
@@ -42,13 +65,13 @@ function generatePlayStyleInsights(stats) {
 
   // PFR / VPIP gap analysis
   const pfrVpipGap = stats.vpip - stats.pfr;
-  if (stats.pfr > 0 && pfrVpipGap > 15) {
+  if (stats.pfr > 0 && pfrVpipGap > THRESHOLDS.PFR_VPIP_GAP_WARNING) {
     insights.push({
       category: 'Pre-Flop Aggression',
       severity: 'warning',
       text: `Your PFR (${stats.pfr}%) is much lower than your VPIP (${stats.vpip}%). You're cold-calling too often instead of raising. When you enter a pot, raise more frequently — limping and calling gives up initiative.`,
     });
-  } else if (stats.pfr > 0 && pfrVpipGap < 5) {
+  } else if (stats.pfr > 0 && pfrVpipGap < THRESHOLDS.PFR_VPIP_GAP_GOOD) {
     insights.push({
       category: 'Pre-Flop Aggression',
       severity: 'good',
@@ -58,19 +81,19 @@ function generatePlayStyleInsights(stats) {
 
   // Aggression Factor analysis
   if (stats.aggressionFactor !== undefined) {
-    if (stats.aggressionFactor > 3.5) {
+    if (stats.aggressionFactor > THRESHOLDS.AF_HIGH) {
       insights.push({
         category: 'Post-Flop Aggression',
         severity: 'caution',
         text: `Your Aggression Factor of ${stats.aggressionFactor} is very high. While aggression is profitable, over-aggression leads to expensive bluffs. Make sure you're balancing your bets with enough strong hands.`,
       });
-    } else if (stats.aggressionFactor < 1.0) {
+    } else if (stats.aggressionFactor < THRESHOLDS.AF_LOW) {
       insights.push({
         category: 'Post-Flop Aggression',
         severity: 'warning',
         text: `Your Aggression Factor of ${stats.aggressionFactor} is passive. You're calling much more than you bet or raise. Increase your c-bet frequency and value bet thinner to extract more from your strong hands.`,
       });
-    } else if (stats.aggressionFactor >= 1.5 && stats.aggressionFactor <= 3.0) {
+    } else if (stats.aggressionFactor >= THRESHOLDS.AF_BALANCED_MIN && stats.aggressionFactor <= THRESHOLDS.AF_BALANCED_MAX) {
       insights.push({
         category: 'Post-Flop Aggression',
         severity: 'good',
@@ -80,13 +103,13 @@ function generatePlayStyleInsights(stats) {
   }
 
   // Win rate analysis
-  if (stats.winRate > 55) {
+  if (stats.winRate > THRESHOLDS.WIN_RATE_STRONG) {
     insights.push({
       category: 'Results',
       severity: 'good',
       text: `Your ${stats.winRate}% win rate is strong. You're consistently finishing hands profitably.`,
     });
-  } else if (stats.winRate < 40) {
+  } else if (stats.winRate < THRESHOLDS.WIN_RATE_WEAK) {
     insights.push({
       category: 'Results',
       severity: 'warning',
@@ -98,13 +121,13 @@ function generatePlayStyleInsights(stats) {
   if (stats.positionStats) {
     const positions = Object.entries(stats.positionStats);
     const earlyPositionLoss = positions
-      .filter(([pos]) => ['UTG', 'HJ'].includes(pos))
+      .filter(([pos]) => EARLY_POSITIONS.includes(pos))
       .reduce((sum, [, s]) => sum + (s.netResult || 0), 0);
     const latePositionWin = positions
-      .filter(([pos]) => ['BTN', 'CO'].includes(pos))
+      .filter(([pos]) => LATE_POSITIONS.includes(pos))
       .reduce((sum, [, s]) => sum + (s.netResult || 0), 0);
 
-    if (earlyPositionLoss < -100 && latePositionWin > 0) {
+    if (earlyPositionLoss < THRESHOLDS.EARLY_POS_LOSS_THRESHOLD && latePositionWin > 0) {
       insights.push({
         category: 'Positional Play',
         severity: 'caution',
@@ -120,9 +143,9 @@ function generatePlayStyleInsights(stats) {
 
     // Blind defense
     const bbStats = stats.positionStats.BB;
-    if (bbStats && bbStats.hands > 5) {
+    if (bbStats && bbStats.hands > THRESHOLDS.BB_MIN_HANDS) {
       const bbWinRate = bbStats.hands > 0 ? (bbStats.won / bbStats.hands) * 100 : 0;
-      if (bbWinRate < 30) {
+      if (bbWinRate < THRESHOLDS.BB_WEAK_WIN_RATE) {
         insights.push({
           category: 'Blind Defense',
           severity: 'caution',
@@ -133,7 +156,7 @@ function generatePlayStyleInsights(stats) {
   }
 
   // Net result trend
-  if (stats.totalNetResult < -500) {
+  if (stats.totalNetResult < THRESHOLDS.NET_RESULT_TILT_WARNING) {
     insights.push({
       category: 'Bankroll',
       severity: 'warning',
@@ -193,7 +216,7 @@ export default function AIPlayInsights({ stats }) {
           const style = SEVERITY_STYLES[insight.severity] || SEVERITY_STYLES.caution;
           return (
             <motion.div
-              key={i}
+              key={insight.category}
               className={`rounded-lg ${style.bgColor} ${style.borderColor} border p-3`}
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}

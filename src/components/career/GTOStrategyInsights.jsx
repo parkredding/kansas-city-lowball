@@ -7,13 +7,91 @@
 import { motion } from 'framer-motion';
 
 /**
+ * Map of mistake type keys to their insight templates.
+ * Keys match the "{ACTION} instead of {GTO_ACTION}" format from GTOService.computeGTOSummary.
+ */
+const MISTAKE_HANDLERS = {
+  'FOLD instead of CALL': {
+    priority: 'high',
+    title: 'Folding Too Much When Getting Odds',
+    text: (count, avgLoss) =>
+      `You folded ${count} times when calling was GTO-optimal (avg ${avgLoss} EV lost each). You're likely over-folding to bets when pot odds justify a call. Before folding, calculate your pot odds — if the bet is less than ~33% of the pot, you need very few outs to call profitably.`,
+  },
+  'FOLD instead of RAISE': {
+    priority: 'high',
+    title: 'Missing Value and Bluff Raises',
+    text: (count, avgLoss) =>
+      `You folded ${count} times when raising was optimal (avg ${avgLoss} EV lost each). Some of these spots call for value raises with strong hands, others for bluff raises with blockers. Look for spots where you can represent strength, especially in position.`,
+  },
+  'CALL instead of RAISE': {
+    priority: 'medium',
+    title: 'Flat-Calling Instead of Raising for Value',
+    text: (count, avgLoss) =>
+      `You called ${count} times when raising was optimal (avg ${avgLoss} EV lost each). When you have a strong hand, raising builds the pot and charges draws. Practice identifying spots where your hand is strong enough to raise for value rather than just calling.`,
+  },
+  'CALL instead of FOLD': {
+    priority: 'high',
+    title: 'Calling Too Light — Hero Calls Costing You',
+    text: (count, avgLoss) =>
+      `You called ${count} times when folding was optimal (avg ${avgLoss} EV lost each). These are likely hero calls against strong ranges or chasing draws without the right odds. Discipline your calling range — if you can't beat many value hands, fold.`,
+  },
+  'RAISE instead of FOLD': {
+    priority: 'high',
+    title: 'Over-Aggression — Raising Weak Hands',
+    text: (count, avgLoss) =>
+      `You raised ${count} times when folding was optimal (avg ${avgLoss} EV lost each). This suggests over-bluffing or aggressing with hands that have poor equity. Tighten your raising range and reserve aggression for hands with showdown value or strong bluff equity.`,
+  },
+  'RAISE instead of CALL': {
+    priority: 'medium',
+    title: 'Over-Raising Medium-Strength Hands',
+    text: (count, avgLoss) =>
+      `You raised ${count} times when calling was optimal (avg ${avgLoss} EV lost each). Medium-strength hands often play better as calls — raising turns your hand into a bluff and folds out worse hands while keeping in better ones.`,
+  },
+  'CHECK instead of BET': {
+    priority: 'medium',
+    title: 'Missing Bet Opportunities',
+    text: (count, avgLoss) =>
+      `You checked ${count} times when betting was optimal (avg ${avgLoss} EV lost each). You're likely missing thin value bets or leaving protection bets on the table. When you have a hand worth betting, fire — especially in position.`,
+  },
+  'BET instead of CHECK': {
+    priority: 'low',
+    title: 'Over-Betting — Turning Checks Into Bets',
+    text: (count, avgLoss) =>
+      `You bet ${count} times when checking was optimal (avg ${avgLoss} EV lost each). Some hands play better as checks — either for pot control with medium-strength holdings, or to trap with strong hands. Not every hand needs a bet.`,
+  },
+};
+
+const PHASE_LABELS = {
+  PREFLOP: 'Pre-Flop',
+  BETTING_1: 'First Bet',
+  DRAW_1: 'First Draw',
+  BETTING_2: 'Second Bet',
+  DRAW_2: 'Second Draw',
+  BETTING_3: 'Third Bet',
+  DRAW_3: 'Third Draw',
+  BETTING_4: 'Final Bet',
+  FLOP: 'Flop',
+  TURN: 'Turn',
+  RIVER: 'River',
+};
+
+const POSITION_ADVICE = {
+  UTG: 'From Under the Gun, play a tighter range. Only enter pots with premium hands and be prepared to face 3-bets.',
+  HJ: 'From the Hijack, start widening slightly but respect raises from later positions. Your opening range should still be selective.',
+  CO: 'The Cutoff is a steal position — but if you\'re leaking here, you may be opening too wide or not adjusting to aggressive players behind you.',
+  BTN: 'The Button is your most profitable position. If you\'re making mistakes here, focus on your post-flop play — you should be betting and raising more aggressively with position advantage.',
+  SB: 'The Small Blind is inherently losing. Minimize losses by either folding or 3-betting rather than just completing. Avoid calling — it plays poorly out of position.',
+  BB: 'From the Big Blind, your main job is defense. Make sure you\'re not over-defending vs large raises, but also not giving up too easily to min-raises and small opens.',
+};
+
+/**
  * Generate GTO strategy adjustment recommendations from summary + leak data
  */
 function generateGTOInsights(gtoSummary) {
   if (!gtoSummary || gtoSummary.totalDecisions === 0) return [];
 
   const insights = [];
-  const { accuracyPct, gtoGrade, topMistakes, leaks, avgEVLossPerHand, totalDecisions } = gtoSummary;
+  const { accuracyPct, topMistakes, leaks, avgEVLossPerHand } = gtoSummary;
 
   // Overall grade-based framing
   if (accuracyPct >= 80) {
@@ -36,74 +114,19 @@ function generateGTOInsights(gtoSummary) {
     });
   }
 
-  // Analyze top mistake patterns
+  // Analyze top mistake patterns using the handler map
   if (topMistakes && topMistakes.length > 0) {
     for (const mistake of topMistakes.slice(0, 3)) {
       const desc = mistake.description || '';
       const avgLoss = mistake.count > 0 ? (mistake.totalEVLoss / mistake.count).toFixed(1) : '0';
 
-      // FOLD instead of CALL
-      if (desc.includes('FOLD instead of CALL')) {
+      const handlerKey = Object.keys(MISTAKE_HANDLERS).find((key) => desc.includes(key));
+      if (handlerKey) {
+        const handler = MISTAKE_HANDLERS[handlerKey];
         insights.push({
-          priority: 'high',
-          title: 'Folding Too Much When Getting Odds',
-          text: `You folded ${mistake.count} times when calling was GTO-optimal (avg ${avgLoss} EV lost each). You're likely over-folding to bets when pot odds justify a call. Before folding, calculate your pot odds — if the bet is less than ~33% of the pot, you need very few outs to call profitably.`,
-        });
-      }
-      // FOLD instead of RAISE
-      else if (desc.includes('FOLD instead of RAISE')) {
-        insights.push({
-          priority: 'high',
-          title: 'Missing Value and Bluff Raises',
-          text: `You folded ${mistake.count} times when raising was optimal (avg ${avgLoss} EV lost each). Some of these spots call for value raises with strong hands, others for bluff raises with blockers. Look for spots where you can represent strength, especially in position.`,
-        });
-      }
-      // CALL instead of RAISE
-      else if (desc.includes('CALL instead of RAISE')) {
-        insights.push({
-          priority: 'medium',
-          title: 'Flat-Calling Instead of Raising for Value',
-          text: `You called ${mistake.count} times when raising was optimal (avg ${avgLoss} EV lost each). When you have a strong hand, raising builds the pot and charges draws. Practice identifying spots where your hand is strong enough to raise for value rather than just calling.`,
-        });
-      }
-      // CALL instead of FOLD
-      else if (desc.includes('CALL instead of FOLD')) {
-        insights.push({
-          priority: 'high',
-          title: 'Calling Too Light — Hero Calls Costing You',
-          text: `You called ${mistake.count} times when folding was optimal (avg ${avgLoss} EV lost each). These are likely hero calls against strong ranges or chasing draws without the right odds. Discipline your calling range — if you can't beat many value hands, fold.`,
-        });
-      }
-      // RAISE instead of FOLD
-      else if (desc.includes('RAISE instead of FOLD')) {
-        insights.push({
-          priority: 'high',
-          title: 'Over-Aggression — Raising Weak Hands',
-          text: `You raised ${mistake.count} times when folding was optimal (avg ${avgLoss} EV lost each). This suggests over-bluffing or aggressing with hands that have poor equity. Tighten your raising range and reserve aggression for hands with showdown value or strong bluff equity.`,
-        });
-      }
-      // RAISE instead of CALL
-      else if (desc.includes('RAISE instead of CALL')) {
-        insights.push({
-          priority: 'medium',
-          title: 'Over-Raising Medium-Strength Hands',
-          text: `You raised ${mistake.count} times when calling was optimal (avg ${avgLoss} EV lost each). Medium-strength hands often play better as calls — raising turns your hand into a bluff and folds out worse hands while keeping in better ones.`,
-        });
-      }
-      // CHECK instead of BET
-      else if (desc.includes('CHECK instead of BET')) {
-        insights.push({
-          priority: 'medium',
-          title: 'Missing Bet Opportunities',
-          text: `You checked ${mistake.count} times when betting was optimal (avg ${avgLoss} EV lost each). You're likely missing thin value bets or leaving protection bets on the table. When you have a hand worth betting, fire — especially in position.`,
-        });
-      }
-      // BET instead of CHECK
-      else if (desc.includes('BET instead of CHECK')) {
-        insights.push({
-          priority: 'low',
-          title: 'Over-Betting — Turning Checks Into Bets',
-          text: `You bet ${mistake.count} times when checking was optimal (avg ${avgLoss} EV lost each). Some hands play better as checks — either for pot control with medium-strength holdings, or to trap with strong hands. Not every hand needs a bet.`,
+          priority: handler.priority,
+          title: handler.title,
+          text: handler.text(mistake.count, avgLoss),
         });
       }
     }
@@ -118,7 +141,7 @@ function generateGTOInsights(gtoSummary) {
     insights.push({
       priority: worstLeak.totalEVLoss > 50 ? 'high' : 'medium',
       title: `Biggest Positional Leak: ${posName} during ${phaseName}`,
-      text: `Your worst leak is in ${posName} during the ${phaseName} phase (${worstLeak.occurrences} mistakes, ${worstLeak.totalEVLoss.toFixed(1)} total EV lost). ${getPositionAdvice(posName, worstLeak.phase)}`,
+      text: `Your worst leak is in ${posName} during the ${phaseName} phase (${worstLeak.occurrences} mistakes, ${worstLeak.totalEVLoss.toFixed(1)} total EV lost). ${getPositionAdvice(posName)}`,
     });
 
     // If there's a second significant leak, mention it
@@ -152,32 +175,11 @@ function generateGTOInsights(gtoSummary) {
 
 function formatPhase(phase) {
   if (!phase) return 'Unknown';
-  const map = {
-    PREFLOP: 'Pre-Flop',
-    BETTING_1: 'First Bet',
-    DRAW_1: 'First Draw',
-    BETTING_2: 'Second Bet',
-    DRAW_2: 'Second Draw',
-    BETTING_3: 'Third Bet',
-    DRAW_3: 'Third Draw',
-    BETTING_4: 'Final Bet',
-    FLOP: 'Flop',
-    TURN: 'Turn',
-    RIVER: 'River',
-  };
-  return map[phase] || phase;
+  return PHASE_LABELS[phase] || phase;
 }
 
-function getPositionAdvice(position, phase) {
-  const advice = {
-    UTG: 'From Under the Gun, play a tighter range. Only enter pots with premium hands and be prepared to face 3-bets.',
-    HJ: 'From the Hijack, start widening slightly but respect raises from later positions. Your opening range should still be selective.',
-    CO: 'The Cutoff is a steal position — but if you\'re leaking here, you may be opening too wide or not adjusting to aggressive players behind you.',
-    BTN: 'The Button is your most profitable position. If you\'re making mistakes here, focus on your post-flop play — you should be betting and raising more aggressively with position advantage.',
-    SB: 'The Small Blind is inherently losing. Minimize losses by either folding or 3-betting rather than just completing. Avoid calling — it plays poorly out of position.',
-    BB: 'From the Big Blind, your main job is defense. Make sure you\'re not over-defending vs large raises, but also not giving up too easily to min-raises and small opens.',
-  };
-  return advice[position] || 'Focus on tightening your range and making more disciplined decisions in this spot.';
+function getPositionAdvice(position) {
+  return POSITION_ADVICE[position] || 'Focus on tightening your range and making more disciplined decisions in this spot.';
 }
 
 const PRIORITY_STYLES = {
@@ -223,7 +225,7 @@ export default function GTOStrategyInsights({ gtoSummary }) {
           const style = PRIORITY_STYLES[insight.priority] || PRIORITY_STYLES.medium;
           return (
             <motion.div
-              key={i}
+              key={insight.title}
               className={`rounded-lg ${style.bgColor} ${style.borderColor} border p-3`}
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
