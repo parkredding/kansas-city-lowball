@@ -1390,6 +1390,7 @@ function GameView() {
     canJoinTournament,
     isEliminated,
     getFinishPosition,
+    restartTournament,
   } = useGame();
 
   const [selectedCardIndices, setSelectedCardIndices] = useState(new Set());
@@ -1458,6 +1459,14 @@ function GameView() {
       return () => clearTimeout(timer);
     }
   }, [tournamentCompleted, tournamentInfo?.payouts, victoryModalDismissed, showVictoryModal]);
+
+  // Reset victory modal dismissed state when tournament restarts (COMPLETED -> RUNNING)
+  useEffect(() => {
+    if (!tournamentCompleted && victoryModalDismissed) {
+      setVictoryModalDismissed(false);
+      setShowVictoryModal(false);
+    }
+  }, [tournamentCompleted, victoryModalDismissed]);
 
   // Turn notification - plays audio cue when it becomes player's turn
   useTurnNotification(myTurn, tableData?.phase);
@@ -1684,12 +1693,14 @@ function GameView() {
     setVictoryModalDismissed(true);
   };
 
-  const handleCreateNewTableFromVictory = () => {
-    setShowVictoryModal(false);
-    setVictoryModalDismissed(true);
-    // Leave current table and the user will be redirected to lobby
-    // where they can create a new table
-    leaveTable();
+  const handleRestartTournament = async () => {
+    try {
+      await restartTournament();
+      setShowVictoryModal(false);
+      setVictoryModalDismissed(false);
+    } catch (err) {
+      console.error('Error restarting tournament:', err);
+    }
   };
 
   const handleReturnToLobbyFromVictory = () => {
@@ -2084,7 +2095,7 @@ function GameView() {
         isOpen={showVictoryModal}
         tournamentInfo={tournamentInfo}
         currentUserUid={currentUser?.uid}
-        onCreateNewTable={handleCreateNewTableFromVictory}
+        onRestartTournament={handleRestartTournament}
         onReturnToLobby={handleReturnToLobbyFromVictory}
         onClose={handleVictoryModalClose}
       />

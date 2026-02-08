@@ -750,6 +750,23 @@ export function GameProvider({ children }) {
     return true;
   }, [tableData, currentUser, userWallet]);
 
+  // Restart tournament (auto-restart after completion)
+  const restartTournament = useCallback(async () => {
+    if (!currentTableId) {
+      setError('Not connected to table');
+      return { success: false };
+    }
+
+    try {
+      const result = await GameService.restartTournament(currentTableId);
+      return result;
+    } catch (err) {
+      console.error('Failed to restart tournament:', err);
+      setError(err.message);
+      return { success: false, error: err.message };
+    }
+  }, [currentTableId]);
+
   // Check if current player is eliminated in tournament
   const isEliminated = useCallback(() => {
     if (!tableData || !currentUser) return false;
@@ -847,6 +864,7 @@ export function GameProvider({ children }) {
     canJoinTournament,
     isEliminated,
     getFinishPosition,
+    restartTournament,
 
     // Export BetAction for use in components
     BetAction,
