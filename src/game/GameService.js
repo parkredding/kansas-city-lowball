@@ -35,6 +35,7 @@ import {
   DEFAULT_TOURNAMENT_CONFIG,
   calculatePrizePayouts,
   BLIND_LEVEL_DURATION_MS,
+  SNG_AUTO_RESTART_DELAY_MS,
   getBlindLevel,
 } from './constants';
 
@@ -4249,15 +4250,134 @@ export class GameService {
       }
     }
 
-    // Update tournament with payout info
+    // Update tournament with payout info and schedule auto-restart
     await updateDoc(tableRef, {
       'tournament.payouts': payouts,
       'tournament.prizeDistributed': true,
       'tournament.prizeDistributedAt': Date.now(),
+      'tournament.autoRestartAt': Date.now() + SNG_AUTO_RESTART_DELAY_MS,
       lastUpdated: serverTimestamp(),
     });
 
     return { payouts };
+  }
+
+  /**
+   * Restart a completed Sit & Go tournament
+   * Resets blinds, gives all original players equal starting stacks,
+   * and transitions back to RUNNING state for a new game.
+   *
+   * @param {string} tableId - The table ID
+   * @returns {Promise<{success: boolean}>}
+   */
+  static async restartTournament(tableId) {
+    if (!db) {
+      throw new Error('Firestore not initialized');
+    }
+
+    const tableRef = doc(db, TABLES_COLLECTION, tableId);
+
+    await runTransaction(db, async (transaction) => {
+      const tableDoc = await transaction.get(tableRef);
+      if (!tableDoc.exists()) {
+        throw new Error('Table not found');
+      }
+
+      const tableData = tableDoc.data();
+      const config = tableData.config || {};
+      const tournament = tableData.tournament;
+
+      if (config.tableMode !== TABLE_MODES.SIT_AND_GO || !tournament) {
+        throw new Error('Not a tournament table');
+      }
+
+      if (tournament.state !== TOURNAMENT_STATES.COMPLETED) {
+        throw new Error('Tournament is not completed');
+      }
+
+      const startingChips = tournament.startingChips || tournament.buyIn || 1000;
+
+      // Rebuild players from registeredPlayers - all get fresh stacks
+      const registeredPlayers = tournament.registeredPlayers || [];
+      const existingPlayers = tableData.players || [];
+
+      const newPlayers = registeredPlayers.map((rp) => {
+        // Find existing player data for display info
+        const existing = existingPlayers.find((p) => p.uid === rp.uid);
+        return {
+          uid: rp.uid,
+          displayName: rp.displayName,
+          photoURL: existing?.photoURL || null,
+          chips: startingChips,
+          hand: [],
+          status: 'active',
+          cardsToDiscard: [],
+          currentRoundBet: 0,
+          totalContribution: 0,
+          hasActedThisRound: false,
+          lastAction: null,
+          seatState: SEAT_STATES.ACTIVE,
+          registeredAt: rp.registeredAt,
+          ...(existing?.isBot && {
+            isBot: true,
+            botDifficulty: existing.botDifficulty || 'hard',
+          }),
+        };
+      });
+
+      // Remove eliminated players from railbirds (they're back in the game)
+      const registeredUids = new Set(registeredPlayers.map((rp) => rp.uid));
+      const railbirds = (tableData.railbirds || []).filter(
+        (r) => !registeredUids.has(r.uid)
+      );
+
+      // Reset tournament state
+      const restartedTournament = {
+        ...tournament,
+        state: TOURNAMENT_STATES.RUNNING,
+        eliminationOrder: [],
+        winner: null,
+        payouts: null,
+        prizeDistributed: false,
+        prizeDistributedAt: null,
+        completedAt: null,
+        restartedAt: Date.now(),
+        startedAt: Date.now(),
+        blindTimer: {
+          currentLevel: 0,
+          nextLevelAt: Timestamp.fromMillis(Date.now() + BLIND_LEVEL_DURATION_MS),
+        },
+        // Clear auto-restart scheduling fields
+        autoRestartAt: null,
+      };
+
+      transaction.update(tableRef, {
+        phase: 'IDLE',
+        deck: GameService.createShuffledDeck(),
+        muck: [],
+        pot: 0,
+        pots: [],
+        currentBet: 0,
+        lastRaiseAmount: 0,
+        players: newPlayers,
+        railbirds,
+        activePlayerIndex: 0,
+        dealerIndex: 0,
+        dealerSeatIndex: null,
+        smallBlindSeatIndex: null,
+        bigBlindSeatIndex: null,
+        showdownResult: null,
+        showBluffDeadline: null,
+        lastAggressor: null,
+        turnDeadline: null,
+        communityCards: [],
+        hasHadFirstDeal: false,
+        tournament: restartedTournament,
+        lastUpdated: serverTimestamp(),
+      });
+    });
+
+    return { success: true };
   }
 
   /**
@@ -4365,6 +4485,7 @@ export class GameService {
       completedAt: tournament.completedAt,
       gameType: config.gameType,
       blindTimer: tournament.blindTimer || null,
+      autoRestartAt: tournament.autoRestartAt || null,
     };
   }
 

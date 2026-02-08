@@ -1,15 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 /**
  * Victory Modal - Displayed when a Sit & Go tournament is completed
- * Shows celebratory animation, payout summary, and navigation options
+ * Shows celebratory animation, payout summary, countdown to auto-restart,
+ * and navigation options.
  *
  * @param {Object} props
  * @param {boolean} props.isOpen - Whether the modal is visible
  * @param {Object} props.tournamentInfo - Tournament information from getTournamentInfo()
  * @param {string} props.currentUserUid - Current user's UID
- * @param {function} props.onCreateNewTable - Callback when "Create New Table" is clicked
+ * @param {function} props.onRestartTournament - Callback to trigger tournament restart
  * @param {function} props.onReturnToLobby - Callback when "Return to Lobby" is clicked
  * @param {function} props.onClose - Callback to close the modal (optional dismiss)
  */
@@ -17,21 +18,51 @@ function VictoryModal({
   isOpen,
   tournamentInfo,
   currentUserUid,
-  onCreateNewTable,
+  onRestartTournament,
   onReturnToLobby,
   onClose,
 }) {
   const [showConfetti, setShowConfetti] = useState(false);
+  const [countdown, setCountdown] = useState(null);
+  const [restartTriggered, setRestartTriggered] = useState(false);
 
   // Trigger confetti animation when modal opens
   useEffect(() => {
     if (isOpen) {
       setShowConfetti(true);
-      // Reset confetti after animation
+      setRestartTriggered(false);
       const timer = setTimeout(() => setShowConfetti(false), 3000);
       return () => clearTimeout(timer);
     }
   }, [isOpen]);
+
+  // Countdown timer for auto-restart
+  useEffect(() => {
+    if (!isOpen || !tournamentInfo?.autoRestartAt) {
+      setCountdown(null);
+      return;
+    }
+
+    const updateCountdown = () => {
+      const remaining = Math.max(0, Math.ceil((tournamentInfo.autoRestartAt - Date.now()) / 1000));
+      setCountdown(remaining);
+
+      if (remaining <= 0 && !restartTriggered) {
+        setRestartTriggered(true);
+        onRestartTournament?.();
+      }
+    };
+
+    updateCountdown();
+    const interval = setInterval(updateCountdown, 1000);
+    return () => clearInterval(interval);
+  }, [isOpen, tournamentInfo?.autoRestartAt, restartTriggered, onRestartTournament]);
+
+  const handlePlayAgain = useCallback(() => {
+    if (restartTriggered) return;
+    setRestartTriggered(true);
+    onRestartTournament?.();
+  }, [restartTriggered, onRestartTournament]);
 
   if (!isOpen || !tournamentInfo) return null;
 
@@ -216,7 +247,7 @@ function VictoryModal({
 
             {/* Payout Summary */}
             <motion.div
-              className="rounded-xl p-4 mb-6"
+              className="rounded-xl p-4 mb-4"
               style={{
                 background: 'rgba(15, 23, 42, 0.5)',
                 border: '1px solid rgba(71, 85, 105, 0.3)',
@@ -263,6 +294,21 @@ function VictoryModal({
               </div>
             </motion.div>
 
+            {/* Auto-restart countdown */}
+            {countdown !== null && countdown > 0 && (
+              <motion.div
+                className="text-center mb-4"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 1 }}
+              >
+                <p className="text-slate-400 text-sm">
+                  New game starting in{' '}
+                  <span className="text-purple-300 font-bold text-lg">{countdown}s</span>
+                </p>
+              </motion.div>
+            )}
+
             {/* Action Buttons */}
             <motion.div
               className="flex gap-3"
@@ -282,13 +328,14 @@ function VictoryModal({
                   boxShadow: '0 3px 0 rgba(51, 65, 85, 0.7), 0 5px 12px rgba(0, 0, 0, 0.2)',
                 }}
               >
-                Return to Lobby
+                Leave Table
               </motion.button>
               <motion.button
                 type="button"
-                onClick={onCreateNewTable}
-                whileTap={{ y: 4, boxShadow: '0 1px 0 #6d28d9, 0 3px 10px rgba(139, 92, 246, 0.2)' }}
-                className="flex-1 font-bold rounded-2xl flex items-center justify-center"
+                onClick={handlePlayAgain}
+                disabled={restartTriggered}
+                whileTap={!restartTriggered ? { y: 4, boxShadow: '0 1px 0 #6d28d9, 0 3px 10px rgba(139, 92, 246, 0.2)' } : {}}
+                className="flex-1 font-bold rounded-2xl flex items-center justify-center disabled:opacity-50"
                 style={{
                   minHeight: '52px',
                   background: 'linear-gradient(180deg, #a78bfa 0%, #8b5cf6 50%, #7c3aed 100%)',
@@ -296,7 +343,7 @@ function VictoryModal({
                   boxShadow: '0 5px 0 #6d28d9, 0 7px 18px rgba(139, 92, 246, 0.35)',
                 }}
               >
-                Create New Table
+                {restartTriggered ? 'Restarting...' : 'Play Again'}
               </motion.button>
             </motion.div>
           </motion.div>
