@@ -670,3 +670,188 @@ function getNextPhase(currentPhase, players, tableData) {
     return { phase: nextPhase, firstToAct };
   }
 }
+
+// ============================================================================
+// HAND HISTORY RECORDING (Server-side for security)
+// ============================================================================
+
+/**
+ * Position labels by seat count and dealer-relative index
+ */
+const POSITION_LABELS = {
+  2: ["BTN", "BB"],
+  3: ["BTN", "SB", "BB"],
+  4: ["BTN", "SB", "BB", "UTG"],
+  5: ["BTN", "SB", "BB", "UTG", "CO"],
+  6: ["BTN", "SB", "BB", "UTG", "HJ", "CO"],
+};
+
+function getPositionLabel(playerIndex, dealerIndex, totalPlayers) {
+  const positions = POSITION_LABELS[totalPlayers] || POSITION_LABELS[6];
+  const relativeIndex = (playerIndex - dealerIndex + totalPlayers) % totalPlayers;
+  return positions[relativeIndex] || "UTG";
+}
+
+/**
+ * recordHandHistory - Cloud Function to securely record hand history
+ *
+ * Called by the client after showdown, but the server reads the authoritative
+ * table state to build the hand record. This prevents clients from forging
+ * hand histories or writing to other users' collections.
+ *
+ * Security:
+ * - Verifies caller is authenticated and is a player at the table
+ * - Reads table state server-side (no client-supplied game data trusted)
+ * - Uses Admin SDK to write to all players' hand_logs (cross-user writes)
+ * - Only records if the table is in SHOWDOWN phase with a valid showdownResult
+ */
+exports.recordHandHistory = onCall({
+  cors: true,
+  maxInstances: 10,
+}, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "Must be logged in");
+  }
+
+  const { tableId } = request.data;
+  const callerUid = request.auth.uid;
+
+  if (!tableId) {
+    throw new HttpsError("invalid-argument", "tableId is required");
+  }
+
+  try {
+    const tableRef = db.collection("tables").doc(tableId);
+    const tableDoc = await tableRef.get();
+
+    if (!tableDoc.exists) {
+      throw new HttpsError("not-found", "Table not found");
+    }
+
+    const tableData = tableDoc.data();
+
+    // Verify caller is a player at this table
+    const isPlayer = tableData.players.some(p => p.uid === callerUid);
+    if (!isPlayer) {
+      throw new HttpsError("permission-denied", "You are not a player at this table");
+    }
+
+    // Only record if there's a showdown result
+    const showdownResult = tableData.showdownResult;
+    if (!showdownResult || !showdownResult.winners) {
+      return { success: false, message: "No showdown result to record" };
+    }
+
+    // Build hand record from server-authoritative table state
+    const gameType = tableData.config?.gameType || "lowball_27";
+    const bettingType = tableData.config?.bettingType || "no_limit";
+    const playerCount = tableData.players.length;
+    const dealerIndex = tableData.dealerSeatIndex || 0;
+    const handNumber = tableData.handNumber || Date.now();
+    const handId = `${tableId}_${handNumber}`;
+
+    // Check if this hand was already recorded (idempotency)
+    const existingHand = await db.collection("hand_histories").doc(handId).get();
+    if (existingHand.exists) {
+      return { success: true, message: "Hand already recorded", handId };
+    }
+
+    const playerRecords = tableData.players.map((p, i) => ({
+      uid: p.uid,
+      displayName: p.displayName,
+      isBot: p.isBot || false,
+      botDifficulty: p.botDifficulty || null,
+      position: getPositionLabel(i, dealerIndex, playerCount),
+      seatIndex: i,
+      holeCards: p.hand || [],
+      status: p.status,
+      totalContribution: p.totalContribution || 0,
+      chipsBefore: (p.chips || 0) + (p.totalContribution || 0),
+      chipsAfter: p.chips || 0,
+    }));
+
+    const winnerRecords = (showdownResult.winners || []).map((w) => ({
+      uid: w.uid || w.playerId,
+      displayName: w.displayName || w.name,
+      amount: w.amount || w.winnings || 0,
+      handDescription: w.handDescription || w.handType || "",
+    }));
+
+    const totalPot = (tableData.pots || []).reduce((sum, p) => sum + (p.amount || 0), 0) || tableData.pot || 0;
+
+    const handRecord = {
+      handId,
+      tableId,
+      handNumber,
+      timestamp: new Date().toISOString(),
+      gameType,
+      bettingType,
+      stakeLevel: tableData.minBet || 50,
+      tableMode: tableData.config?.tableMode || "cash_game",
+      playerCount,
+      dealerIndex,
+      players: playerRecords,
+      winners: winnerRecords,
+      communityCards: tableData.communityCards || [],
+      totalPot,
+      pots: tableData.pots || [],
+    };
+
+    // Write using a batch for atomicity
+    const batch = db.batch();
+
+    // Save main hand record
+    const handRef = db.collection("hand_histories").doc(handId);
+    batch.set(handRef, {
+      ...handRecord,
+      createdAt: FieldValue.serverTimestamp(),
+    });
+
+    // Save per-player index entries for fast user queries
+    for (const player of playerRecords) {
+      if (player.isBot) continue;
+
+      const winner = winnerRecords.find((w) => w.uid === player.uid);
+      const netResult = winner
+        ? winner.amount - player.totalContribution
+        : -player.totalContribution;
+
+      const opponentUids = playerRecords
+        .filter((p) => p.uid !== player.uid)
+        .map((p) => p.uid);
+
+      const userHandRef = db.collection("users").doc(player.uid).collection("hand_logs").doc(handId);
+      batch.set(userHandRef, {
+        handId,
+        tableId,
+        timestamp: handRecord.timestamp,
+        gameType,
+        bettingType,
+        stakeLevel: handRecord.stakeLevel,
+        position: player.position,
+        holeCards: player.holeCards,
+        status: player.status,
+        totalContribution: player.totalContribution,
+        netResult,
+        isWinner: !!winner,
+        winAmount: winner?.amount || 0,
+        handDescription: winner?.handDescription || "",
+        playerCount,
+        opponentUids,
+        opponents: playerRecords
+          .filter((p) => p.uid !== player.uid)
+          .map((p) => ({ uid: p.uid, displayName: p.displayName, isBot: p.isBot })),
+        vsBot: playerRecords.some((p) => p.uid !== player.uid && p.isBot),
+        createdAt: FieldValue.serverTimestamp(),
+      });
+    }
+
+    await batch.commit();
+
+    return { success: true, handId };
+  } catch (error) {
+    if (error instanceof HttpsError) throw error;
+    console.error("recordHandHistory error:", error);
+    throw new HttpsError("internal", "Failed to record hand history");
+  }
+});

@@ -28,6 +28,37 @@ service cloud.firestore {
         // Allow balance increases from any authenticated user (for refunds)
         (request.resource.data.balance >= resource.data.balance)
       );
+
+      // Hand logs subcollection - written by Cloud Function (Admin SDK bypasses rules),
+      // readable only by the owning user
+      match /hand_logs/{handId} {
+        allow read: if isAuthenticated() && request.auth.uid == userId;
+        // Clients cannot write - only the recordHandHistory Cloud Function can
+        allow write: if false;
+      }
+
+      // Rivals subcollection - each user manages their own rivalry data
+      match /rivals/{rivalId} {
+        allow read, write: if isAuthenticated() && request.auth.uid == userId;
+      }
+
+      // GTO performance subcollection - each user manages their own GTO data
+      match /gto_performance/{evalId} {
+        allow read, write: if isAuthenticated() && request.auth.uid == userId;
+      }
+
+      // Stats cache subcollection - user's own cached stats
+      match /stats_cache/{cacheId} {
+        allow read, write: if isAuthenticated() && request.auth.uid == userId;
+      }
+    }
+
+    // Hand histories collection - written by Cloud Function (Admin SDK bypasses rules),
+    // readable by authenticated users (needed for hand replay)
+    match /hand_histories/{handId} {
+      allow read: if isAuthenticated();
+      // Clients cannot write - only the recordHandHistory Cloud Function can
+      allow write: if false;
     }
 
     // Tables collection
