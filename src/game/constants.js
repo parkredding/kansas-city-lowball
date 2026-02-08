@@ -116,6 +116,9 @@ export const BLIND_LEVEL_DURATION_MS = 5 * 60 * 1000;
 // Auto-restart delay in milliseconds (15 seconds after tournament completion)
 export const SNG_AUTO_RESTART_DELAY_MS = 15 * 1000;
 
+// Rematch voting timeout in milliseconds (30 seconds for players to decide)
+export const SNG_REMATCH_TIMEOUT_MS = 30 * 1000;
+
 // Blind structure for SnG tournaments with 1000 starting stack
 // Each level has { smallBlind, bigBlind }
 // Blinds double each level

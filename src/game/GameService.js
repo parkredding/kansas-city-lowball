@@ -34,8 +34,10 @@ import {
   SEAT_STATES,
   DEFAULT_TOURNAMENT_CONFIG,
   calculatePrizePayouts,
+  getPrizeStructure,
   BLIND_LEVEL_DURATION_MS,
   SNG_AUTO_RESTART_DELAY_MS,
+  SNG_REMATCH_TIMEOUT_MS,
   getBlindLevel,
 } from './constants';
 
@@ -4250,16 +4252,119 @@ export class GameService {
       }
     }
 
-    // Update tournament with payout info and schedule auto-restart
+    // Build initial rematch votes - bots auto-vote yes
+    const allPlayers = tableData.players || [];
+    const rematchVotes = allPlayers
+      .filter((p) => p.isBot)
+      .map((p) => ({
+        uid: p.uid,
+        displayName: p.displayName,
+        wantsToPlay: true,
+        votedAt: Date.now(),
+      }));
+
+    // Update tournament with payout info and initialize rematch voting
     await updateDoc(tableRef, {
       'tournament.payouts': payouts,
       'tournament.prizeDistributed': true,
       'tournament.prizeDistributedAt': Date.now(),
-      'tournament.autoRestartAt': Date.now() + SNG_AUTO_RESTART_DELAY_MS,
+      'tournament.rematchVotes': rematchVotes,
+      'tournament.rematchDeadline': Date.now() + SNG_REMATCH_TIMEOUT_MS,
+      'tournament.autoRestartAt': null,
       lastUpdated: serverTimestamp(),
     });
 
     return { payouts };
+  }
+
+  /**
+   * Vote for or against a rematch after an SNG completes.
+   * Players indicate whether they want to play again at the same table.
+   * When all players have voted (or the deadline passes), the tournament
+   * restarts with those who voted yes (if >= 2).
+   *
+   * @param {string} tableId - The table ID
+   * @param {string} playerUid - The player's UID
+   * @param {boolean} wantsToPlay - Whether the player wants to play again
+   * @returns {Promise<{success: boolean, allVoted?: boolean, readyToRestart?: boolean}>}
+   */
+  static async voteForRematch(tableId, playerUid, wantsToPlay) {
+    if (!db) {
+      throw new Error('Firestore not initialized');
+    }
+
+    const tableRef = doc(db, TABLES_COLLECTION, tableId);
+
+    return await runTransaction(db, async (transaction) => {
+      const tableDoc = await transaction.get(tableRef);
+      if (!tableDoc.exists()) {
+        throw new Error('Table not found');
+      }
+
+      const tableData = tableDoc.data();
+      const config = tableData.config || {};
+      const tournament = tableData.tournament;
+
+      if (config.tableMode !== TABLE_MODES.SIT_AND_GO || !tournament) {
+        throw new Error('Not a tournament table');
+      }
+
+      if (tournament.state !== TOURNAMENT_STATES.COMPLETED) {
+        throw new Error('Tournament is not completed');
+      }
+
+      // Check player was in this tournament
+      const registeredPlayers = tournament.registeredPlayers || [];
+      const isRegistered = registeredPlayers.some((rp) => rp.uid === playerUid);
+      if (!isRegistered) {
+        throw new Error('Player was not in this tournament');
+      }
+
+      // Check if already voted
+      const existingVotes = tournament.rematchVotes || [];
+      const alreadyVoted = existingVotes.some((v) => v.uid === playerUid);
+      if (alreadyVoted) {
+        return { success: true, alreadyVoted: true };
+      }
+
+      // Find player display name
+      const player = registeredPlayers.find((rp) => rp.uid === playerUid);
+      const displayName = player?.displayName || 'Unknown';
+
+      // Add vote
+      const updatedVotes = [
+        ...existingVotes,
+        {
+          uid: playerUid,
+          displayName,
+          wantsToPlay,
+          votedAt: Date.now(),
+        },
+      ];
+
+      // Check if all players have voted
+      const totalPlayers = registeredPlayers.filter((rp) => {
+        // Don't count bots - they auto-voted already
+        const playerData = (tableData.players || []).find((p) => p.uid === rp.uid);
+        return !playerData?.isBot;
+      }).length;
+
+      const humanVotes = updatedVotes.filter((v) => {
+        const playerData = (tableData.players || []).find((p) => p.uid === v.uid);
+        return !playerData?.isBot;
+      }).length;
+
+      const allVoted = humanVotes >= totalPlayers;
+      const yesVotes = updatedVotes.filter((v) => v.wantsToPlay).length;
+      const readyToRestart = allVoted && yesVotes >= 2;
+
+      transaction.update(tableRef, {
+        'tournament.rematchVotes': updatedVotes,
+        lastUpdated: serverTimestamp(),
+      });
+
+      return { success: true, allVoted, readyToRestart };
+    });
   }
 
   /**
@@ -4277,7 +4382,7 @@ export class GameService {
 
     const tableRef = doc(db, TABLES_COLLECTION, tableId);
 
-    await runTransaction(db, async (transaction) => {
+    const result = await runTransaction(db, async (transaction) => {
       const tableDoc = await transaction.get(tableRef);
       if (!tableDoc.exists()) {
         throw new Error('Table not found');
@@ -4297,11 +4402,23 @@ export class GameService {
 
       const startingChips = tournament.startingChips || tournament.buyIn || 1000;
 
-      // Rebuild players from registeredPlayers - all get fresh stacks
+      // Determine which players are in the rematch
+      const rematchVotes = tournament.rematchVotes || [];
+      const yesVoters = rematchVotes.filter((v) => v.wantsToPlay);
+
+      // Need at least 2 players to restart
+      if (yesVoters.length < 2) {
+        throw new Error('Not enough players to restart (need at least 2)');
+      }
+
+      const yesVoterUids = new Set(yesVoters.map((v) => v.uid));
       const registeredPlayers = tournament.registeredPlayers || [];
       const existingPlayers = tableData.players || [];
 
-      const newPlayers = registeredPlayers.map((rp) => {
+      // Only include players who voted yes
+      const rematchPlayers = registeredPlayers.filter((rp) => yesVoterUids.has(rp.uid));
+
+      const newPlayers = rematchPlayers.map((rp) => {
         // Find existing player data for display info
         const existing = existingPlayers.find((p) => p.uid === rp.uid);
         return {
@@ -4325,16 +4442,37 @@ export class GameService {
         };
       });
 
-      // Remove eliminated players from railbirds (they're back in the game)
-      const registeredUids = new Set(registeredPlayers.map((rp) => rp.uid));
+      // Deduct buy-in from each rematch player's wallet
+      // (done outside transaction below since we can't nest user doc reads here)
+      // Store the list of players who need buy-in deducted
+      const buyIn = tournament.buyIn || 1000;
+      const newPrizePool = buyIn * newPlayers.length;
+
+      // Remove rematch players from railbirds (they're back in the game)
+      const rematchUids = new Set(rematchPlayers.map((rp) => rp.uid));
       const railbirds = (tableData.railbirds || []).filter(
-        (r) => !registeredUids.has(r.uid)
+        (r) => !rematchUids.has(r.uid)
       );
+
+      // Update registeredPlayers to only include rematch players
+      const newRegisteredPlayers = rematchPlayers.map((rp) => ({
+        uid: rp.uid,
+        displayName: rp.displayName,
+        registeredAt: Date.now(),
+        buyInAmount: buyIn,
+      }));
+
+      // Recalculate prize structure for the new player count
+      const newPrizeStructure = getPrizeStructure(newPlayers.length);
 
       // Reset tournament state
       const restartedTournament = {
         ...tournament,
         state: TOURNAMENT_STATES.RUNNING,
+        registeredPlayers: newRegisteredPlayers,
+        totalSeats: newPlayers.length,
+        prizePool: newPrizePool,
+        prizeStructure: newPrizeStructure,
         eliminationOrder: [],
         winner: null,
         payouts: null,
@@ -4347,7 +4485,9 @@ export class GameService {
           currentLevel: 0,
           nextLevelAt: Timestamp.fromMillis(Date.now() + BLIND_LEVEL_DURATION_MS),
         },
-        // Clear auto-restart scheduling fields
+        // Clear rematch and auto-restart fields
+        rematchVotes: null,
+        rematchDeadline: null,
         autoRestartAt: null,
       };
 
@@ -4375,7 +4515,28 @@ export class GameService {
         tournament: restartedTournament,
         lastUpdated: serverTimestamp(),
       });
+
+      return { buyIn, rematchPlayers: newPlayers };
     });
+
+    // Deduct buy-in from each human rematch player's wallet (outside transaction)
+    if (result?.rematchPlayers) {
+      for (const player of result.rematchPlayers) {
+        if (player.isBot) continue;
+        try {
+          const userRef = doc(db, USERS_COLLECTION, player.uid);
+          const userSnap = await getDoc(userRef);
+          if (userSnap.exists()) {
+            const currentBalance = userSnap.data().balance || 0;
+            await updateDoc(userRef, {
+              balance: currentBalance - result.buyIn,
+            });
+          }
+        } catch (err) {
+          console.error(`Failed to deduct buy-in for ${player.uid}:`, err);
+        }
+      }
+    }
 
     return { success: true };
   }
@@ -4476,6 +4637,7 @@ export class GameService {
       buyIn: tournament.buyIn,
       totalSeats: tournament.totalSeats,
       registeredCount: (tournament.registeredPlayers || []).length,
+      registeredPlayers: tournament.registeredPlayers || [],
       prizePool: tournament.prizePool || 0,
       prizeStructure: tournament.prizeStructure || [],
       eliminationOrder: tournament.eliminationOrder || [],
@@ -4486,6 +4648,8 @@ export class GameService {
       gameType: config.gameType,
       blindTimer: tournament.blindTimer || null,
       autoRestartAt: tournament.autoRestartAt || null,
+      rematchVotes: tournament.rematchVotes || [],
+      rematchDeadline: tournament.rematchDeadline || null,
     };
   }
 
