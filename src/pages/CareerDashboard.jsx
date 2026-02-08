@@ -32,6 +32,8 @@ import StartingHandHeatmap from '../components/career/StartingHandHeatmap';
 import RivalCard from '../components/career/RivalCard';
 import TaleOfTheTape from '../components/career/TaleOfTheTape';
 import GTOPerformance from '../components/career/GTOPerformance';
+import AIPlayInsights from '../components/career/AIPlayInsights';
+import GTOStrategyInsights from '../components/career/GTOStrategyInsights';
 
 const TABS = [
   { id: 'overview', label: 'Overview' },
@@ -256,6 +258,9 @@ export default function CareerDashboard() {
                   <PositionStats positionStats={stats.positionStats} />
                 </div>
 
+                {/* AI Play Analysis */}
+                <AIPlayInsights stats={stats} />
+
                 {/* Starting Hand Heatmap (Hold'em only) */}
                 {stats.gameTypeStats?.holdem && (
                   <StartingHandHeatmap startingHandStats={stats.startingHandStats} />
@@ -343,6 +348,7 @@ export default function CareerDashboard() {
                   </p>
                 </div>
                 <GTOPerformance gtoSummary={gtoSummary} />
+                <GTOStrategyInsights gtoSummary={gtoSummary} />
               </motion.div>
             )}
           </>
