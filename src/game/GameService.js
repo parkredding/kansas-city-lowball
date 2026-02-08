@@ -4400,7 +4400,10 @@ export class GameService {
         throw new Error('Tournament is not completed');
       }
 
-      const startingChips = tournament.startingChips || tournament.buyIn || 1000;
+      // Use the tournament's configured starting stack for all players.
+      // Every player in the rematch gets the same fresh stack - the previous
+      // winner does NOT carry over chips from the completed game.
+      const startingChips = tournament.startingChips ?? tournament.buyIn ?? 1000;
 
       // Determine which players are in the rematch
       const rematchVotes = tournament.rematchVotes || [];
@@ -4465,9 +4468,16 @@ export class GameService {
       // Recalculate prize structure for the new player count
       const newPrizeStructure = getPrizeStructure(newPlayers.length);
 
-      // Reset tournament state
+      // Build a fresh tournament object from scratch for the rematch.
+      // Only preserve immutable config fields (buyIn, startingChips) from
+      // the previous tournament. All game state is fully reset so no player
+      // carries over chips or blind levels from the completed game.
       const restartedTournament = {
-        ...tournament,
+        // Immutable config - preserved from original tournament setup
+        buyIn: tournament.buyIn,
+        startingChips: startingChips,
+
+        // Fresh game state for the rematch
         state: TOURNAMENT_STATES.RUNNING,
         registeredPlayers: newRegisteredPlayers,
         totalSeats: newPlayers.length,
@@ -4481,10 +4491,13 @@ export class GameService {
         completedAt: null,
         restartedAt: Date.now(),
         startedAt: Date.now(),
+
+        // Reset blinds to level 0 (starting blinds, e.g. 10/20)
         blindTimer: {
           currentLevel: 0,
           nextLevelAt: Timestamp.fromMillis(Date.now() + BLIND_LEVEL_DURATION_MS),
         },
+
         // Clear rematch and auto-restart fields
         rematchVotes: null,
         rematchDeadline: null,
@@ -4512,6 +4525,8 @@ export class GameService {
         turnDeadline: null,
         communityCards: [],
         hasHadFirstDeal: false,
+        cutForDealerComplete: null,
+        cutForDealerWinner: null,
         tournament: restartedTournament,
         lastUpdated: serverTimestamp(),
       });
