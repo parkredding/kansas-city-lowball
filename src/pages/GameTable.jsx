@@ -1391,6 +1391,7 @@ function GameView() {
     isEliminated,
     getFinishPosition,
     restartTournament,
+    voteForRematch,
   } = useGame();
 
   const [selectedCardIndices, setSelectedCardIndices] = useState(new Set());
@@ -1691,6 +1692,14 @@ function GameView() {
   const handleVictoryModalClose = () => {
     setShowVictoryModal(false);
     setVictoryModalDismissed(true);
+  };
+
+  const handleVoteRematch = async (wantsToPlay) => {
+    try {
+      await voteForRematch(wantsToPlay);
+    } catch (err) {
+      console.error('Error voting for rematch:', err);
+    }
   };
 
   const handleRestartTournament = async () => {
@@ -2095,9 +2104,11 @@ function GameView() {
         isOpen={showVictoryModal}
         tournamentInfo={tournamentInfo}
         currentUserUid={currentUser?.uid}
+        onVoteRematch={handleVoteRematch}
         onRestartTournament={handleRestartTournament}
         onReturnToLobby={handleReturnToLobbyFromVictory}
         onClose={handleVictoryModalClose}
+        players={tableData?.players || []}
       />
 
       {/* Toast Notification */}

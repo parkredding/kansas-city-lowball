@@ -840,6 +840,23 @@ export function GameProvider({ children }) {
     }
   }, [currentTableId]);
 
+  // Vote for or against a rematch after SNG completion
+  const voteForRematch = useCallback(async (wantsToPlay) => {
+    if (!currentTableId || !currentUser) {
+      setError('Not connected to table');
+      return { success: false };
+    }
+
+    try {
+      const result = await GameService.voteForRematch(currentTableId, currentUser.uid, wantsToPlay);
+      return result;
+    } catch (err) {
+      console.error('Failed to vote for rematch:', err);
+      setError(err.message);
+      return { success: false, error: err.message };
+    }
+  }, [currentTableId, currentUser]);
+
   // Check if current player is eliminated in tournament
   const isEliminated = useCallback(() => {
     if (!tableData || !currentUser) return false;
@@ -938,6 +955,7 @@ export function GameProvider({ children }) {
     isEliminated,
     getFinishPosition,
     restartTournament,
+    voteForRematch,
 
     // Export BetAction for use in components
     BetAction,

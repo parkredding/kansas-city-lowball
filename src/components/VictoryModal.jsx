@@ -3,73 +3,140 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 /**
  * Victory Modal - Displayed when a Sit & Go tournament is completed
- * Shows celebratory animation, payout summary, countdown to auto-restart,
+ * Shows celebratory animation, payout summary, rematch voting status,
  * and navigation options.
  *
  * @param {Object} props
  * @param {boolean} props.isOpen - Whether the modal is visible
  * @param {Object} props.tournamentInfo - Tournament information from getTournamentInfo()
  * @param {string} props.currentUserUid - Current user's UID
+ * @param {function} props.onVoteRematch - Callback when player votes to play again or leave
  * @param {function} props.onRestartTournament - Callback to trigger tournament restart
  * @param {function} props.onReturnToLobby - Callback when "Return to Lobby" is clicked
  * @param {function} props.onClose - Callback to close the modal (optional dismiss)
+ * @param {Array} props.players - Current players array from table data
  */
 function VictoryModal({
   isOpen,
   tournamentInfo,
   currentUserUid,
+  onVoteRematch,
   onRestartTournament,
   onReturnToLobby,
   onClose,
+  players = [],
 }) {
   const [showConfetti, setShowConfetti] = useState(false);
   const [countdown, setCountdown] = useState(null);
   const [restartTriggered, setRestartTriggered] = useState(false);
+  const [hasVoted, setHasVoted] = useState(false);
 
   // Trigger confetti animation when modal opens
   useEffect(() => {
     if (isOpen) {
       setShowConfetti(true);
       setRestartTriggered(false);
+      setHasVoted(false);
       const timer = setTimeout(() => setShowConfetti(false), 3000);
       return () => clearTimeout(timer);
     }
   }, [isOpen]);
 
-  // Countdown timer for auto-restart
+  // Track if current user has already voted (from tournament data)
   useEffect(() => {
-    if (!isOpen || !tournamentInfo?.autoRestartAt) {
+    if (!isOpen || !tournamentInfo?.rematchVotes) return;
+    const voted = tournamentInfo.rematchVotes.some((v) => v.uid === currentUserUid);
+    setHasVoted(voted);
+  }, [isOpen, tournamentInfo?.rematchVotes, currentUserUid]);
+
+  // Countdown timer for rematch deadline
+  useEffect(() => {
+    if (!isOpen || !tournamentInfo?.rematchDeadline) {
       setCountdown(null);
       return;
     }
 
     const updateCountdown = () => {
-      const remaining = Math.max(0, Math.ceil((tournamentInfo.autoRestartAt - Date.now()) / 1000));
+      const remaining = Math.max(0, Math.ceil((tournamentInfo.rematchDeadline - Date.now()) / 1000));
       setCountdown(remaining);
 
+      // When deadline expires, trigger restart with whoever voted yes
       if (remaining <= 0 && !restartTriggered) {
-        setRestartTriggered(true);
-        onRestartTournament?.();
+        const yesVotes = (tournamentInfo.rematchVotes || []).filter((v) => v.wantsToPlay);
+        if (yesVotes.length >= 2) {
+          setRestartTriggered(true);
+          onRestartTournament?.();
+        }
       }
     };
 
     updateCountdown();
     const interval = setInterval(updateCountdown, 1000);
     return () => clearInterval(interval);
-  }, [isOpen, tournamentInfo?.autoRestartAt, restartTriggered, onRestartTournament]);
+  }, [isOpen, tournamentInfo?.rematchDeadline, restartTriggered, onRestartTournament, tournamentInfo?.rematchVotes]);
 
-  const handlePlayAgain = useCallback(() => {
-    if (restartTriggered) return;
-    setRestartTriggered(true);
-    onRestartTournament?.();
-  }, [restartTriggered, onRestartTournament]);
+  // Auto-restart when all players have voted and enough said yes
+  useEffect(() => {
+    if (!isOpen || !tournamentInfo?.rematchVotes || restartTriggered) return;
+
+    const rematchVotes = tournamentInfo.rematchVotes;
+    const registeredPlayers = tournamentInfo.registeredPlayers || [];
+
+    // Count human players only (bots auto-vote)
+    const humanPlayers = registeredPlayers.filter((rp) => {
+      const playerData = players.find((p) => p.uid === rp.uid);
+      return !playerData?.isBot;
+    });
+    const humanVotes = rematchVotes.filter((v) => {
+      const playerData = players.find((p) => p.uid === v.uid);
+      return !playerData?.isBot;
+    });
+
+    if (humanVotes.length >= humanPlayers.length && humanPlayers.length > 0) {
+      const yesVotes = rematchVotes.filter((v) => v.wantsToPlay);
+      if (yesVotes.length >= 2) {
+        setRestartTriggered(true);
+        onRestartTournament?.();
+      }
+    }
+  }, [isOpen, tournamentInfo?.rematchVotes, tournamentInfo?.registeredPlayers, players, restartTriggered, onRestartTournament]);
+
+  const handleVoteYes = useCallback(() => {
+    if (hasVoted || restartTriggered) return;
+    setHasVoted(true);
+    onVoteRematch?.(true);
+  }, [hasVoted, restartTriggered, onVoteRematch]);
+
+  const handleVoteNo = useCallback(() => {
+    if (hasVoted || restartTriggered) return;
+    setHasVoted(true);
+    onVoteRematch?.(false);
+    onReturnToLobby?.();
+  }, [hasVoted, restartTriggered, onVoteRematch, onReturnToLobby]);
 
   if (!isOpen || !tournamentInfo) return null;
 
-  const { winner, payouts = [], prizePool = 0, gameType } = tournamentInfo;
+  const { winner, payouts = [], prizePool = 0, gameType, rematchVotes = [], registeredPlayers = [] } = tournamentInfo;
   const isCurrentUserWinner = winner?.uid === currentUserUid;
   const currentUserPayout = payouts.find((p) => p.uid === currentUserUid);
   const currentUserPosition = currentUserPayout?.position;
+
+  // Rematch voting status
+  const yesVoters = rematchVotes.filter((v) => v.wantsToPlay);
+  const currentUserVote = rematchVotes.find((v) => v.uid === currentUserUid);
+
+  // Build player vote status list (all registered players)
+  const playerVoteStatus = registeredPlayers.map((rp) => {
+    const vote = rematchVotes.find((v) => v.uid === rp.uid);
+    const playerData = players.find((p) => p.uid === rp.uid);
+    return {
+      uid: rp.uid,
+      displayName: rp.displayName,
+      isBot: playerData?.isBot || false,
+      voted: !!vote,
+      wantsToPlay: vote?.wantsToPlay || false,
+    };
+  });
 
   // Get ordinal suffix for position
   const getOrdinal = (n) => {
@@ -294,18 +361,81 @@ function VictoryModal({
               </div>
             </motion.div>
 
-            {/* Auto-restart countdown */}
-            {countdown !== null && countdown > 0 && (
+            {/* Rematch Voting Status */}
+            {hasVoted && !restartTriggered && (
+              <motion.div
+                className="rounded-xl p-4 mb-4"
+                style={{
+                  background: 'rgba(15, 23, 42, 0.5)',
+                  border: '1px solid rgba(71, 85, 105, 0.3)',
+                }}
+                initial={{ y: 20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+              >
+                <h3 className="text-sm font-semibold text-slate-300 mb-3">Play Again?</h3>
+                <div className="space-y-1.5">
+                  {playerVoteStatus.filter((p) => !p.isBot).map((p) => (
+                    <div
+                      key={p.uid}
+                      className="flex justify-between items-center py-1.5 px-3 rounded-lg bg-slate-800/50"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-slate-300 text-sm">{p.displayName}</span>
+                        {p.uid === currentUserUid && (
+                          <span className="text-xs bg-purple-600 px-1.5 py-0.5 rounded text-white">
+                            You
+                          </span>
+                        )}
+                      </div>
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                        !p.voted
+                          ? 'bg-slate-700 text-slate-400'
+                          : p.wantsToPlay
+                            ? 'bg-green-900/50 text-green-400 border border-green-500/30'
+                            : 'bg-red-900/50 text-red-400 border border-red-500/30'
+                      }`}>
+                        {!p.voted ? 'Deciding...' : p.wantsToPlay ? 'In' : 'Out'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                {yesVoters.length >= 2 && (
+                  <p className="text-green-400 text-xs mt-2 text-center">
+                    {yesVoters.length} players ready - waiting for others
+                  </p>
+                )}
+                {yesVoters.length < 2 && currentUserVote?.wantsToPlay && (
+                  <p className="text-slate-400 text-xs mt-2 text-center">
+                    Need at least 2 players to start
+                  </p>
+                )}
+              </motion.div>
+            )}
+
+            {/* Rematch countdown */}
+            {countdown !== null && countdown > 0 && hasVoted && !restartTriggered && (
               <motion.div
                 className="text-center mb-4"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                transition={{ delay: 1 }}
               >
                 <p className="text-slate-400 text-sm">
-                  New game starting in{' '}
+                  {currentUserVote?.wantsToPlay
+                    ? 'Starting with ready players in '
+                    : 'Leaving in '}
                   <span className="text-purple-300 font-bold text-lg">{countdown}s</span>
                 </p>
+              </motion.div>
+            )}
+
+            {/* Restarting indicator */}
+            {restartTriggered && (
+              <motion.div
+                className="text-center mb-4"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+              >
+                <p className="text-purple-300 font-semibold">Starting new tournament...</p>
               </motion.div>
             )}
 
@@ -316,35 +446,53 @@ function VictoryModal({
               animate={{ y: 0, opacity: 1 }}
               transition={{ delay: 1 }}
             >
-              <motion.button
-                type="button"
-                onClick={onReturnToLobby}
-                whileTap={{ y: 2, boxShadow: '0 0px 0 rgba(51, 65, 85, 0.7), 0 1px 4px rgba(0, 0, 0, 0.15)' }}
-                className="flex-1 text-white font-semibold rounded-2xl flex items-center justify-center"
-                style={{
-                  minHeight: '52px',
-                  background: 'rgba(51, 65, 85, 0.6)',
-                  border: '1px solid rgba(71, 85, 105, 0.3)',
-                  boxShadow: '0 3px 0 rgba(51, 65, 85, 0.7), 0 5px 12px rgba(0, 0, 0, 0.2)',
-                }}
-              >
-                Leave Table
-              </motion.button>
-              <motion.button
-                type="button"
-                onClick={handlePlayAgain}
-                disabled={restartTriggered}
-                whileTap={!restartTriggered ? { y: 4, boxShadow: '0 1px 0 #6d28d9, 0 3px 10px rgba(139, 92, 246, 0.2)' } : {}}
-                className="flex-1 font-bold rounded-2xl flex items-center justify-center disabled:opacity-50"
-                style={{
-                  minHeight: '52px',
-                  background: 'linear-gradient(180deg, #a78bfa 0%, #8b5cf6 50%, #7c3aed 100%)',
-                  color: 'white',
-                  boxShadow: '0 5px 0 #6d28d9, 0 7px 18px rgba(139, 92, 246, 0.35)',
-                }}
-              >
-                {restartTriggered ? 'Restarting...' : 'Play Again'}
-              </motion.button>
+              {!hasVoted && !restartTriggered ? (
+                <>
+                  <motion.button
+                    type="button"
+                    onClick={handleVoteNo}
+                    whileTap={{ y: 2, boxShadow: '0 0px 0 rgba(51, 65, 85, 0.7), 0 1px 4px rgba(0, 0, 0, 0.15)' }}
+                    className="flex-1 text-white font-semibold rounded-2xl flex items-center justify-center"
+                    style={{
+                      minHeight: '52px',
+                      background: 'rgba(51, 65, 85, 0.6)',
+                      border: '1px solid rgba(71, 85, 105, 0.3)',
+                      boxShadow: '0 3px 0 rgba(51, 65, 85, 0.7), 0 5px 12px rgba(0, 0, 0, 0.2)',
+                    }}
+                  >
+                    Leave Table
+                  </motion.button>
+                  <motion.button
+                    type="button"
+                    onClick={handleVoteYes}
+                    whileTap={{ y: 4, boxShadow: '0 1px 0 #6d28d9, 0 3px 10px rgba(139, 92, 246, 0.2)' }}
+                    className="flex-1 font-bold rounded-2xl flex items-center justify-center"
+                    style={{
+                      minHeight: '52px',
+                      background: 'linear-gradient(180deg, #a78bfa 0%, #8b5cf6 50%, #7c3aed 100%)',
+                      color: 'white',
+                      boxShadow: '0 5px 0 #6d28d9, 0 7px 18px rgba(139, 92, 246, 0.35)',
+                    }}
+                  >
+                    Play Again
+                  </motion.button>
+                </>
+              ) : (
+                <motion.button
+                  type="button"
+                  onClick={onReturnToLobby}
+                  whileTap={{ y: 2, boxShadow: '0 0px 0 rgba(51, 65, 85, 0.7), 0 1px 4px rgba(0, 0, 0, 0.15)' }}
+                  className="flex-1 text-white font-semibold rounded-2xl flex items-center justify-center"
+                  style={{
+                    minHeight: '52px',
+                    background: 'rgba(51, 65, 85, 0.6)',
+                    border: '1px solid rgba(71, 85, 105, 0.3)',
+                    boxShadow: '0 3px 0 rgba(51, 65, 85, 0.7), 0 5px 12px rgba(0, 0, 0, 0.2)',
+                  }}
+                >
+                  Leave Table
+                </motion.button>
+              )}
             </motion.div>
           </motion.div>
         </motion.div>
