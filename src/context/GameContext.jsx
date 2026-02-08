@@ -4,6 +4,11 @@ import { GameService, BetAction } from '../game/GameService';
 import { HandEvaluator } from '../game/HandEvaluator';
 import { TexasHoldemHandEvaluator } from '../game/TexasHoldemHandEvaluator';
 import { DEFAULT_MIN_BET, GAME_TYPES, TABLE_MODES, TOURNAMENT_STATES, getBlindLevel } from '../game/constants';
+import { buildHandRecord, getPositionLabel } from '../services/HandHistoryService';
+import { updateRivalryForCurrentUser } from '../services/RivalsService';
+import { evaluateAction, saveGTOEvaluation } from '../services/GTOService';
+import { functions } from '../firebase';
+import { httpsCallable } from 'firebase/functions';
 
 const GameContext = createContext();
 
@@ -370,6 +375,48 @@ export function GameProvider({ children }) {
     try {
       const result = await GameService.performBetAction(currentTableId, tableData, currentUser.uid, action, amount);
       setError(null);
+
+      // Evaluate the action against GTO and save the evaluation (fire-and-forget)
+      try {
+        const player = tableData.players.find((p) => p.uid === currentUser.uid);
+        if (player) {
+          const playerCount = tableData.players.length;
+          const dealerIndex = tableData.dealerSeatIndex || 0;
+          const playerIndex = tableData.players.indexOf(player);
+          const position = getPositionLabel(playerIndex, dealerIndex, playerCount);
+          const stakeLevel = tableData.minBet || 50;
+
+          // Estimate hand strength (0-100 scale)
+          let handStrength = 50;
+          const gameType = tableData.config?.gameType || 'lowball_27';
+          if (player.hand && player.hand.length > 0) {
+            if (gameType === 'holdem') {
+              handStrength = TexasHoldemHandEvaluator.calculateHandStrength(player.hand, tableData.communityCards || []);
+            } else if (player.hand.length === 5) {
+              const evalResult = HandEvaluator.evaluate(player.hand);
+              // For lowball, lower category = better hand. Category 1 (HIGH_CARD) is best, 9 (STRAIGHT_FLUSH) is worst.
+              handStrength = evalResult ? Math.max(0, 100 - (evalResult.category - 1) * 10) : 50;
+            }
+          }
+
+          const gtoEval = evaluateAction(action, {
+            position,
+            holeCards: player.hand || [],
+            potSize: tableData.pot || 0,
+            currentBet: tableData.currentBet || 0,
+            stakeLevel,
+            phase: tableData.phase,
+            handStrength,
+          });
+
+          const evaluationId = `${tableData.id}_${tableData.handNumber || 'hand'}_${Date.now()}`;
+          saveGTOEvaluation(currentUser.uid, evaluationId, gtoEval);
+        }
+      } catch (gtoErr) {
+        // Don't block game flow if GTO evaluation fails
+        console.error('GTO evaluation failed:', gtoErr);
+      }
+
       return { success: true, ...result };
     } catch (err) {
       // Set error for display in UI
@@ -406,11 +453,37 @@ export function GameProvider({ children }) {
     if (!currentTableId || !tableData) return;
 
     try {
+      // Record hand history and rivalry data BEFORE resetting the table state.
+      // At this point, tableData still contains showdown results, player hands, etc.
+      if (tableData.showdownResult && currentUser) {
+        try {
+          // Hand history is recorded server-side via Cloud Function for security.
+          // The server reads authoritative table state and writes to all players'
+          // hand_logs collections, preventing client-side data forgery.
+          const recordHandHistoryFn = httpsCallable(functions, 'recordHandHistory');
+          recordHandHistoryFn({ tableId: currentTableId }).catch((err) => {
+            console.error('Failed to record hand history (server):', err);
+          });
+
+          // Build a local hand record for rivalry tracking (writes only to own collection)
+          const handRecord = buildHandRecord(
+            tableData,
+            tableData.showdownResult.winners,
+            tableData.handNumber || Date.now()
+          );
+          // Update rivalry stats for the current user (own /users/{uid}/rivals/ only)
+          await updateRivalryForCurrentUser(currentUser.uid, handRecord);
+        } catch (recordErr) {
+          // Don't block the game flow if recording fails
+          console.error('Failed to record hand data:', recordErr);
+        }
+      }
+
       await GameService.startNextHand(currentTableId, tableData);
     } catch (err) {
       setError(err.message);
     }
-  }, [currentTableId, tableData]);
+  }, [currentTableId, tableData, currentUser]);
 
   // Reveal hand at showdown (show instead of muck)
   const revealHand = useCallback(async () => {
