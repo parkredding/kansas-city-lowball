@@ -86,8 +86,7 @@ export default function TaleOfTheTape({ heroName, villainName, hero, villain, in
         <ComparisonRow label="PFR" heroValue={hero.pfr} villainValue={villain.pfr} suffix="%" delay={1} />
         <ComparisonRow label="Aggression" heroValue={hero.aggressionFrequency} villainValue={villain.aggressionFrequency} suffix="%" delay={2} />
         <ComparisonRow label="SD Win Rate" heroValue={hero.showdownWinRate} villainValue={villain.showdownWinRate} suffix="%" delay={3} />
-        <ComparisonRow label="Bluff Success" heroValue={hero.bluffSuccessRate} villainValue={villain.bluffSuccessRate} suffix="%" delay={4} />
-        <ComparisonRow label="3-Bet %" heroValue={hero.threeBetPct} villainValue={villain.threeBetPct} suffix="%" delay={5} />
+        <ComparisonRow label="Non-SD Win %" heroValue={hero.nonShowdownWinRate} villainValue={villain.nonShowdownWinRate} suffix="%" delay={4} />
         <ComparisonRow label="Fold to Steal" heroValue={hero.foldToSteal} villainValue={villain.foldToSteal} suffix="%" higherIsBetter={false} delay={6} />
         <ComparisonRow label="Avg Pot" heroValue={hero.avgPotSize} villainValue={villain.avgPotSize} delay={7} />
       </div>

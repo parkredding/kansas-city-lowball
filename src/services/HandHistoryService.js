@@ -125,6 +125,11 @@ export async function saveHandHistory(handRecord) {
       ? winner.amount - player.totalContribution
       : -player.totalContribution;
 
+    // Build flat array of opponent UIDs for Firestore array-contains queries
+    const opponentUids = handRecord.players
+      .filter((p) => p.uid !== player.uid)
+      .map((p) => p.uid);
+
     const userHandRef = doc(db, 'users', player.uid, 'hand_logs', handRecord.handId);
     batch.set(userHandRef, {
       handId: handRecord.handId,
@@ -142,6 +147,7 @@ export async function saveHandHistory(handRecord) {
       winAmount: winner?.amount || 0,
       handDescription: winner?.handDescription || '',
       playerCount: handRecord.playerCount,
+      opponentUids,
       opponents: handRecord.players
         .filter((p) => p.uid !== player.uid)
         .map((p) => ({ uid: p.uid, displayName: p.displayName, isBot: p.isBot })),
@@ -182,6 +188,10 @@ export async function getUserHandLogs(uid, options = {}) {
   if (position) {
     constraints.unshift(where('position', '==', position));
   }
+  // Server-side filtering by opponent using the opponentUids array field
+  if (opponentUid) {
+    constraints.unshift(where('opponentUids', 'array-contains', opponentUid));
+  }
 
   constraints.push(limit(limitCount));
   if (lastDoc) {
@@ -192,14 +202,7 @@ export async function getUserHandLogs(uid, options = {}) {
 
   try {
     const snapshot = await getDocs(q);
-    let results = snapshot.docs.map((d) => ({ id: d.id, ...d.data(), _doc: d }));
-
-    // Client-side filter for opponent (Firestore can't query array subfields)
-    if (opponentUid) {
-      results = results.filter((r) =>
-        r.opponents?.some((o) => o.uid === opponentUid)
-      );
-    }
+    const results = snapshot.docs.map((d) => ({ id: d.id, ...d.data(), _doc: d }));
 
     return results;
   } catch (err) {

@@ -17,12 +17,12 @@
  * ============================================================================
  */
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
 import { getUserStats, getUserStatsVsRival, getEmptyStats } from '../services/StatsService';
-import { getRivals, computeTaleOfTheTape, computePlayerMetrics } from '../services/RivalsService';
+import { getRivals, computeTaleOfTheTape } from '../services/RivalsService';
 import { getGTOPerformance, computeGTOSummary, findLeaks } from '../services/GTOService';
 import StatsOverview from '../components/career/StatsOverview';
 import PerformanceGraph from '../components/career/PerformanceGraph';
@@ -45,8 +45,12 @@ export default function CareerDashboard() {
 
   const [activeTab, setActiveTab] = useState('overview');
   const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState(getEmptyStats());
+  const [overallStats, setOverallStats] = useState(getEmptyStats());
+  const [filteredStats, setFilteredStats] = useState(null);
   const [gameTypeFilter, setGameTypeFilter] = useState(null);
+
+  // Use filtered stats when a rival filter is active, otherwise overall stats
+  const stats = filteredStats || overallStats;
 
   // Rivals state
   const [rivals, setRivals] = useState([]);
@@ -58,7 +62,7 @@ export default function CareerDashboard() {
   // GTO state
   const [gtoSummary, setGtoSummary] = useState(null);
 
-  // Load overall stats
+  // Load overall stats (once on mount and when game type filter changes)
   useEffect(() => {
     if (!currentUser) return;
 
@@ -68,7 +72,7 @@ export default function CareerDashboard() {
 
     getUserStats(currentUser.uid, options)
       .then((s) => {
-        setStats(s);
+        setOverallStats(s);
         setLoading(false);
       })
       .catch((err) => {
@@ -104,14 +108,12 @@ export default function CareerDashboard() {
     if (!currentUser) return;
 
     if (selectedRival?.id === rival.id) {
-      // Deselect
+      // Deselect - restore overall stats without re-fetching
       setSelectedRival(null);
       setRivalStats(null);
       setTaleOfTape(null);
       setRivalFilterActive(false);
-      // Reload global stats
-      const s = await getUserStats(currentUser.uid);
-      setStats(s);
+      setFilteredStats(null);
       return;
     }
 
@@ -122,7 +124,7 @@ export default function CareerDashboard() {
       const vsStats = await getUserStatsVsRival(currentUser.uid, rival.rivalUid || rival.id);
       setRivalStats(vsStats);
       setRivalFilterActive(true);
-      setStats(vsStats);
+      setFilteredStats(vsStats);
 
       // Load Tale of the Tape
       const tape = await computeTaleOfTheTape(currentUser.uid, rival.rivalUid || rival.id);
@@ -132,17 +134,14 @@ export default function CareerDashboard() {
     }
   }, [currentUser, selectedRival]);
 
-  // Clear rival filter
-  const clearRivalFilter = useCallback(async () => {
+  // Clear rival filter - restores overall stats without re-fetching
+  const clearRivalFilter = useCallback(() => {
     setSelectedRival(null);
     setRivalStats(null);
     setTaleOfTape(null);
     setRivalFilterActive(false);
-    if (currentUser) {
-      const s = await getUserStats(currentUser.uid);
-      setStats(s);
-    }
-  }, [currentUser]);
+    setFilteredStats(null);
+  }, []);
 
   // Handle game type filter
   const handleFilterGameType = useCallback((type) => {

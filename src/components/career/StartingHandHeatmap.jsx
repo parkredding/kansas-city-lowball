@@ -3,7 +3,7 @@
  * Upper-right = suited, lower-left = offsuit, diagonal = pairs
  */
 
-import { useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { buildHeatmapData, RANKS } from '../../services/StatsService';
 
@@ -100,8 +100,8 @@ export default function StartingHandHeatmap({ startingHandStats = {} }) {
 
           {/* Grid rows */}
           {grid.map((row, rowIdx) => (
-            <>
-              <div key={`r-${rowIdx}`} className="text-center text-xs text-slate-500 font-mono flex items-center justify-center">
+            <React.Fragment key={`row-${rowIdx}`}>
+              <div className="text-center text-xs text-slate-500 font-mono flex items-center justify-center">
                 {RANKS[rowIdx]}
               </div>
               {row.map((cell) => (
@@ -127,7 +127,7 @@ export default function StartingHandHeatmap({ startingHandStats = {} }) {
                   </AnimatePresence>
                 </div>
               ))}
-            </>
+            </React.Fragment>
           ))}
         </div>
       </div>

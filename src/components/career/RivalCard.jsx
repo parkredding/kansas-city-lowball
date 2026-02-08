@@ -29,8 +29,8 @@ function buildRadarData(heroMetrics, villainMetrics) {
     { stat: 'PFR', hero: heroMetrics?.pfr || 0, villain: villainMetrics?.pfr || 0 },
     { stat: 'Aggression', hero: heroMetrics?.aggressionFrequency || 0, villain: villainMetrics?.aggressionFrequency || 0 },
     { stat: 'SD Win%', hero: heroMetrics?.showdownWinRate || 0, villain: villainMetrics?.showdownWinRate || 0 },
-    { stat: 'Bluff%', hero: heroMetrics?.bluffSuccessRate || 0, villain: villainMetrics?.bluffSuccessRate || 0 },
-    { stat: '3-Bet', hero: heroMetrics?.threeBetPct || 0, villain: villainMetrics?.threeBetPct || 0 },
+    { stat: 'Non-SD%', hero: heroMetrics?.nonShowdownWinRate || 0, villain: villainMetrics?.nonShowdownWinRate || 0 },
+    { stat: 'Fold2Stl', hero: heroMetrics?.foldToSteal || 0, villain: villainMetrics?.foldToSteal || 0 },
   ];
 }
 

@@ -4,7 +4,6 @@
  * and identifies the top situations where the player loses EV
  */
 
-import { useMemo } from 'react';
 import { motion } from 'framer-motion';
 import {
   ResponsiveContainer,

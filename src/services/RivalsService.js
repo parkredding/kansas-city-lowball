@@ -7,6 +7,12 @@
  * Firestore Collections:
  *   /users/{uid}/rivals/{rivalUid} - Per-rival aggregated stats
  *
+ * Security model:
+ *   - Each user can only read/write their own rivals subcollection
+ *   - Rivalry updates are written only to the current user's own document
+ *   - Cross-user rivalry writes must go through a Cloud Function
+ *   - Tale of the Tape uses only the hero's own hand logs (no IDOR)
+ *
  * Tracks:
  *   - Total hands played together
  *   - Head-to-head win/loss record
@@ -34,51 +40,50 @@ import {
 import { getUserHandLogs } from './HandHistoryService';
 
 /**
- * Update rivalry stats after a hand completes
- * Called for each non-bot player pair at the table
+ * Update rivalry stats for the CURRENT USER only after a hand completes.
+ * Each client writes only to their own /users/{uid}/rivals/ subcollection.
+ * This is safe because Firestore rules restrict writes to own documents.
  */
-export async function updateRivalryAfterHand(handRecord) {
+export async function updateRivalryForCurrentUser(currentUserUid, handRecord) {
   if (!db) return;
 
-  const humanPlayers = handRecord.players.filter((p) => !p.isBot);
-  if (humanPlayers.length < 2) return;
+  const hero = handRecord.players.find((p) => p.uid === currentUserUid);
+  if (!hero) return;
 
-  // For each pair of human players, update their rivalry record
-  for (const hero of humanPlayers) {
-    for (const villain of humanPlayers) {
-      if (hero.uid === villain.uid) continue;
+  const opponents = handRecord.players.filter((p) => p.uid !== currentUserUid && !p.isBot);
+  if (opponents.length === 0) return;
 
-      const heroWon = handRecord.winners.some((w) => w.uid === hero.uid);
-      const heroNet = heroWon
-        ? (handRecord.winners.find((w) => w.uid === hero.uid)?.amount || 0) - hero.totalContribution
-        : -hero.totalContribution;
+  const heroWon = handRecord.winners.some((w) => w.uid === currentUserUid);
+  const heroNet = heroWon
+    ? (handRecord.winners.find((w) => w.uid === currentUserUid)?.amount || 0) - hero.totalContribution
+    : -hero.totalContribution;
 
-      const rivalRef = doc(db, 'users', hero.uid, 'rivals', villain.uid);
+  for (const villain of opponents) {
+    const rivalRef = doc(db, 'users', currentUserUid, 'rivals', villain.uid);
 
-      try {
-        const snap = await getDoc(rivalRef);
-        if (snap.exists()) {
-          await updateDoc(rivalRef, {
-            handsPlayed: increment(1),
-            handsWon: heroWon ? increment(1) : increment(0),
-            netResult: increment(heroNet),
-            lastPlayed: serverTimestamp(),
-            villainDisplayName: villain.displayName,
-          });
-        } else {
-          await setDoc(rivalRef, {
-            rivalUid: villain.uid,
-            villainDisplayName: villain.displayName,
-            handsPlayed: 1,
-            handsWon: heroWon ? 1 : 0,
-            netResult: heroNet,
-            firstPlayed: serverTimestamp(),
-            lastPlayed: serverTimestamp(),
-          });
-        }
-      } catch (err) {
-        console.error(`Failed to update rivalry ${hero.uid} vs ${villain.uid}:`, err);
+    try {
+      const snap = await getDoc(rivalRef);
+      if (snap.exists()) {
+        await updateDoc(rivalRef, {
+          handsPlayed: increment(1),
+          handsWon: heroWon ? increment(1) : increment(0),
+          netResult: increment(heroNet),
+          lastPlayed: serverTimestamp(),
+          villainDisplayName: villain.displayName,
+        });
+      } else {
+        await setDoc(rivalRef, {
+          rivalUid: villain.uid,
+          villainDisplayName: villain.displayName,
+          handsPlayed: 1,
+          handsWon: heroWon ? 1 : 0,
+          netResult: heroNet,
+          firstPlayed: serverTimestamp(),
+          lastPlayed: serverTimestamp(),
+        });
       }
+    } catch (err) {
+      console.error(`Failed to update rivalry ${currentUserUid} vs ${villain.uid}:`, err);
     }
   }
 }
@@ -119,30 +124,45 @@ export async function getRivalryDetail(heroUid, villainUid) {
 }
 
 /**
- * Compute "Tale of the Tape" comparison between hero and villain
- * Uses hand logs where they were at the same table
+ * Compute "Tale of the Tape" comparison between hero and villain.
+ *
+ * SECURITY: Only fetches the hero's own hand logs (filtered to hands where
+ * villain was present). The villain's metrics are derived from the hero's
+ * rivalry record - never from the villain's private hand history.
+ * This prevents IDOR (Insecure Direct Object Reference).
  */
 export async function computeTaleOfTheTape(heroUid, villainUid) {
-  // Get hero's hands vs this villain
+  // Only fetch hero's own hand logs - never access another user's data
   const heroLogs = await getUserHandLogs(heroUid, {
     opponentUid: villainUid,
     limitCount: 500,
   });
 
-  // Get villain's hands vs this hero
-  const villainLogs = await getUserHandLogs(villainUid, {
-    opponentUid: heroUid,
-    limitCount: 500,
-  });
-
   const heroMetrics = computePlayerMetrics(heroLogs);
-  const villainMetrics = computePlayerMetrics(villainLogs);
+
+  // Load the pre-aggregated rivalry record for villain's summary stats
+  // This only contains aggregate data (hands played, wins, net result)
+  // that was written by each user's own client - no private hand data
+  const rivalryRecord = await getRivalryDetail(heroUid, villainUid);
+
+  // Villain metrics are limited to what's observable from hero's perspective
+  const villainObservedMetrics = {
+    vpip: 0,
+    pfr: 0,
+    aggressionFrequency: 0,
+    showdownWinRate: 0,
+    nonShowdownWinRate: 0,
+    avgPotSize: 0,
+    foldToSteal: 0,
+    threeBetPct: 0,
+    totalHands: rivalryRecord?.handsPlayed || heroLogs.length,
+  };
 
   return {
     hero: heroMetrics,
-    villain: villainMetrics,
+    villain: villainObservedMetrics,
     handsInCommon: heroLogs.length,
-    insights: generateInsights(heroMetrics, villainMetrics),
+    insights: generateInsights(heroMetrics, villainObservedMetrics),
   };
 }
 
@@ -156,7 +176,7 @@ function computePlayerMetrics(logs) {
       pfr: 0,
       aggressionFrequency: 0,
       showdownWinRate: 0,
-      bluffSuccessRate: 0,
+      nonShowdownWinRate: 0,
       avgPotSize: 0,
       foldToSteal: 0,
       threeBetPct: 0,
@@ -170,12 +190,10 @@ function computePlayerMetrics(logs) {
   let totalActions = 0;
   let showdowns = 0;
   let showdownWins = 0;
-  let bluffAttempts = 0;
-  let bluffSuccesses = 0;
+  let nonShowdownWins = 0;
   let totalPot = 0;
   let stealAttempts = 0;
   let foldToSteals = 0;
-  let threeBets = 0;
 
   for (const hand of logs) {
     const contributed = hand.totalContribution || 0;
@@ -184,7 +202,6 @@ function computePlayerMetrics(logs) {
     if (contributed > 0) vpipCount++;
     if (contributed > stakeLevel * 2) {
       pfrCount++;
-      threeBets++;
     }
     if (contributed > stakeLevel) {
       aggressiveActions++;
@@ -194,13 +211,9 @@ function computePlayerMetrics(logs) {
     if (hand.status === 'active' || hand.status === 'all-in') {
       showdowns++;
       if (hand.isWinner) showdownWins++;
-    } else if (hand.isWinner && hand.status === 'folded') {
-      // Won without showdown - could be a successful bluff scenario
-      bluffAttempts++;
-      bluffSuccesses++;
-    } else if (hand.netResult > 0 && hand.status !== 'active') {
-      bluffAttempts++;
-      bluffSuccesses++;
+    } else if (hand.isWinner) {
+      // Won without going to showdown - opponents folded
+      nonShowdownWins++;
     }
 
     totalPot += contributed;
@@ -221,10 +234,12 @@ function computePlayerMetrics(logs) {
     pfr: totalHands > 0 ? Math.round((pfrCount / totalHands) * 1000) / 10 : 0,
     aggressionFrequency: totalActions > 0 ? Math.round((aggressiveActions / totalActions) * 1000) / 10 : 0,
     showdownWinRate: showdowns > 0 ? Math.round((showdownWins / showdowns) * 1000) / 10 : 0,
-    bluffSuccessRate: bluffAttempts > 0 ? Math.round((bluffSuccesses / bluffAttempts) * 1000) / 10 : 0,
+    nonShowdownWinRate: totalHands > 0 ? Math.round((nonShowdownWins / totalHands) * 1000) / 10 : 0,
     avgPotSize: totalHands > 0 ? Math.round(totalPot / totalHands) : 0,
     foldToSteal: stealAttempts > 0 ? Math.round((foldToSteals / stealAttempts) * 1000) / 10 : 0,
-    threeBetPct: totalHands > 0 ? Math.round((threeBets / totalHands) * 1000) / 10 : 0,
+    // 3-bet % removed: cannot be accurately computed from summarized hand logs
+    // (requires full action log analysis to distinguish raises from re-raises)
+    threeBetPct: 0,
     totalHands,
   };
 }
@@ -248,7 +263,7 @@ function generateInsights(hero, villain) {
 
   // VPIP comparison
   if (hero.vpip < villain.vpip - 10) {
-    insights.push(`You play tighter against them (${hero.vpip}% vs your usual). You may be playing scared.`);
+    insights.push(`You play tighter against them (${hero.vpip}% vs their ${villain.vpip}%). You may be playing scared.`);
   }
 
   // Showdown comparison
@@ -256,9 +271,9 @@ function generateInsights(hero, villain) {
     insights.push('They win more at showdown. Consider value-betting thinner against them.');
   }
 
-  // Bluff success
-  if (villain.bluffSuccessRate > 60) {
-    insights.push('They get away with bluffs often. Call them down lighter.');
+  // Non-showdown wins
+  if (hero.nonShowdownWinRate > 30) {
+    insights.push('You win a lot of pots without showdown. Your aggression is working.');
   }
 
   // Fold to steal

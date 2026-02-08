@@ -137,12 +137,13 @@ function getGTORecommendation(gameState) {
  * Estimate EV loss from deviating from GTO play
  */
 function estimateEVLoss(playerAction, gtoAction, potSize, stakeLevel) {
+  // Severity values capped at 1.0 - EV loss cannot exceed the pot
   const actionSeverity = {
     FOLD_vs_CALL: 0.5,
     FOLD_vs_RAISE: 0.3,
     CALL_vs_FOLD: 0.8,
     CALL_vs_RAISE: 0.4,
-    RAISE_vs_FOLD: 1.2,
+    RAISE_vs_FOLD: 0.9,
     RAISE_vs_CALL: 0.3,
     CHECK_vs_BET: 0.2,
     BET_vs_CHECK: 0.3,
@@ -150,8 +151,10 @@ function estimateEVLoss(playerAction, gtoAction, potSize, stakeLevel) {
 
   const key = `${playerAction}_vs_${gtoAction.action}`;
   const severity = actionSeverity[key] || 0.5;
+  const evLoss = potSize * severity * gtoAction.confidence;
 
-  return Math.round(potSize * severity * gtoAction.confidence * 100) / 100;
+  // Cap EV loss at the pot size - you can never lose more EV than the pot
+  return Math.round(Math.min(evLoss, potSize) * 100) / 100;
 }
 
 /**
