@@ -463,9 +463,7 @@ export function GameProvider({ children }) {
           // IMPORTANT: Must await this before startNextHand clears showdownResult
           // from the table document, otherwise the Cloud Function reads null.
           const recordHandHistoryFn = httpsCallable(functions, 'recordHandHistory');
-          await recordHandHistoryFn({ tableId: currentTableId }).catch((err) => {
-            console.error('Failed to record hand history (server):', err);
-          });
+          await recordHandHistoryFn({ tableId: currentTableId });
 
           // Build a local hand record for rivalry tracking (writes only to own collection)
           const handRecord = buildHandRecord(
