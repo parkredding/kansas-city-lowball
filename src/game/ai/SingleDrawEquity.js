@@ -20,6 +20,16 @@ const RANK_CHARS = { 2: '2', 3: '3', 4: '4', 5: '5', 6: '6', 7: '7', 8: '8', 9: 
 const ALL_SUITS = ['h', 'd', 'c', 's'];
 
 /**
+ * Cryptographically secure random number in [0, 1).
+ * Prevents opponents from predicting bot bluff patterns.
+ */
+function secureRandom() {
+  const array = new Uint32Array(1);
+  crypto.getRandomValues(array);
+  return array[0] / (0xFFFFFFFF + 1);
+}
+
+/**
  * Build the set of known cards (cards we can see are removed from the deck).
  * In single-player bot context we only know our own hand.
  */
@@ -200,8 +210,8 @@ export function calculateDrawTwoEquity(keptCards, known, beatHighCard = 14) {
     }
   } else {
     for (let s = 0; s < maxSamples; s++) {
-      const i = Math.floor(Math.random() * deck.length);
-      let j = Math.floor(Math.random() * (deck.length - 1));
+      const i = Math.floor(secureRandom() * deck.length);
+      let j = Math.floor(secureRandom() * (deck.length - 1));
       if (j >= i) j++;
       const testValues = [...keptValues, deck[i].value, deck[j].value];
       const testSuits = [...keptSuits, deck[i].suit, deck[j].suit];
@@ -317,14 +327,16 @@ export function decideHardSingleDrawDiscard(hand, gameState, player) {
   // === SNOWING DECISION ===
   // With a garbage hand (pair, high cards), consider standing pat as a bluff
   // Snow more frequently in position (higher index = later position)
-  const playerIndex = (gameState.players || []).findIndex(p => p && p.uid === player.uid);
-  const numPlayers = (gameState.players || []).filter(p => p && p.status !== 'folded' && p.status !== 'sitting-out').length;
-  const isLatePosition = playerIndex >= Math.floor(numPlayers / 2);
+  // Calculate position among active players only (not folded/sitting-out)
+  const activePlayers = (gameState.players || []).filter(p => p && p.status !== 'folded' && p.status !== 'sitting-out');
+  const activeIndex = activePlayers.findIndex(p => p.uid === player.uid);
+  const numPlayers = activePlayers.length;
+  const isLatePosition = activeIndex >= Math.floor(numPlayers / 2);
 
   if (!handResult.isGoodLowballHand || highCard >= 12) {
     // Garbage hand - consider snowing
     const snowChance = isLatePosition ? 0.15 : 0.08;
-    if (Math.random() < snowChance) {
+    if (secureRandom() < snowChance) {
       return []; // Stand pat (snow)
     }
   }
@@ -442,13 +454,8 @@ export function decideHardSingleDrawDiscard(hand, gameState, player) {
         .map((c, i) => c.rank === pairRank ? i : -1)
         .filter(i => i !== -1);
 
-      // For low pairs (2-4), discard just one; for high pairs, discard one too
       // In single draw we only get one shot, so minimize cards discarded
-      if (pairVal <= 6) {
-        return [pairIndices[0]]; // Keep one low card, discard duplicate
-      } else {
-        return [pairIndices[0]]; // Still just one for single draw
-      }
+      return [pairIndices[0]];
     }
   }
 
@@ -553,7 +560,7 @@ export function calculateEquityStrength(hand, gameState, player, discardIndices)
       }
       // Marginal draw: drawing to 9-low
       else if (keptHigh <= 9) {
-        strength = 40 + Math.floor(Math.random() * 10);
+        strength = 40 + Math.floor(secureRandom() * 10);
       }
       // Bad draw: drawing to 10+
       else {
@@ -562,7 +569,7 @@ export function calculateEquityStrength(hand, gameState, player, discardIndices)
 
     } else if (isDrawingTwo) {
       // Drawing 2+ cards - weak in single draw
-      strength = 15 + Math.floor(Math.random() * 10);
+      strength = 15 + Math.floor(secureRandom() * 10);
     }
 
   } else if (isPostDraw) {
@@ -720,7 +727,7 @@ export function decideHardSingleDrawBet(hand, gameState, player, legalActions, e
     }
     if (canRaise && callAmount > 0 && callAmount <= pot * 0.3) {
       // Re-raise as a snow (risky but sometimes effective)
-      if (Math.random() < 0.25) {
+      if (secureRandom() < 0.25) {
         const reraiseSize = Math.max(currentBet + minBet, Math.floor(pot * 0.7));
         return { action: raiseAction, amount: Math.min(reraiseSize, playerChips) };
       }
@@ -750,7 +757,7 @@ export function decideHardSingleDrawBet(hand, gameState, player, legalActions, e
   if (canCheck) return { action: BetAction.CHECK, amount: 0 };
 
   // Occasional bluff with very weak hands facing a check
-  if (strength < 20 && canRaise && callAmount === 0 && Math.random() < 0.08) {
+  if (strength < 20 && canRaise && callAmount === 0 && secureRandom() < 0.08) {
     const bluffSize = Math.max(minBet, Math.floor(pot * 0.6));
     return { action: raiseAction, amount: Math.min(bluffSize, playerChips) };
   }

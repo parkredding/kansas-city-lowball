@@ -262,8 +262,20 @@ export class LowballBotStrategy extends BotStrategy {
    * - Opponent range estimation based on draw count
    */
   decideBetHardSingleDraw(hand, gameState, player, legalActions) {
-    // Determine what the bot would/did discard
-    const discardIndices = decideHardSingleDrawDiscard(hand, gameState, player);
+    const isPreDraw = gameState.phase === 'BETTING_1';
+    let discardIndices;
+
+    if (isPreDraw) {
+      // Pre-draw: determine what we WILL discard to evaluate draw strength
+      discardIndices = decideHardSingleDrawDiscard(hand, gameState, player);
+    } else {
+      // Post-draw: use actual draw count from the draw phase
+      // player.cardsDrawn is set after the draw; we create a dummy array of
+      // the correct length because calculateEquityStrength uses its length
+      // to determine if the bot stood pat, drew one, etc.
+      const drawCount = player.cardsDrawn ?? 0;
+      discardIndices = Array.from({ length: drawCount });
+    }
 
     // Calculate equity-aware hand strength
     const equityResult = calculateEquityStrength(hand, gameState, player, discardIndices);
