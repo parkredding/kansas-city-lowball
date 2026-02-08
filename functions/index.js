@@ -756,6 +756,19 @@ exports.recordHandHistory = onCall({
       return { success: true, message: "Hand already recorded", handId };
     }
 
+    // Determine which players reached showdown (active/all-in at end)
+    const showdownPlayerUids = new Set(
+      tableData.players
+        .filter((p) => p.status === "active" || p.status === "all-in")
+        .map((p) => p.uid)
+    );
+
+    // Map uid -> original hole cards so each player's own hand_log preserves their cards
+    const originalHoleCards = {};
+    tableData.players.forEach((p) => {
+      originalHoleCards[p.uid] = p.hand || [];
+    });
+
     const playerRecords = tableData.players.map((p, i) => ({
       uid: p.uid,
       displayName: p.displayName,
@@ -763,7 +776,8 @@ exports.recordHandHistory = onCall({
       botDifficulty: p.botDifficulty || null,
       position: getPositionLabel(i, dealerIndex, playerCount),
       seatIndex: i,
-      holeCards: p.hand || [],
+      // Redact hole cards for players who folded to protect strategy privacy
+      holeCards: showdownPlayerUids.has(p.uid) ? (p.hand || []) : [],
       status: p.status,
       totalContribution: p.totalContribution || 0,
       chipsBefore: (p.chips || 0) + (p.totalContribution || 0),
@@ -829,7 +843,8 @@ exports.recordHandHistory = onCall({
         bettingType,
         stakeLevel: handRecord.stakeLevel,
         position: player.position,
-        holeCards: player.holeCards,
+        // Always store the player's own original hole cards in their personal hand_log
+        holeCards: originalHoleCards[player.uid] || [],
         status: player.status,
         totalContribution: player.totalContribution,
         netResult,

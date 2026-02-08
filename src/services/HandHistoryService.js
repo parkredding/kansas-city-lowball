@@ -58,6 +58,13 @@ export function buildHandRecord(tableData, winners, handNumber) {
   const playerCount = tableData.players.length;
   const dealerIndex = tableData.dealerIndex || 0;
 
+  // Determine which players reached showdown (active/all-in at end)
+  const showdownPlayerUids = new Set(
+    tableData.players
+      .filter((p) => p.status === 'active' || p.status === 'all-in')
+      .map((p) => p.uid)
+  );
+
   const playerRecords = tableData.players.map((p, i) => ({
     uid: p.uid,
     displayName: p.displayName,
@@ -65,7 +72,8 @@ export function buildHandRecord(tableData, winners, handNumber) {
     botDifficulty: p.botDifficulty || null,
     position: getPositionLabel(i, dealerIndex, playerCount),
     seatIndex: i,
-    holeCards: p.hand || [],
+    // Redact hole cards for players who folded to protect strategy privacy
+    holeCards: showdownPlayerUids.has(p.uid) ? (p.hand || []) : [],
     status: p.status,
     totalContribution: p.totalContribution || 0,
     chipsBefore: (p.chips || 0) + (p.totalContribution || 0),
