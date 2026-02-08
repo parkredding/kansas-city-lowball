@@ -4,6 +4,7 @@ import { GameProvider } from './context/GameContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Login from './pages/Login';
 import GameTable from './pages/GameTable';
+import CareerDashboard from './pages/CareerDashboard';
 
 function App() {
   return (
@@ -17,6 +18,14 @@ function App() {
               <GameProvider>
                 <GameTable />
               </GameProvider>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/career"
+          element={
+            <ProtectedRoute>
+              <CareerDashboard />
             </ProtectedRoute>
           }
         />

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, Component } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
 import { useGame, BetAction } from '../context/GameContext';
 import { useAuth } from '../context/AuthContext';
@@ -1297,14 +1298,34 @@ function LobbyView() {
         )}
       </div>
 
-      <button
-        type="button"
-        onClick={logout}
-        className="text-slate-400 hover:text-white text-sm underline transition-colors"
-      >
-        Sign Out
-      </button>
+      <div className="flex items-center gap-4">
+        <CareerDashboardLink />
+        <button
+          type="button"
+          onClick={logout}
+          className="text-slate-400 hover:text-white text-sm underline transition-colors"
+        >
+          Sign Out
+        </button>
+      </div>
     </div>
+  );
+}
+
+function CareerDashboardLink() {
+  const navigate = useNavigate();
+  return (
+    <button
+      type="button"
+      onClick={() => navigate('/career')}
+      className="px-4 py-2 rounded-xl text-sm font-medium text-slate-300 hover:text-white transition-colors"
+      style={{
+        background: 'rgba(30, 41, 59, 0.8)',
+        border: '1px solid rgba(71, 85, 105, 0.3)',
+      }}
+    >
+      Career & Rivals
+    </button>
   );
 }
 
