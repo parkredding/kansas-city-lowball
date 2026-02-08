@@ -1,6 +1,11 @@
 import { BotStrategy } from './BotStrategy';
 import { HandEvaluator } from '../HandEvaluator';
 import { BetAction } from '../GameService';
+import {
+  decideHardSingleDrawDiscard,
+  calculateEquityStrength,
+  decideHardSingleDrawBet,
+} from './SingleDrawEquity';
 
 const RANKS = {
   '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9,
@@ -8,18 +13,39 @@ const RANKS = {
 };
 
 /**
- * Bot Strategy for Kansas City Lowball (2-7 Triple Draw)
+ * Bot Strategy for Kansas City Lowball (2-7 Triple Draw & Single Draw)
+ *
+ * Hard difficulty in Single Draw uses an equity-based algorithm that models:
+ * - Three equity states: Pat vs Pat, Draw vs Draw, Pat vs Draw
+ * - Smoothness (gap equity) for draw quality assessment
+ * - Blocker effects (holding key low cards)
+ * - Snowing (standing pat with garbage to represent strength)
+ * - Breaking made hands when draw equity exceeds pat equity
+ * - Pot odds and fold equity calculations
  */
 export class LowballBotStrategy extends BotStrategy {
+
+  /**
+   * Check if we're playing single draw (vs triple draw)
+   */
+  isSingleDraw(gameState) {
+    const gameType = gameState?.config?.gameType;
+    return gameType === 'single_draw_27';
+  }
+
   /**
    * Decide which cards to discard
    */
   decideDiscard(hand, gameState, player, difficulty) {
     if (!hand || hand.length !== 5) return [];
 
+    // Hard single draw bots use the equity-based algorithm
+    if (difficulty === 'hard' && this.isSingleDraw(gameState)) {
+      return decideHardSingleDrawDiscard(hand, gameState, player);
+    }
+
     const handResult = HandEvaluator.evaluate(hand);
     const values = hand.map(c => RANKS[c.rank]).sort((a, b) => a - b);
-    const suits = hand.map(c => c.suit);
 
     // Check for pat hands (7, 8, 9, or T-high)
     const highCard = values[4];
@@ -37,7 +63,7 @@ export class LowballBotStrategy extends BotStrategy {
 
       // Randomly decide how many cards to discard (1-3)
       const numToDiscard = Math.floor(Math.random() * 3) + 1;
-      
+
       // Find high cards (9 or higher)
       const highCards = hand
         .map((c, i) => ({ card: c, index: i, value: RANKS[c.rank] }))
@@ -47,7 +73,7 @@ export class LowballBotStrategy extends BotStrategy {
       // If we have pairs, sometimes discard them randomly
       const counts = this.getCounts(values);
       const hasPair = Object.values(counts).some(c => c >= 2);
-      
+
       if (hasPair && Math.random() < 0.5) {
         // Discard from pairs randomly
         const pairCards = Object.entries(counts)
@@ -68,7 +94,7 @@ export class LowballBotStrategy extends BotStrategy {
       const allCards = hand
         .map((c, i) => ({ card: c, index: i, value: RANKS[c.rank] }))
         .sort((a, b) => b.value - a.value);
-      
+
       return allCards.slice(0, numToDiscard).map(({ index }) => index);
     }
 
@@ -84,7 +110,7 @@ export class LowballBotStrategy extends BotStrategy {
     // Breaking pairs: If holding a pair of 2s/3s/4s and other cards are low
     const counts = this.getCounts(values);
     const pairs = Object.entries(counts).filter(([val, count]) => count === 2);
-    
+
     if (pairs.length > 0) {
       const pairValue = parseInt(pairs[0][0]);
       if (pairValue <= 4) {
@@ -134,6 +160,11 @@ export class LowballBotStrategy extends BotStrategy {
    * Decide betting action
    */
   decideBet(hand, gameState, player, legalActions, difficulty) {
+    // Hard single draw bots use equity-based betting
+    if (difficulty === 'hard' && this.isSingleDraw(gameState)) {
+      return this.decideBetHardSingleDraw(hand, gameState, player, legalActions);
+    }
+
     const handStrength = this.calculateHandStrength(hand, gameState);
     const currentBet = gameState.currentBet || 0;
     const playerBet = player.currentRoundBet || 0;
@@ -166,7 +197,7 @@ export class LowballBotStrategy extends BotStrategy {
         return { action: BetAction.FOLD, amount: 0 };
       }
     } else {
-      // Pro: Hand strength based
+      // Pro: Hand strength based (medium difficulty, or hard triple draw)
       const handResult = HandEvaluator.evaluate(hand);
       const isSnow = this.isSnowHand(hand, handResult);
 
@@ -217,6 +248,43 @@ export class LowballBotStrategy extends BotStrategy {
   }
 
   /**
+   * Hard single draw betting using equity-based algorithm.
+   *
+   * Uses the three equity states:
+   * - Pat vs Pat: static equity, value bet strong hands
+   * - Draw vs Draw: smooth draws are favorites, bet accordingly
+   * - Pat vs Draw: mediocre pat hands are often underdogs to premium draws
+   *
+   * Also incorporates:
+   * - Pot odds calculations
+   * - Fold equity (snowing)
+   * - Position awareness
+   * - Opponent range estimation based on draw count
+   */
+  decideBetHardSingleDraw(hand, gameState, player, legalActions) {
+    const isPreDraw = gameState.phase === 'BETTING_1';
+    let discardIndices;
+
+    if (isPreDraw) {
+      // Pre-draw: determine what we WILL discard to evaluate draw strength
+      discardIndices = decideHardSingleDrawDiscard(hand, gameState, player);
+    } else {
+      // Post-draw: use actual draw count from the draw phase
+      // player.cardsDrawn is set after the draw; we create a dummy array of
+      // the correct length because calculateEquityStrength uses its length
+      // to determine if the bot stood pat, drew one, etc.
+      const drawCount = player.cardsDrawn ?? 0;
+      discardIndices = Array.from({ length: drawCount });
+    }
+
+    // Calculate equity-aware hand strength
+    const equityResult = calculateEquityStrength(hand, gameState, player, discardIndices);
+
+    // Delegate to the equity-based betting decision
+    return decideHardSingleDrawBet(hand, gameState, player, legalActions, equityResult, BetAction);
+  }
+
+  /**
    * Calculate hand strength (0-100) for Kansas City Lowball
    */
   calculateHandStrength(hand, gameState) {
@@ -231,7 +299,7 @@ export class LowballBotStrategy extends BotStrategy {
     if (handResult.isGoodLowballHand) {
       // High card hands - lower high card = better
       const highCard = values[4];
-      
+
       // Best possible: 7-high (7-5-4-3-2)
       if (highCard === 7 && values[0] === 2 && values[1] === 3 && values[2] === 4 && values[3] === 5) {
         strength = 100;
