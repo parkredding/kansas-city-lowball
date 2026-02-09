@@ -1782,6 +1782,17 @@ export class GameService {
   }
 
   /**
+   * Validate that the table is in IDLE phase before dealing.
+   * Throws if the game is already in progress to prevent double-dealing.
+   * @param {Object} tableData - Fresh table data from a transaction read
+   */
+  static assertIdlePhase(tableData) {
+    if (tableData.phase !== 'IDLE') {
+      throw new Error('Cannot deal cards: game is not in IDLE phase');
+    }
+  }
+
+  /**
    * Deal cards to all players and start the game
    * Uses a transaction to read fresh data and prevent race conditions with concurrent joins
    * @param {string} tableId - The table ID
@@ -1805,9 +1816,7 @@ export class GameService {
       const tableData = tableDoc.data();
 
       // Prevent double-dealing: only deal from IDLE phase
-      if (tableData.phase !== 'IDLE') {
-        throw new Error('Cannot deal cards: game is not in IDLE phase');
-      }
+      GameService.assertIdlePhase(tableData);
 
       let deck = [...tableData.deck];
       let muck = [...(tableData.muck || [])];
@@ -1948,9 +1957,7 @@ export class GameService {
       const tableData = tableDoc.data();
 
       // Prevent double-dealing: only deal from IDLE phase
-      if (tableData.phase !== 'IDLE') {
-        throw new Error('Cannot deal cards: game is not in IDLE phase');
-      }
+      GameService.assertIdlePhase(tableData);
 
       let deck = [...tableData.deck];
       let muck = [...(tableData.muck || [])];
