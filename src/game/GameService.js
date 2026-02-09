@@ -1803,6 +1803,12 @@ export class GameService {
       }
 
       const tableData = tableDoc.data();
+
+      // Prevent double-dealing: only deal from IDLE phase
+      if (tableData.phase !== 'IDLE') {
+        throw new Error('Cannot deal cards: game is not in IDLE phase');
+      }
+
       let deck = [...tableData.deck];
       let muck = [...(tableData.muck || [])];
 
@@ -1940,6 +1946,12 @@ export class GameService {
       }
 
       const tableData = tableDoc.data();
+
+      // Prevent double-dealing: only deal from IDLE phase
+      if (tableData.phase !== 'IDLE') {
+        throw new Error('Cannot deal cards: game is not in IDLE phase');
+      }
+
       let deck = [...tableData.deck];
       let muck = [...(tableData.muck || [])];
 
