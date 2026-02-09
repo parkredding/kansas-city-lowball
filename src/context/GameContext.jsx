@@ -346,10 +346,14 @@ export function GameProvider({ children }) {
   const dealCards = useCallback(async () => {
     if (!currentTableId || !tableData) return;
 
+    // Only allow dealing from IDLE phase to prevent double-deals
+    if (tableData.phase !== 'IDLE') return;
+
+    setLoading(true);
     try {
       // Check if this is the first hand (no dealer has been determined yet)
       // If hasHadFirstDeal is not set and we're in IDLE, start cut for dealer
-      if (!tableData.hasHadFirstDeal && tableData.phase === 'IDLE') {
+      if (!tableData.hasHadFirstDeal) {
         await GameService.startCutForDealer(currentTableId, tableData);
       } else {
         // Deal based on game type
@@ -362,6 +366,8 @@ export function GameProvider({ children }) {
       }
     } catch (err) {
       setError(err.message);
+    } finally {
+      setLoading(false);
     }
   }, [currentTableId, tableData]);
 
