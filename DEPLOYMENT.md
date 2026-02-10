@@ -123,7 +123,7 @@ Should show all 4 functions in the list.
 
 The `processTimeouts` function should appear in:
 - Firebase Console → Functions → processTimeouts
-- Shows "Trigger: every 1 minutes"
+- Shows "Trigger: every 1 minute"
 
 ### Test Hand Recording
 
@@ -276,11 +276,11 @@ To automate deployment via GitHub Actions:
      deploy:
        runs-on: ubuntu-latest
        steps:
-         - uses: actions/checkout@v2
-         - uses: actions/setup-node@v2
+         - uses: actions/checkout@v4
+         - uses: actions/setup-node@v4
          - run: npm install -g firebase-tools
          - run: cd functions && npm install
-         - run: firebase deploy --token ${{ secrets.FIREBASE_TOKEN }}
+         - run: firebase deploy --only functions,firestore --token ${{ secrets.FIREBASE_TOKEN }}
    ```
 
 ---
