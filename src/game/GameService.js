@@ -623,7 +623,7 @@ export class GameService {
         dealerIndex: finalDealerPosition,
         cutForDealerWinner: winnerIndex,
         cutForDealerComplete: true,
-        hasHadFirstDeal: true,
+        isDealerDetermined: true,
         phase: 'IDLE', // Return to idle for deal
         lastUpdated: serverTimestamp(),
       });
@@ -1926,7 +1926,7 @@ export class GameService {
         smallBlindSeatIndex: sbSeatIndex,
         bigBlindSeatIndex: bbSeatIndex,
         turnDeadline: GameService.calculateTurnDeadline(tableData.config?.turnTimeLimit),
-        hasHadFirstDeal: true, // Mark that dealer has been determined
+        isDealerDetermined: true, // Mark that dealer has been determined
         cutForDealerComplete: null, // Clear cut for dealer state
         cutForDealerWinner: null,
         lastUpdated: serverTimestamp(),
@@ -2066,7 +2066,7 @@ export class GameService {
         bigBlindSeatIndex: bbSeatIndex,
         communityCards: [], // Initialize empty community cards
         turnDeadline: GameService.calculateTurnDeadline(tableData.config?.turnTimeLimit),
-        hasHadFirstDeal: true,
+        isDealerDetermined: true,
         cutForDealerComplete: null,
         cutForDealerWinner: null,
         lastUpdated: serverTimestamp(),
@@ -4544,7 +4544,7 @@ export class GameService {
         lastAggressor: null,
         turnDeadline: null,
         communityCards: [],
-        hasHadFirstDeal: false,
+        isDealerDetermined: false,
         cutForDealerComplete: null,
         cutForDealerWinner: null,
         tournament: restartedTournament,
