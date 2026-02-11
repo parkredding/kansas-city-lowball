@@ -1647,7 +1647,7 @@ function GameView() {
     e.preventDefault();
     e.stopPropagation();
     // Play deal sound (cut for dealer plays a different sound)
-    if (!tableData?.hasHadFirstDeal) {
+    if (!tableData?.isDealerDetermined) {
       SoundManager.playCutForDealer();
     } else {
       SoundManager.playDeal(5);

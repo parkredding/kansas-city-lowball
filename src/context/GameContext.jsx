@@ -352,8 +352,8 @@ export function GameProvider({ children }) {
     setLoading(true);
     try {
       // Check if this is the first hand (no dealer has been determined yet)
-      // If hasHadFirstDeal is not set and we're in IDLE, start cut for dealer
-      if (!tableData.hasHadFirstDeal) {
+      // If isDealerDetermined is not set and we're in IDLE, start cut for dealer
+      if (!tableData.isDealerDetermined) {
         await GameService.startCutForDealer(currentTableId, tableData);
       } else {
         // Deal based on game type
