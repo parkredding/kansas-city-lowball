@@ -623,6 +623,7 @@ export class GameService {
         dealerIndex: finalDealerPosition,
         cutForDealerWinner: winnerIndex,
         cutForDealerComplete: true,
+        hasHadFirstDeal: true,
         phase: 'IDLE', // Return to idle for deal
         lastUpdated: serverTimestamp(),
       });
